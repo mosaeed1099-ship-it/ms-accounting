@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80" fill="none">
+  <!-- M letter -->
+  <path d="M8 62V18H22L36 44L50 18H64V62H52V36L38 60H34L20 36V62H8Z" fill="#1a2472"/>
+  <!-- S letter body -->
+  <path d="M76 62C70 62 65 60 61 56L68 49C71 52 74 53 77 53C80 53 83 52 83 49C83 47 81 46 77 45L72 43C65 41 62 37 62 32C62 24 68 18 78 18C84 18 89 20 93 24L86 31C84 28 81 27 78 27C75 27 73 28 73 31C73 33 75 34 79 35L84 37C91 39 95 43 95 49C95 57 89 62 76 62Z" fill="#1a2472"/>
+  <!-- S accent top (light blue) -->
+  <path d="M93 24C89 20 84 18 78 18C73.5 18 69.5 19.5 67 22.5L76 28C77.5 27.2 78.5 27 78 27C81 27 84 28 86 31L93 24Z" fill="#5b8ec4"/>
+  <rect x="62" y="18" width="5" height="8" rx="1" fill="#5b8ec4"/>
+  <!-- Text: CORPORATE ACCOUNTING SERVICES -->
+  <text x="8" y="76" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" letter-spacing="1.5" fill="#1a2472">CORPORATE ACCOUNTING SERVICES</text>
+</svg>

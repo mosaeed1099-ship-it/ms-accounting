@@ -1,0 +1,2771 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MS Accounting — نظام إدارة مكتب المحاسبة</title>
+  <script src="config.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Cairo','system-ui','sans-serif'] } } }
+    }
+  </script>
+  <style>
+    *{font-family:'Cairo',system-ui,sans-serif;box-sizing:border-box}
+    body{background:#f1f5f9;margin:0}
+    /* Sidebar */
+    .sidebar-link{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:10px;font-size:13.5px;font-weight:500;cursor:pointer;transition:all .15s;color:#475569;margin:1px 0}
+    .sidebar-link:hover{background:#f1f5f9;color:#0f1848}
+    .sidebar-link.active{background:linear-gradient(135deg,#1a2472,#152060);color:white;box-shadow:0 4px 12px rgba(37,99,235,.3)}
+    .sidebar-link .icon{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:16px;flex-shrink:0}
+    /* Cards */
+    .card{background:white;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);border:1px solid #e8edf3}
+    /* Buttons */
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s;border:none;font-family:inherit}
+    .btn-primary{background:linear-gradient(135deg,#1a2472,#152060);color:white;box-shadow:0 2px 8px rgba(37,99,235,.3)}
+    .btn-primary:hover{background:linear-gradient(135deg,#152060,#0f1848);transform:translateY(-1px)}
+    .btn-secondary{background:white;color:#374151;border:1.5px solid #d1d5db}
+    .btn-secondary:hover{background:#f9fafb;border-color:#9ca3af}
+    .btn-success{background:#16a34a;color:white}
+    .btn-danger{background:#dc2626;color:white}
+    .btn-sm{padding:5px 12px;font-size:12px}
+    /* Inputs */
+    .input{width:100%;padding:9px 13px;border:1.5px solid #d1d5db;border-radius:9px;font-size:13.5px;font-family:inherit;outline:none;transition:border .15s;background:white}
+    .input:focus{border-color:#1a2472;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+    /* Badges */
+    .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600}
+    .badge-green{background:#dcfce7;color:#15803d}
+    .badge-blue{background:#d8def5;color:#152060}
+    .badge-red{background:#fee2e2;color:#dc2626}
+    .badge-yellow{background:#fef9c3;color:#a16207}
+    .badge-gray{background:#f3f4f6;color:#4b5563}
+    .badge-purple{background:#ede9fe;color:#6d28d9}
+    .badge-orange{background:#fff7ed;color:#c2410c}
+    /* Table */
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    thead th{padding:11px 14px;text-align:right;font-size:11px;color:#6b7280;font-weight:700;background:#f8fafc;border-bottom:1.5px solid #e5e7eb;text-transform:uppercase;letter-spacing:.3px}
+    tbody td{padding:11px 14px;border-bottom:1px solid #f3f4f6;color:#374151}
+    tbody tr:hover{background:#fafbff}
+    tbody tr:last-child td{border-bottom:none}
+    /* Modal */
+    .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;backdrop-filter:blur(4px)}
+    .modal{background:white;border-radius:18px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.25)}
+    /* Toast */
+    .toasts{position:fixed;top:16px;left:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+    .toast-item{display:flex;align-items:center;gap:10px;padding:13px 18px;background:white;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.12);min-width:280px;border-right:4px solid;animation:slideIn .25s ease}
+    @keyframes slideIn{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
+    /* Kanban */
+    .kanban-col{background:#f8fafc;border-radius:14px;min-height:400px;border:1.5px solid #e8edf3}
+    .kanban-card{background:white;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid #e8edf3;transition:all .15s;cursor:pointer}
+    .kanban-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateY(-2px)}
+    /* Stat cards */
+    .stat-card{background:white;border-radius:14px;padding:20px;border:1px solid #e8edf3;box-shadow:0 1px 4px rgba(0,0,0,.06);position:relative;overflow:hidden}
+    .stat-card::after{content:'';position:absolute;top:0;right:0;width:4px;height:100%;border-radius:0 14px 14px 0}
+    .stat-blue::after{background:linear-gradient(180deg,#4478b0,#152060)}
+    .stat-green::after{background:linear-gradient(180deg,#22c55e,#15803d)}
+    .stat-red::after{background:linear-gradient(180deg,#f87171,#dc2626)}
+    .stat-purple::after{background:linear-gradient(180deg,#a78bfa,#5b8ec4)}
+    /* Page animation */
+    .page{animation:fadeUp .2s ease}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    /* Loading */
+    .spinner{width:28px;height:28px;border:3px solid #e2e8f0;border-top-color:#1a2472;border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    /* Section headings */
+    .section-title{font-size:15px;font-weight:700;color:#1a2472;margin:0 0 16px;padding-right:12px;border-right:3px solid #1a2472;line-height:1.4;display:flex;align-items:center;gap:6px}
+    .page-section-title{font-size:15px;font-weight:700;color:#1a2472;margin:0 0 16px;padding:10px 14px;background:linear-gradient(135deg,#eef1fb,#f8fafc);border-radius:10px;border-right:4px solid #1a2472;display:flex;align-items:center;gap:8px}
+    /* Scrollbar */
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:#f1f5f9}
+    ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px}
+    select,textarea{font-family:inherit}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:640px){.form-row{grid-template-columns:1fr}}
+    .priority-urgent{border-right:3px solid #dc2626!important}
+    .priority-high{border-right:3px solid #f97316!important}
+    .priority-medium{border-right:3px solid #eab308!important}
+    .priority-low{border-right:3px solid #22c55e!important}
+
+    /* ── Responsive Layout ─────────────────────────────── */
+    .app-sidebar{width:230px;flex-shrink:0;height:100vh;position:sticky;top:0;overflow-y:auto;background:white;border-left:1.5px solid #e8edf3;box-shadow:2px 0 8px rgba(0,0,0,.04)}
+    .app-main{margin-right:230px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+    .mobile-menu-btn{display:none;background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;color:#1a2472}
+    .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:190;backdrop-filter:blur(2px)}
+
+    @media(max-width:768px){
+      /* Sidebar becomes a slide-in drawer */
+      .app-sidebar{
+        position:fixed;right:-250px;top:0;width:250px;height:100vh;
+        z-index:200;transition:right .28s ease;
+        box-shadow:none;border-left:none
+      }
+      .app-sidebar.open{right:0;box-shadow:-6px 0 24px rgba(0,0,0,.18)}
+      .sidebar-overlay.open{display:block}
+      /* Main content fills full width */
+      .app-main{margin-right:0}
+      /* Show hamburger button */
+      .mobile-menu-btn{display:flex!important;align-items:center;justify-content:center}
+      /* Tables scroll horizontally */
+      .card{overflow-x:auto}
+      table{min-width:500px}
+      /* Kanban columns stack */
+      .kanban-col{min-width:260px}
+      /* Stat cards: 2 columns */
+      .stats-grid{grid-template-columns:1fr 1fr!important}
+      /* Page padding */
+      #main{padding:16px!important}
+      /* Modal full width */
+      .modal{max-width:100%!important;margin:0;border-radius:14px 14px 0 0;position:fixed;bottom:0;right:0;left:0;max-height:92vh}
+      .modal-overlay{align-items:flex-end}
+      /* Topbar */
+      .topbar-date{display:none}
+      /* Login card */
+      .login-card{margin:12px!important;padding:24px!important}
+    }
+
+    @media(max-width:480px){
+      .stats-grid{grid-template-columns:1fr!important}
+      thead th{font-size:10px;padding:8px}
+      tbody td{font-size:12px;padding:8px}
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toasts" class="toasts"></div>
+
+<script type="module">
+const API = window.MS_API_BASE || (
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? `http://${window.location.hostname}:8000`
+    : `https://${window.location.hostname.replace(/^[^.]+\./, 'api.')}`
+);
+let token = localStorage.getItem('ms_token');
+let currentUser = JSON.parse(localStorage.getItem('ms_user') || 'null');
+let currentPage = 'dashboard';
+let chartInstances = {};
+
+// ── Utilities ──────────────────────────────────────
+const $ = (s,c=document) => c.querySelector(s);
+const $$ = (s,c=document) => [...c.querySelectorAll(s)];
+
+async function api(method, path, body=null) {
+  const opts = {
+    method,
+    headers:{'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{})}
+  };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const r = await fetch(API+path, opts);
+    if (r.status===401){logout();return null}
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok) {
+      let msg = 'خطأ في الطلب';
+      if (typeof data.detail === 'string') msg = data.detail;
+      else if (Array.isArray(data.detail)) msg = data.detail.map(e=>e.msg||e).join(' | ');
+      else if (data.message) msg = data.message;
+      throw new Error(msg);
+    }
+    return data;
+  } catch(e) {
+    if (e.message && e.message.includes('fetch')) throw new Error('تعذّر الاتصال بالخادم — تأكد من تشغيل الـ Backend');
+    throw e;
+  }
+}
+
+function toast(msg, type='success') {
+  const colors={success:'#16a34a',error:'#dc2626',warning:'#d97706',info:'#1a2472'};
+  const icons={success:'✓',error:'✕',warning:'⚠',info:'ℹ'};
+  const el=document.createElement('div');
+  el.className='toast-item';
+  el.style.borderColor=colors[type];
+  el.innerHTML=`<span style="color:${colors[type]};font-weight:800;font-size:16px">${icons[type]}</span><span style="font-size:13px;color:#1f2937;font-weight:500">${msg}</span>`;
+  document.getElementById('toasts').append(el);
+  setTimeout(()=>el.remove(),4000);
+}
+
+function money(n) {
+  return new Intl.NumberFormat('ar-EG',{style:'currency',currency:'EGP',minimumFractionDigits:0}).format(n||0);
+}
+function dateAr(d) {
+  if(!d) return '—';
+  return new Intl.DateTimeFormat('ar-EG',{year:'numeric',month:'short',day:'numeric'}).format(new Date(d));
+}
+function daysUntil(d) {
+  if(!d) return null;
+  const diff = Math.ceil((new Date(d)-new Date())/(1000*60*60*24));
+  return diff;
+}
+function destroyChart(key) {
+  if(chartInstances[key]) { chartInstances[key].destroy(); delete chartInstances[key]; }
+}
+
+// ── Auth ───────────────────────────────────────────
+async function login(email, password) {
+  const body=new URLSearchParams({username:email,password});
+  const r=await fetch(`${API}/api/auth/login`,{method:'POST',body,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+  const data=await r.json();
+  if(!r.ok) throw new Error(data.detail||'بيانات الدخول غير صحيحة');
+  token=data.access_token; currentUser=data.user;
+  localStorage.setItem('ms_token',token);
+  localStorage.setItem('ms_user',JSON.stringify(currentUser));
+  renderApp();
+}
+function logout() {
+  token=null; currentUser=null;
+  localStorage.removeItem('ms_token'); localStorage.removeItem('ms_user');
+  renderApp();
+}
+
+// ── Login Page ─────────────────────────────────────
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+  <div style="min-height:100vh;background:linear-gradient(135deg,#0d1540 0%,#1a2472 50%,#5b8ec4 100%);display:flex;align-items:center;justify-content:center;padding:16px">
+    <div style="width:100%;max-width:420px">
+      <div style="text-align:center;margin-bottom:36px">
+        <div style="width:110px;height:110px;background:white;border-radius:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:12px">
+          <img src="assets/logo.svg" alt="MS Logo" style="width:86px;height:86px;object-fit:contain"/>
+        </div>
+        <h1 style="color:white;font-size:26px;font-weight:800;margin:0 0 4px;letter-spacing:.5px">MS Accounting</h1>
+        <p style="color:rgba(255,255,255,.8);font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin:0">Corporate Accounting Services</p>
+      </div>
+      <div style="background:white;border-radius:20px;padding:32px;box-shadow:0 25px 60px rgba(0,0,0,.2)">
+        <h2 style="font-size:20px;font-weight:700;color:#1e293b;margin:0 0 24px;text-align:center">تسجيل الدخول</h2>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">البريد الإلكتروني</label>
+          <input id="loginEmail" class="input" type="email" value="admin@ms-accounting.com" placeholder="admin@ms-accounting.com"/>
+        </div>
+        <div style="margin-bottom:24px">
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">كلمة المرور</label>
+          <input id="loginPass" class="input" type="password" value="admin123" placeholder="••••••••"/>
+        </div>
+        <button id="loginBtn" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:15px">
+          🔐 دخول
+        </button>
+        <div id="loginErr" style="color:#dc2626;font-size:13px;text-align:center;margin-top:12px;min-height:20px"></div>
+        <div style="margin-top:20px;padding:14px;background:#f0f9ff;border-radius:10px;text-align:center;border:1px solid #bae6fd">
+          <p style="font-size:12px;font-weight:600;color:#0369a1;margin:0 0 4px">بيانات الدخول الافتراضية:</p>
+          <p style="font-size:12px;color:#0369a1;margin:0">البريد: admin@ms-accounting.com</p>
+          <p style="font-size:12px;color:#0369a1;margin:0">كلمة المرور: admin123</p>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('loginBtn').onclick = async () => {
+    const btn=document.getElementById('loginBtn');
+    const err=document.getElementById('loginErr');
+    err.textContent='';
+    btn.disabled=true; btn.textContent='جاري الدخول...';
+    try { await login(document.getElementById('loginEmail').value, document.getElementById('loginPass').value); }
+    catch(e){ err.textContent=e.message; btn.disabled=false; btn.innerHTML='🔐 دخول'; }
+  };
+  document.getElementById('loginPass').onkeydown = e => { if(e.key==='Enter') document.getElementById('loginBtn').click(); };
+}
+
+// ── Sidebar nav items ──────────────────────────────
+const navItems = [
+  {id:'dashboard',     icon:'📊', label:'الرئيسية'},
+  {id:'clients',       icon:'👥', label:'العملاء'},
+  {id:'leads',         icon:'🎯', label:'العملاء المحتملين'},
+  {id:'invoices',      icon:'📄', label:'الفواتير'},
+  {id:'tasks',         icon:'✅', label:'المهام'},
+  {id:'obligations',   icon:'🔔', label:'الالتزامات الضريبية'},
+  {id:'establishment', icon:'🏢', label:'تأسيس الشركات'},
+  {id:'documents',     icon:'📁', label:'الأرشيف'},
+  {id:'tax',           icon:'🧾', label:'الإقرارات'},
+  {id:'employees',     icon:'👤', label:'الموظفين'},
+  {id:'reports',       icon:'📈', label:'التقارير'},
+  {id:'import',        icon:'📥', label:'استيراد البيانات'},
+  {id:'settings',      icon:'⚙️', label:'الإعدادات'},
+];
+
+// ── App Shell ──────────────────────────────────────
+function renderApp() {
+  if (!token) { renderLogin(); return; }
+  document.getElementById('app').innerHTML = `
+  <div style="display:flex;min-height:100vh;background:#f1f5f9">
+    <!-- Mobile overlay -->
+    <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+    <!-- Sidebar -->
+    <div id="sidebar" class="app-sidebar" style="display:flex;flex-direction:column">
+      <div style="padding:20px 16px 16px">
+        <div style="margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #f1f5f9">
+          <div style="display:flex;align-items:center;gap:10px">
+            <img src="assets/logo.svg" alt="MS Logo" style="width:48px;height:48px;object-fit:contain;flex-shrink:0"/>
+            <div>
+              <div style="font-weight:800;font-size:15px;color:#1a2472;letter-spacing:.3px">MS Accounting</div>
+              <div style="font-size:10px;color:#5b8ec4;font-weight:600;letter-spacing:.8px;text-transform:uppercase">Corporate Accounting</div>
+            </div>
+          </div>
+        </div>
+        <nav id="nav"></nav>
+      </div>
+      <div style="margin-top:auto;padding:16px;border-top:1px solid #f1f5f9">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:#f8fafc">
+          <div style="width:34px;height:34px;background:linear-gradient(135deg,#1a2472,#5b8ec4);border-radius:10px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px">
+            ${(currentUser?.name||'A').charAt(0)}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${currentUser?.name||'مدير النظام'}</div>
+            <div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${currentUser?.email||''}</div>
+          </div>
+          <button onclick="logout()" style="background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:4px" title="خروج">🚪</button>
+        </div>
+        <div id="apiStatus" style="display:flex;align-items:center;gap:6px;margin-top:10px;justify-content:center">
+          <span id="apiDot" style="width:8px;height:8px;border-radius:50%;background:#22c55e"></span>
+          <span style="font-size:11px;color:#64748b">API متصل</span>
+        </div>
+      </div>
+    </div>
+    <!-- Main -->
+    <div class="app-main">
+      <!-- Topbar -->
+      <div style="background:white;border-bottom:1.5px solid #e8edf3;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:9;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="mobile-menu-btn" onclick="openSidebar()" title="القائمة">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1a2472" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <h1 id="pageTitle" style="font-size:18px;font-weight:800;color:#1a2472;margin:0;padding-right:12px;border-right:3px solid #1a2472"></h1>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="topbar-date" style="font-size:12px;color:#94a3b8">${new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</span>
+        </div>
+      </div>
+      <!-- Page content -->
+      <div id="main" style="flex:1;padding:24px;max-width:1200px;width:100%;margin:0 auto;box-sizing:border-box"></div>
+    </div>
+  </div>`;
+
+  // Build nav
+  const nav = document.getElementById('nav');
+  navItems.forEach(item => {
+    const a = document.createElement('div');
+    a.className = `sidebar-link${currentPage===item.id?' active':''}`;
+    a.innerHTML = `<span class="icon">${item.icon}</span><span>${item.label}</span>`;
+    a.onclick = () => navigate(item.id);
+    nav.append(a);
+  });
+
+  // Check API
+  fetch(`${API}/`).then(r=>r.ok?null:setApiStatus(false)).catch(()=>setApiStatus(false));
+
+  navigate(currentPage);
+}
+
+function setApiStatus(ok) {
+  const dot=document.getElementById('apiDot');
+  if(dot) dot.style.background=ok?'#22c55e':'#ef4444';
+}
+
+function navigate(page) {
+  currentPage = page;
+  $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'الفواتير',tasks:'المهام',obligations:'الالتزامات الضريبية',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',employees:'الموظفين',reports:'التقارير',import:'استيراد البيانات',settings:'الإعدادات'};
+  const t=document.getElementById('pageTitle');
+  if(t) t.textContent=titles[page]||page;
+  const main=document.getElementById('main');
+  if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
+  Object.keys(chartInstances).forEach(destroyChart);
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,tasks:loadTasks,obligations:loadObligations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
+  if(pages[page]) pages[page]();
+}
+
+// ── DASHBOARD ──────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const [stats, chart, activity, deadlines] = await Promise.all([
+      api('GET','/api/dashboard/stats'),
+      api('GET','/api/dashboard/revenue-chart'),
+      api('GET','/api/dashboard/recent-activity'),
+      api('GET','/api/dashboard/upcoming-deadlines'),
+    ]);
+    if (!stats) return;
+    const main = document.getElementById('main');
+    main.className = 'page';
+    main.innerHTML = `
+    <!-- KPI Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:24px">
+      <div class="stat-card stat-blue">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="width:44px;height:44px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:22px">👥</div>
+          <span class="badge badge-blue">${stats.clients.new_this_month} جديد</span>
+        </div>
+        <div style="font-size:30px;font-weight:800;color:#1e293b;line-height:1">${stats.clients.total}</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px">إجمالي العملاء</div>
+        <div style="font-size:12px;color:#22c55e;margin-top:6px;font-weight:600">✓ ${stats.clients.active} نشط</div>
+      </div>
+      <div class="stat-card stat-green">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="width:44px;height:44px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:22px">💰</div>
+          <span class="badge badge-green">محصّل</span>
+        </div>
+        <div style="font-size:22px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_collected)}</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px">إجمالي المحصّل</div>
+        <div style="font-size:12px;color:#64748b;margin-top:6px">من ${money(stats.financial.total_invoiced)} إجمالي</div>
+      </div>
+      <div class="stat-card stat-red">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="width:44px;height:44px;border-radius:12px;background:#fff1f2;display:flex;align-items:center;justify-content:center;font-size:22px">⏰</div>
+          <span class="badge badge-red">متأخر</span>
+        </div>
+        <div style="font-size:22px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_overdue)}</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px">المتأخرات</div>
+        <div style="font-size:12px;color:#f97316;margin-top:6px;font-weight:600">⚠ ${money(stats.financial.total_outstanding)} مستحق</div>
+      </div>
+      <div class="stat-card stat-purple">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="width:44px;height:44px;border-radius:12px;background:#faf5ff;display:flex;align-items:center;justify-content:center;font-size:22px">📋</div>
+          <span class="badge badge-purple">${stats.tasks.urgent} عاجل</span>
+        </div>
+        <div style="font-size:30px;font-weight:800;color:#1e293b;line-height:1">${stats.tasks.pending}</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px">مهام معلقة</div>
+        <div style="font-size:12px;color:#64748b;margin-top:6px">${stats.tax.pending} إقرار ضريبي قادم</div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
+      <div class="card" style="padding:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 class="section-title" style="font-size:15px;margin:0">الإيرادات الشهرية</h3>
+          <span class="badge badge-blue">آخر 6 أشهر</span>
+        </div>
+        <canvas id="revenueChart" style="max-height:200px"></canvas>
+      </div>
+      <div class="card" style="padding:20px">
+        <div style="margin-bottom:16px">
+          <h3 class="section-title" style="font-size:15px;margin:0">حالة الفواتير</h3>
+        </div>
+        <canvas id="invoiceChart" style="max-height:180px"></canvas>
+        <div id="invoiceLegend" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+
+    <!-- Bottom Row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card" style="padding:20px">
+        <h3 class="section-title" style="font-size:15px">🕐 آخر النشاطات</h3>
+        <div id="activityList"></div>
+      </div>
+      <div class="card" style="padding:20px">
+        <h3 class="section-title" style="font-size:15px">📅 المواعيد القادمة</h3>
+        <div id="deadlineList"></div>
+      </div>
+    </div>`;
+
+    // Revenue Chart
+    const revCtx = document.getElementById('revenueChart').getContext('2d');
+    const months = Array.isArray(chart) ? chart : (chart?.months||[]);
+    chartInstances.revenue = new Chart(revCtx, {
+      type:'bar',
+      data:{
+        labels:months.map(m=>m.month),
+        datasets:[
+          {label:'إجمالي الفواتير',data:months.map(m=>m.invoiced||0),backgroundColor:'rgba(37,99,235,.15)',borderColor:'#1a2472',borderWidth:2,borderRadius:6},
+          {label:'المحصّل',data:months.map(m=>m.revenue||m.collected||0),backgroundColor:'rgba(34,197,94,.2)',borderColor:'#16a34a',borderWidth:2,borderRadius:6}
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:true,
+        plugins:{legend:{position:'bottom',labels:{font:{family:'Cairo',size:11},boxWidth:12}}},
+        scales:{x:{grid:{display:false},ticks:{font:{family:'Cairo',size:11}}},y:{grid:{color:'#f1f5f9'},ticks:{font:{family:'Cairo',size:10},callback:v=>(v/1000)+'k'}}}
+      }
+    });
+
+    // Invoice status chart
+    const invCtx = document.getElementById('invoiceChart').getContext('2d');
+    const invData = chart?.invoice_status||{};
+    const statusLabels={'paid':'مسددة','sent':'مرسلة','partial':'جزئي','overdue':'متأخرة','draft':'مسودة'};
+    const statusColors={'paid':'#16a34a','sent':'#1a2472','partial':'#d97706','overdue':'#dc2626','draft':'#6b7280'};
+    const keys = Object.keys(invData).filter(k=>invData[k]>0);
+    chartInstances.invoice = new Chart(invCtx, {
+      type:'doughnut',
+      data:{
+        labels:keys.map(k=>statusLabels[k]||k),
+        datasets:[{data:keys.map(k=>invData[k]),backgroundColor:keys.map(k=>statusColors[k]||'#94a3b8'),borderWidth:0,hoverOffset:4}]
+      },
+      options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},cutout:'65%'}
+    });
+    const legend = document.getElementById('invoiceLegend');
+    keys.forEach(k=>{
+      const d=document.createElement('div');
+      d.style='display:flex;align-items:center;justify-content:space-between;font-size:12px';
+      d.innerHTML=`<span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:${statusColors[k]||'#94a3b8'};display:inline-block"></span>${statusLabels[k]||k}</span><span style="font-weight:700;color:#374151">${invData[k]}</span>`;
+      legend.append(d);
+    });
+
+    // Activity
+    const actEl = document.getElementById('activityList');
+    if(activity?.length) {
+      activity.slice(0,6).forEach(a=>{
+        const d=document.createElement('div');
+        d.style='display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9';
+        d.innerHTML=`<div style="width:28px;height:28px;border-radius:8px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📝</div><div><div style="font-size:12.5px;color:#374151;font-weight:500">${a.description}</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">${dateAr(a.created_at)}</div></div>`;
+        actEl.append(d);
+      });
+    } else actEl.innerHTML='<p style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">لا توجد نشاطات</p>';
+
+    // Deadlines
+    const dlEl = document.getElementById('deadlineList');
+    if(deadlines?.length) {
+      deadlines.slice(0,6).forEach(d=>{
+        const days=daysUntil(d.due_date);
+        const urgentColor=days<=3?'#dc2626':days<=7?'#d97706':'#16a34a';
+        const el=document.createElement('div');
+        el.style='display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9';
+        el.innerHTML=`<div><div style="font-size:12.5px;color:#374151;font-weight:500">${d.title||d.description||'موعد'}</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">${d.client_name||''}</div></div><span style="font-size:11px;font-weight:700;color:${urgentColor};white-space:nowrap">${days<=0?'منتهي':days===1?'غداً':days+' يوم'}</span>`;
+        dlEl.append(el);
+      });
+    } else dlEl.innerHTML='<p style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">لا مواعيد قادمة</p>';
+
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ── CLIENTS ────────────────────────────────────────
+let clientsData=[], clientSearch='', clientFilter='all';
+
+async function loadClients() {
+  try {
+    const p = new URLSearchParams({limit:'100'});
+    if(clientFilter && clientFilter!=='all') p.append('status', clientFilter);
+    if(clientSearch) p.append('q', clientSearch);
+    const data = await api('GET',`/api/clients?${p}`);
+    if(!data) return;
+    clientsData = data.items||[];
+    renderClients();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+function renderClients() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const typeLabel={'company':'شركة','individual':'فرد','freelancer':'حر'};
+  const typeBadge={'company':'badge-blue','individual':'badge-green','freelancer':'badge-purple'};
+  const statusBadge={'active':'badge-green','inactive':'badge-gray','prospect':'badge-yellow','suspended':'badge-red'};
+  const statusLabel={'active':'نشط','inactive':'غير نشط','prospect':'محتمل','suspended':'موقوف'};
+  main.innerHTML=`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="position:relative">
+        <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:15px">🔍</span>
+        <input id="clientSearchInput" class="input" style="padding-right:34px;width:240px" placeholder="بحث بالاسم أو الرقم الضريبي..." value="${clientSearch}"/>
+      </div>
+      <select id="clientFilterSelect" class="input" style="width:150px">
+        <option value="all" ${clientFilter==='all'?'selected':''}>كل الحالات</option>
+        <option value="active" ${clientFilter==='active'?'selected':''}>نشط</option>
+        <option value="prospect" ${clientFilter==='prospect'?'selected':''}>محتمل</option>
+        <option value="inactive" ${clientFilter==='inactive'?'selected':''}>غير نشط</option>
+      </select>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:13px;color:#64748b;font-weight:600">${clientsData.length} عميل</span>
+      <button class="btn btn-primary" onclick="showClientModal()">+ إضافة عميل</button>
+    </div>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr>
+        <th>الكود</th><th>الاسم</th><th>النوع</th><th>الهاتف</th><th>النشاط</th><th>قيمة العقد</th><th>الحالة</th><th>إجراءات</th>
+      </tr></thead>
+      <tbody>
+        ${clientsData.length===0?`<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا يوجد عملاء</td></tr>`:
+          clientsData.map(c=>`
+          <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
+            <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
+            <td>
+              <div style="font-weight:600;color:#1e293b">${c.name}</div>
+              ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${c.name_en}</div>`:''}
+            </td>
+            <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
+            <td style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
+            <td style="color:#374151;font-size:12px">${c.activity||'—'}</td>
+            <td style="font-weight:600;color:#1e293b">${c.contract_value?money(c.contract_value):'—'}</td>
+            <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
+            <td onclick="event.stopPropagation()">
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-secondary btn-sm" onclick="showClientModal(${c.id})">✏️</button>
+                <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')">📄</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+  document.getElementById('clientSearchInput').oninput=e=>{clientSearch=e.target.value;loadClients()};
+  document.getElementById('clientFilterSelect').onchange=e=>{clientFilter=e.target.value;loadClients()};
+}
+
+function showClientDetail(id) {
+  const c = clientsData.find(x=>x.id===id);
+  if(!c) return;
+  const typeLabel={'company':'شركة','individual':'فرد','freelancer':'حر'};
+  const statusLabel={'active':'نشط','inactive':'غير نشط','prospect':'محتمل','suspended':'موقوف'};
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:520px">
+    <div style="padding:24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin:0">${c.name}</h2>
+        <span style="font-size:12px;color:#64748b">${c.code||''} · ${typeLabel[c.client_type]||c.client_type}</span>
+      </div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      ${[
+        ['الهاتف',c.phone||'—'],['المحافظة',c.governorate||'—'],
+        ['الرقم الضريبي',c.tax_number||'—'],['السجل التجاري',c.commercial_register||'—'],
+        ['النشاط',c.activity||'—'],['نوع الضريبة',c.tax_type||'—'],
+        ['قيمة العقد',c.contract_value?money(c.contract_value):'—'],['الحالة',statusLabel[c.status]||c.status],
+      ].map(([k,v])=>`<div><div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">${k}</div><div style="font-size:13.5px;color:#1e293b;font-weight:500">${v}</div></div>`).join('')}
+    </div>
+    ${c.notes?`<div style="padding:0 24px 16px"><div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">ملاحظات</div><div style="font-size:13px;color:#374151;background:#f8fafc;padding:10px;border-radius:8px">${c.notes}</div></div>`:''}
+    ${c.email?`<div style="padding:0 24px 12px;display:flex;align-items:center;gap:8px;font-size:13px;color:#1a2472">
+      <span>📧</span><span>${escH(c.email)}</span>
+    </div>`:''}
+    <div style="padding:16px 24px 24px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove();showClientModal(${c.id})">✏️ تعديل</button>
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove();addInvoiceForClient(${c.id},'${c.name}')">📄 فاتورة جديدة</button>
+      <button class="btn" onclick="showClientEmailModal(${c.id},'${escH(c.name)}','${escH(c.email||'')}')" style="background:#eef1fb;color:#1a2472;border:1.5px solid #b3c4e8">📧 إرسال تذكير</button>
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+}
+
+function showClientModal(id=null) {
+  const c = id ? clientsData.find(x=>x.id===id) : null;
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:560px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${c?'تعديل عميل':'إضافة عميل جديد'}</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الاسم بالعربية *</label>
+          <input id="cName" class="input" value="${c?.name||''}" placeholder="اسم العميل"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الاسم بالإنجليزية</label>
+          <input id="cNameEn" class="input" value="${c?.name_en||''}" placeholder="English name"/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع العميل</label>
+          <select id="cType" class="input">
+            <option value="company" ${c?.client_type==='company'?'selected':''}>شركة</option>
+            <option value="individual" ${c?.client_type==='individual'?'selected':''}>فرد</option>
+            <option value="freelancer" ${c?.client_type==='freelancer'?'selected':''}>حر</option>
+          </select></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
+          <select id="cStatus" class="input">
+            <option value="active" ${c?.status==='active'?'selected':''}>نشط</option>
+            <option value="prospect" ${c?.status==='prospect'?'selected':''}>محتمل</option>
+            <option value="inactive" ${c?.status==='inactive'?'selected':''}>غير نشط</option>
+          </select></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الهاتف</label>
+          <input id="cPhone" class="input" value="${c?.phone||''}" placeholder="01xxxxxxxxx"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المحافظة</label>
+          <input id="cGov" class="input" value="${c?.governorate||''}" placeholder="القاهرة"/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الرقم الضريبي</label>
+          <input id="cTax" class="input" value="${c?.tax_number||''}" placeholder="xxx-xxx-xxx"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الضريبة</label>
+          <select id="cTaxType" class="input">
+            <option value="vat" ${c?.tax_type==='vat'?'selected':''}>قيمة مضافة</option>
+            <option value="income" ${c?.tax_type==='income'?'selected':''}>دخل</option>
+            <option value="none" ${c?.tax_type==='none'?'selected':''}>لا يوجد</option>
+          </select></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">النشاط التجاري</label>
+          <input id="cActivity" class="input" value="${c?.activity||''}" placeholder="استيراد وتصدير"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">قيمة العقد (ج.م.)</label>
+          <input id="cContract" class="input" type="number" value="${c?.contract_value||''}" placeholder="12000"/></div>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">📧 البريد الإلكتروني للعميل</label>
+        <input id="cEmail" class="input" type="email" value="${c?.email||''}" placeholder="client@example.com"/>
+        <div style="font-size:11px;color:#94a3b8;margin-top:3px">يُستخدم لإرسال التذكيرات والإشعارات للعميل مباشرةً</div>
+      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveClientBtn" class="btn btn-primary">💾 ${c?'حفظ التعديلات':'إضافة عميل'}</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('saveClientBtn').onclick = async () => {
+    const btn=document.getElementById('saveClientBtn');
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      const body={
+        name:$('#cName',overlay).value.trim(),
+        name_en:$('#cNameEn',overlay).value.trim()||null,
+        client_type:$('#cType',overlay).value,
+        status:$('#cStatus',overlay).value,
+        phone:$('#cPhone',overlay).value.trim()||null,
+        governorate:$('#cGov',overlay).value.trim()||null,
+        tax_number:$('#cTax',overlay).value.trim()||null,
+        tax_type:$('#cTaxType',overlay).value,
+        activity:$('#cActivity',overlay).value.trim()||null,
+        contract_value:parseFloat($('#cContract',overlay).value)||null,
+        email:$('#cEmail',overlay).value.trim()||null,
+      };
+      if(!body.name){toast('الاسم مطلوب','error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`;return}
+      if(c) await api('PUT',`/api/clients/${c.id}`,body);
+      else await api('POST','/api/clients',body);
+      toast(c?'تم تحديث بيانات العميل':'تم إضافة العميل بنجاح');
+      overlay.remove();
+      loadClients();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`}
+  };
+}
+
+function addInvoiceForClient(clientId, clientName) {
+  navigate('invoices');
+  setTimeout(()=>showInvoiceModal(null,clientId),300);
+}
+
+// ── INVOICES ───────────────────────────────────────
+let invoicesData=[], invoiceFilter='all';
+
+async function loadInvoices() {
+  try {
+    const p = new URLSearchParams({limit:'100'});
+    if(invoiceFilter && invoiceFilter!=='all') p.append('status', invoiceFilter);
+    const data=await api('GET',`/api/invoices?${p}`);
+    if(!data) return;
+    invoicesData=data.items||[];
+    renderInvoices();
+  } catch(e){toast(e.message,'error')}
+}
+
+function renderInvoices() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const statusBadge={paid:'badge-green',sent:'badge-blue',partial:'badge-yellow',overdue:'badge-red',draft:'badge-gray',cancelled:'badge-gray'};
+  const statusLabel={paid:'مسددة',sent:'مرسلة',partial:'جزئي',overdue:'متأخرة',draft:'مسودة',cancelled:'ملغاة'};
+  const total=invoicesData.reduce((s,i)=>s+i.total,0);
+  const collected=invoicesData.reduce((s,i)=>s+i.paid_amount,0);
+  const outstanding=invoicesData.reduce((s,i)=>s+i.remaining,0);
+  main.innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+    <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
+      <div style="width:44px;height:44px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📄</div>
+      <div><div style="font-size:18px;font-weight:800;color:#1e293b">${money(total)}</div><div style="font-size:12px;color:#64748b">إجمالي الفواتير</div></div>
+    </div>
+    <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
+      <div style="width:44px;height:44px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">💵</div>
+      <div><div style="font-size:18px;font-weight:800;color:#16a34a">${money(collected)}</div><div style="font-size:12px;color:#64748b">إجمالي المحصّل</div></div>
+    </div>
+    <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
+      <div style="width:44px;height:44px;border-radius:12px;background:#fff1f2;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">⏳</div>
+      <div><div style="font-size:18px;font-weight:800;color:#dc2626">${money(outstanding)}</div><div style="font-size:12px;color:#64748b">المستحق</div></div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${['all','paid','sent','partial','overdue','draft'].map(s=>`<button onclick="invoiceFilter='${s}';loadInvoices()" class="btn btn-sm ${invoiceFilter===s?'btn-primary':'btn-secondary'}">${{all:'الكل',paid:'مسددة',sent:'مرسلة',partial:'جزئي',overdue:'متأخرة',draft:'مسودة'}[s]}</button>`).join('')}
+    </div>
+    <button class="btn btn-primary" onclick="showInvoiceModal()">+ فاتورة جديدة</button>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>رقم الفاتورة</th><th>العميل</th><th>تاريخ الإصدار</th><th>تاريخ الاستحقاق</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+      <tbody>
+        ${invoicesData.length===0?`<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">لا توجد فواتير</td></tr>`:
+          invoicesData.map(inv=>`
+          <tr>
+            <td><span style="font-weight:700;color:#1a2472">${inv.invoice_number}</span></td>
+            <td style="font-weight:500;color:#374151">${inv.client_name||inv.client_id}</td>
+            <td>${dateAr(inv.issue_date)}</td>
+            <td style="color:${daysUntil(inv.due_date)<0&&inv.status!=='paid'?'#dc2626':'#374151'}">${dateAr(inv.due_date)}</td>
+            <td style="font-weight:700;color:#1e293b">${money(inv.total)}</td>
+            <td style="color:#16a34a;font-weight:600">${money(inv.paid_amount)}</td>
+            <td style="color:${inv.remaining>0?'#dc2626':'#16a34a'};font-weight:600">${money(inv.remaining)}</td>
+            <td><span class="badge ${statusBadge[inv.status]||'badge-gray'}">${statusLabel[inv.status]||inv.status}</span></td>
+            <td>
+              <div style="display:flex;gap:5px">
+                ${inv.remaining>0&&inv.status!=='cancelled'?`<button class="btn btn-success btn-sm" onclick="showPaymentModal(${inv.id},${inv.remaining},'${inv.invoice_number}')">💵</button>`:''}
+                <button class="btn btn-secondary btn-sm" onclick="showInvoiceModal(${inv.id})">✏️</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+async function showInvoiceModal(id=null, preClientId=null) {
+  let inv=null, clients=[];
+  try {
+    clients=(await api('GET','/api/clients?limit=200'))?.items||[];
+    if(id) inv=invoicesData.find(x=>x.id===id);
+  } catch(e){toast(e.message,'error');return}
+
+  let items=inv?.items||[{description:'',quantity:1,unit_price:0,tax_percent:14}];
+
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+
+  function buildModal() {
+    overlay.innerHTML=`<div class="modal" style="max-width:660px">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${inv?'تعديل فاتورة':'فاتورة جديدة'}</h2>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:20px 24px">
+        <div class="form-row" style="margin-bottom:14px">
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
+            <select id="invClient" class="input">
+              ${clients.map(c=>`<option value="${c.id}" ${(preClientId||inv?.client_id)==c.id?'selected':''}>${c.name}</option>`).join('')}
+            </select></div>
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الإصدار</label>
+            <input id="invDate" class="input" type="date" value="${inv?.issue_date||new Date().toISOString().split('T')[0]}"/></div>
+        </div>
+        <div style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <label style="font-size:13px;font-weight:700;color:#374151">بنود الفاتورة</label>
+            <button class="btn btn-secondary btn-sm" id="addItemBtn">+ بند</button>
+          </div>
+          <div id="itemsContainer"></div>
+        </div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">المجموع</span><span id="subTotal" style="font-weight:700">0</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">ضريبة القيمة المضافة (14%)</span><span id="taxTotal" style="font-weight:700;color:#d97706">0</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;border-top:1.5px solid #e5e7eb;padding-top:8px;margin-top:8px"><span>الإجمالي</span><span id="grandTotal" style="color:#1a2472">0</span></div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button id="saveInvBtn" class="btn btn-primary">💾 ${inv?'حفظ التعديلات':'إنشاء فاتورة'}</button>
+      </div>
+    </div>`;
+
+    function renderItems() {
+      const cont=document.getElementById('itemsContainer');
+      if(!cont) return;
+      cont.innerHTML='';
+      let sub=0;
+      items.forEach((item,i)=>{
+        const row=document.createElement('div');
+        row.style='display:grid;grid-template-columns:2fr 80px 100px 40px;gap:8px;margin-bottom:8px;align-items:center';
+        row.innerHTML=`
+          <input class="input" value="${item.description}" placeholder="وصف البند" oninput="items[${i}].description=this.value"/>
+          <input class="input" type="number" value="${item.quantity}" placeholder="الكمية" min="0.1" step="0.1" oninput="items[${i}].quantity=parseFloat(this.value)||0;renderItemsInner()"/>
+          <input class="input" type="number" value="${item.unit_price}" placeholder="السعر" oninput="items[${i}].unit_price=parseFloat(this.value)||0;renderItemsInner()"/>
+          <button onclick="items.splice(${i},1);renderItemsInner()" style="background:#fee2e2;border:none;border-radius:8px;padding:7px;cursor:pointer;color:#dc2626;font-size:14px">${items.length>1?'✕':''}</button>`;
+        cont.append(row);
+        sub+=item.quantity*item.unit_price;
+      });
+      const tax=sub*0.14;
+      document.getElementById('subTotal').textContent=money(sub);
+      document.getElementById('taxTotal').textContent=money(tax);
+      document.getElementById('grandTotal').textContent=money(sub+tax);
+    }
+    window.renderItemsInner=renderItems;
+    renderItems();
+
+    document.getElementById('addItemBtn').onclick=()=>{items.push({description:'',quantity:1,unit_price:0,tax_percent:14});renderItems()};
+
+    document.getElementById('saveInvBtn').onclick=async()=>{
+      const btn=document.getElementById('saveInvBtn');
+      btn.disabled=true; btn.textContent='جاري الحفظ...';
+      try {
+        const sub=items.reduce((s,it)=>s+it.quantity*it.unit_price,0);
+        const tax=sub*0.14;
+        const body={
+          client_id:parseInt($('#invClient',overlay).value),
+          issue_date:$('#invDate',overlay).value,
+          due_date:new Date(new Date($('#invDate',overlay).value).getTime()+30*86400000).toISOString().split('T')[0],
+          subtotal:sub,tax_percent:14,tax_amount:tax,total:sub+tax,
+          discount_percent:0,discount_amount:0,stamp_tax:0,withholding_tax:0,
+          items:items.filter(it=>it.description.trim())
+        };
+        if(inv) await api('PUT',`/api/invoices/${inv.id}`,body);
+        else await api('POST','/api/invoices',body);
+        toast(inv?'تم تحديث الفاتورة':'تم إنشاء الفاتورة بنجاح');
+        overlay.remove(); loadInvoices();
+      } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${inv?'حفظ التعديلات':'إنشاء فاتورة'}`}
+    };
+  }
+
+  buildModal();
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+}
+
+function showPaymentModal(invId, remaining, invNum) {
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:420px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">تسجيل دفعة — ${invNum}</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المبلغ المدفوع (ج.م.)</label>
+        <input id="payAmount" class="input" type="number" value="${remaining}" max="${remaining}" placeholder="المبلغ"/></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">طريقة الدفع</label>
+        <select id="payMethod" class="input">
+          <option value="cash">نقدي</option><option value="bank_transfer">تحويل بنكي</option>
+          <option value="check">شيك</option><option value="card">بطاقة</option>
+        </select></div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
+        <textarea id="payNotes" class="input" rows="2" placeholder="ملاحظات اختيارية"></textarea></div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="savePayBtn" class="btn btn-success">💵 تسجيل الدفعة</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('savePayBtn').onclick=async()=>{
+    const btn=document.getElementById('savePayBtn');
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      await api('POST',`/api/invoices/${invId}/payments`,{
+        amount:parseFloat($('#payAmount',overlay).value),
+        payment_method:$('#payMethod',overlay).value,
+        notes:$('#payNotes',overlay).value||null,
+        payment_date:new Date().toISOString().split('T')[0]
+      });
+      toast('تم تسجيل الدفعة بنجاح');
+      overlay.remove(); loadInvoices();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💵 تسجيل الدفعة'}
+  };
+}
+
+// ── TASKS (KANBAN) ─────────────────────────────────
+let tasksData=[];
+
+async function loadTasks() {
+  try {
+    const data=await api('GET','/api/tasks?limit=100');
+    if(!data) return;
+    tasksData=data.items||[];
+    renderKanban();
+  } catch(e){toast(e.message,'error')}
+}
+
+function renderKanban() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const cols=[
+    {id:'todo',label:'قيد الانتظار',color:'#64748b',bg:'#f8fafc'},
+    {id:'in_progress',label:'جاري التنفيذ',color:'#1a2472',bg:'#eef1fb'},
+    {id:'review',label:'تمت المراجعة',color:'#d97706',bg:'#fffbeb'},
+    {id:'done',label:'مكتمل',color:'#16a34a',bg:'#f0fdf4'},
+  ];
+  const priorityColor={urgent:'#dc2626',high:'#f97316',medium:'#eab308',low:'#22c55e'};
+  const priorityLabel={urgent:'عاجل',high:'عالي',medium:'متوسط',low:'منخفض'};
+  const catLabel={tax:'ضرائب',accounting:'محاسبة',payroll:'مرتبات',legal:'قانوني',other:'أخرى'};
+  const catColor={tax:'badge-red',accounting:'badge-blue',payroll:'badge-purple',legal:'badge-orange',other:'badge-gray'};
+
+  main.innerHTML=`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${cols.map(c=>{const n=tasksData.filter(t=>t.status===c.id).length;return`<span style="font-size:12px;background:${c.bg};color:${c.color};padding:4px 12px;border-radius:8px;font-weight:700;border:1.5px solid ${c.color}22">${c.label} (${n})</span>`}).join('')}
+    </div>
+    <button class="btn btn-primary" onclick="showTaskModal()">+ مهمة جديدة</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start">
+    ${cols.map(col=>`
+    <div class="kanban-col" style="background:${col.bg};padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700;color:${col.color}">${col.label}</span>
+        <span style="background:${col.color};color:white;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${tasksData.filter(t=>t.status===col.id).length}</span>
+      </div>
+      ${tasksData.filter(t=>t.status===col.id).map(t=>`
+      <div class="kanban-card priority-${t.priority}" onclick="showTaskModal(${t.id})">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:600;color:#1e293b;line-height:1.4">${t.title}</div>
+          <span style="font-size:10px;font-weight:700;color:${priorityColor[t.priority]||'#64748b'};white-space:nowrap;background:${priorityColor[t.priority]||'#64748b'}18;padding:2px 8px;border-radius:6px">${priorityLabel[t.priority]||t.priority}</span>
+        </div>
+        ${t.client_name?`<div style="font-size:11px;color:#64748b;margin-bottom:6px">👤 ${t.client_name}</div>`:''}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+          <span class="badge ${catColor[t.category]||'badge-gray'}" style="font-size:10px">${catLabel[t.category]||t.category}</span>
+          ${t.due_date?`<span style="font-size:11px;color:${daysUntil(t.due_date)<=2?'#dc2626':'#64748b'};font-weight:600">${daysUntil(t.due_date)<=0?'⚠ متأخر':dateAr(t.due_date)}</span>`:''}
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px" onclick="event.stopPropagation()">
+          ${cols.filter(c=>c.id!==col.id).slice(0,2).map(c=>`<button onclick="updateTaskStatus(${t.id},'${c.id}')" style="font-size:10px;padding:3px 8px;border-radius:6px;background:${c.bg};color:${c.color};border:1px solid ${c.color}33;cursor:pointer;font-family:inherit;font-weight:600">${c.label}</button>`).join('')}
+        </div>
+      </div>`).join('')}
+      ${tasksData.filter(t=>t.status===col.id).length===0?`<div style="text-align:center;padding:24px;color:#94a3b8;font-size:12px">لا مهام</div>`:''}
+    </div>`).join('')}
+  </div>`;
+}
+
+async function updateTaskStatus(id, status) {
+  try {
+    await api('PUT',`/api/tasks/${id}`,{status});
+    tasksData=tasksData.map(t=>t.id===id?{...t,status}:t);
+    renderKanban();
+    toast('تم تحديث حالة المهمة');
+  } catch(e){toast(e.message,'error')}
+}
+
+async function showTaskModal(id=null) {
+  const t=id?tasksData.find(x=>x.id===id):null;
+  let clients=[];
+  try { clients=(await api('GET','/api/clients?limit=200'))?.items||[]; } catch(e){}
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:500px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${t?'تعديل مهمة':'مهمة جديدة'}</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">عنوان المهمة *</label>
+        <input id="tTitle" class="input" value="${t?.title||''}" placeholder="عنوان المهمة"/></div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل</label>
+          <select id="tClient" class="input">
+            <option value="">— اختر عميل —</option>
+            ${clients.map(c=>`<option value="${c.id}" ${t?.client_id==c.id?'selected':''}>${c.name}</option>`).join('')}
+          </select></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الأولوية</label>
+          <select id="tPriority" class="input">
+            <option value="urgent" ${t?.priority==='urgent'?'selected':''}>🔴 عاجل</option>
+            <option value="high" ${t?.priority==='high'?'selected':''}>🟠 عالي</option>
+            <option value="medium" ${!t||t?.priority==='medium'?'selected':''}>🟡 متوسط</option>
+            <option value="low" ${t?.priority==='low'?'selected':''}>🟢 منخفض</option>
+          </select></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">التصنيف</label>
+          <select id="tCat" class="input">
+            <option value="tax" ${t?.category==='tax'?'selected':''}>ضرائب</option>
+            <option value="accounting" ${t?.category==='accounting'?'selected':''}>محاسبة</option>
+            <option value="payroll" ${t?.category==='payroll'?'selected':''}>مرتبات</option>
+            <option value="legal" ${t?.category==='legal'?'selected':''}>قانوني</option>
+            <option value="other" ${t?.category==='other'?'selected':''}>أخرى</option>
+          </select></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
+          <select id="tStatus" class="input">
+            <option value="todo" ${!t||t?.status==='todo'?'selected':''}>قيد الانتظار</option>
+            <option value="in_progress" ${t?.status==='in_progress'?'selected':''}>جاري</option>
+            <option value="review" ${t?.status==='review'?'selected':''}>مراجعة</option>
+            <option value="done" ${t?.status==='done'?'selected':''}>مكتمل</option>
+          </select></div>
+      </div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
+        <input id="tDue" class="input" type="date" value="${t?.due_date||''}"/></div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
+        <textarea id="tNotes" class="input" rows="2" placeholder="ملاحظات...">${t?.notes||''}</textarea></div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveTaskBtn" class="btn btn-primary">💾 ${t?'حفظ التعديلات':'إضافة مهمة'}</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('saveTaskBtn').onclick=async()=>{
+    const btn=document.getElementById('saveTaskBtn');
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      const body={
+        title:$('#tTitle',overlay).value.trim(),
+        client_id:parseInt($('#tClient',overlay).value)||null,
+        priority:$('#tPriority',overlay).value,
+        category:$('#tCat',overlay).value,
+        status:$('#tStatus',overlay).value,
+        due_date:$('#tDue',overlay).value||null,
+        notes:$('#tNotes',overlay).value||null,
+      };
+      if(!body.title){toast('عنوان المهمة مطلوب','error');btn.disabled=false;return}
+      if(t) await api('PUT',`/api/tasks/${t.id}`,body);
+      else await api('POST','/api/tasks',body);
+      toast(t?'تم تحديث المهمة':'تم إضافة المهمة بنجاح');
+      overlay.remove(); loadTasks();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${t?'حفظ':'إضافة'}`}
+  };
+}
+
+// ── DOCUMENTS ──────────────────────────────────────
+let docsData=[];
+
+async function loadDocuments() {
+  try {
+    const data=await api('GET','/api/documents?page_size=100');
+    if(!data) return;
+    docsData=data.items||[];
+    renderDocuments();
+  } catch(e){toast(e.message,'error')}
+}
+
+const DOC_CAT_ICON={contract:'📝',invoice:'📄',tax_return:'🧾',financial_statement:'📊',id_documents:'🪪',commercial_register:'🏢',bank_statement:'🏦',payroll:'💰',other:'📁'};
+const DOC_CAT_LABEL={contract:'عقد',invoice:'فاتورة',tax_return:'إقرار ضريبي',financial_statement:'قوائم مالية',id_documents:'وثائق هوية',commercial_register:'سجل تجاري',bank_statement:'كشف بنكي',payroll:'مرتبات',other:'أخرى'};
+
+function docFileUrl(d){
+  if(!d||!d.file_path) return null;
+  const parts=d.file_path.replace(/\\/g,'/').split('/');
+  return API+'/'+parts.map(p=>encodeURIComponent(p)).join('/');
+}
+
+function openDoc(idx){
+  const d=docsData[idx];
+  if(!d) return;
+  const url=docFileUrl(d);
+  if(!url){toast('رابط الملف غير متوفر','error');return;}
+  window.open(url,'_blank');
+}
+
+function renderDocuments() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const imgExts=['.jpg','.jpeg','.png','.gif','.webp'];
+
+  function docCard(d,idx){
+    const url=docFileUrl(d);
+    const ext=(d.file_type||'').toLowerCase();
+    const isImg=imgExts.includes(ext);
+    const sizeTxt=d.file_size?(d.file_size<1024*1024?(d.file_size/1024).toFixed(1)+' KB':(d.file_size/1024/1024).toFixed(2)+' MB'):'';
+    const clientBadge=d.client_name?`<span style="font-size:10px;color:#64748b;background:#f1f5f9;padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:6px">👤 ${escH(d.client_name)}</span>`:'';
+    const icon=DOC_CAT_ICON[d.category]||'📁';
+    const preview=isImg&&url
+      ?`<div style="height:110px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:#f8fafc;border:1px solid #e2e8f0">
+          <img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='<div style=&quot;text-align:center;padding:35px;font-size:32px&quot;>${icon}</div>'"/>
+        </div>`
+      :`<div style="font-size:38px;margin-bottom:10px;text-align:center;padding:10px 0">${icon}</div>`;
+    return `<div class="card" style="padding:14px;cursor:pointer;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" onclick="openDoc(${idx})">
+      ${preview}
+      <div style="font-size:12px;font-weight:600;color:#1e293b;margin-bottom:5px;word-break:break-word;line-height:1.4">${escH(d.original_name||d.name||'')}</div>
+      ${clientBadge}
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+        <span class="badge badge-gray" style="font-size:10px">${DOC_CAT_LABEL[d.category]||d.category||'أخرى'}</span>
+        <span style="font-size:10px;color:#94a3b8">${sizeTxt}</span>
+      </div>
+      <div style="font-size:10px;color:#cbd5e1;margin-top:5px">${dateAr(d.created_at)}</div>
+    </div>`;
+  }
+
+  main.innerHTML=`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <span style="font-size:13px;color:#64748b;font-weight:600">${docsData.length} ملف مرفوع</span>
+    <button class="btn btn-primary" onclick="showUploadModal()">⬆️ رفع ملف</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
+    ${docsData.length===0
+      ? `<div style="grid-column:1/-1;text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:14px">📁</div><div style="font-size:14px">لا توجد ملفات مرفوعة</div></div>`
+      : docsData.map((d,i)=>docCard(d,i)).join('')}
+  </div>`;
+}
+
+async function showUploadModal() {
+  let clients=[];
+  try { const d=await api('GET','/api/clients?limit=200'); clients=d?.items||[]; } catch(e){}
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:460px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">⬆️ رفع ملف جديد</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">اختر الملف *</label>
+        <input id="docFile" type="file" class="input" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.docx,.doc,.csv" style="padding:7px"/>
+        <div id="docFilePreview" style="margin-top:8px;font-size:12px;color:#64748b"></div>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">العميل</label>
+        <select id="docClient" class="input"><option value="">— عام (بدون عميل) —</option>${clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">التصنيف</label>
+        <select id="docCat" class="input">
+          <option value="contract">📝 عقد</option>
+          <option value="invoice">📄 فاتورة</option>
+          <option value="tax_return">🧾 إقرار ضريبي</option>
+          <option value="financial_statement">📊 قوائم مالية</option>
+          <option value="id_documents">🪪 وثائق هوية</option>
+          <option value="commercial_register">🏢 سجل تجاري</option>
+          <option value="bank_statement">🏦 كشف بنكي</option>
+          <option value="payroll">💰 مرتبات</option>
+          <option value="other">📁 أخرى</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="uploadSaveBtn" class="btn btn-primary">⬆️ رفع الملف</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+
+  // File preview
+  document.getElementById('docFile').onchange=function(){
+    const f=this.files[0];
+    const pv=document.getElementById('docFilePreview');
+    if(f && pv){
+      const size=f.size<1024*1024?`${(f.size/1024).toFixed(1)} KB`:`${(f.size/1024/1024).toFixed(2)} MB`;
+      pv.innerHTML=`<span style="background:#f0fdf4;color:#16a34a;padding:3px 10px;border-radius:6px;font-weight:600">📎 ${f.name} — ${size}</span>`;
+    }
+  };
+
+  document.getElementById('uploadSaveBtn').onclick=async()=>{
+    const btn=document.getElementById('uploadSaveBtn');
+    const file=document.getElementById('docFile').files[0];
+    if(!file){toast('اختر ملفاً أولاً','error');return;}
+    btn.disabled=true; btn.textContent='جاري الرفع...';
+    try {
+      const fd=new FormData();
+      fd.append('file',file);
+      fd.append('category',document.getElementById('docCat').value);
+      const clientId=document.getElementById('docClient').value;
+      if(clientId) fd.append('client_id',clientId);
+      const r=await fetch(`${API}/api/documents/upload`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd});
+      const rdata=await r.json().catch(()=>({}));
+      if(!r.ok){
+        let msg=rdata.detail||'خطأ في رفع الملف';
+        if(Array.isArray(msg)) msg=msg.map(e=>e.msg||e).join(' | ');
+        throw new Error(msg);
+      }
+      toast('تم رفع الملف بنجاح');
+      overlay.remove(); loadDocuments();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='⬆️ رفع الملف';}
+  };
+}
+
+// ── TAX RETURNS ────────────────────────────────────
+let taxData=[];
+
+async function loadTax() {
+  try {
+    const data=await api('GET','/api/tax?limit=100');
+    if(!data) return;
+    taxData=data.items||[];
+    renderTax();
+  } catch(e){toast(e.message,'error')}
+}
+
+function renderTax() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const typeLbl={vat_monthly:'ق.م. شهري',vat_quarterly:'ق.م. ربعي',income_annual:'دخل سنوي',withholding:'خصم وإضافة',stamp:'دمغة'};
+  const statusBadge={pending:'badge-yellow',in_progress:'badge-blue',submitted:'badge-green',late:'badge-red',cancelled:'badge-gray'};
+  const statusLbl={pending:'قيد الإعداد',in_progress:'جاري',submitted:'مُقدَّم',late:'متأخر',cancelled:'ملغى'};
+  main.innerHTML=`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <span style="font-size:13px;color:#64748b;font-weight:600">${taxData.length} إقرار ضريبي</span>
+    <button class="btn btn-primary" onclick="showTaxModal()">+ إقرار جديد</button>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>العميل</th><th>نوع الإقرار</th><th>الفترة</th><th>مبلغ الضريبة</th><th>الاستحقاق</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+      <tbody>
+        ${taxData.length===0?`<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8">لا توجد إقرارات</td></tr>`:
+          taxData.map(t=>`
+          <tr>
+            <td style="font-weight:600;color:#1e293b">${t.client_name||t.client_id}</td>
+            <td><span class="badge badge-purple" style="font-size:11px">${typeLbl[t.return_type]||t.return_type}</span></td>
+            <td style="color:#374151">${t.period_year}${t.period_month?'/'+t.period_month:''}</td>
+            <td style="font-weight:700;color:#1e293b">${money(t.tax_amount)}</td>
+            <td style="color:${daysUntil(t.due_date)<=3&&t.status!=='submitted'?'#dc2626':'#374151'};font-weight:${daysUntil(t.due_date)<=3?'700':'400'}">${dateAr(t.due_date)}${daysUntil(t.due_date)<=3&&t.status!=='submitted'?` ⚠`:''}</td>
+            <td><span class="badge ${statusBadge[t.status]||'badge-gray'}">${statusLbl[t.status]||t.status}</span></td>
+            <td>
+              <div style="display:flex;gap:6px">
+                ${t.status==='pending'||t.status==='in_progress'?`<button class="btn btn-success btn-sm" onclick="submitTaxReturn(${t.id})">📤 تقديم</button>`:''}
+                <button class="btn btn-secondary btn-sm" onclick="showTaxModal(${t.id})">✏️</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+async function submitTaxReturn(id) {
+  try {
+    await api('PUT',`/api/tax/${id}`,{status:'submitted',submission_date:new Date().toISOString().split('T')[0]});
+    toast('تم تقديم الإقرار الضريبي بنجاح');
+    loadTax();
+  } catch(e){toast(e.message,'error')}
+}
+
+function showTaxModal(id=null) {
+  const t=id?taxData.find(x=>x.id===id):null;
+  let clients=[];
+  api('GET','/api/clients?limit=200').then(d=>clients=d?.items||[]).catch(()=>{});
+  setTimeout(()=>{
+    const overlay=document.createElement('div');
+    overlay.className='modal-overlay';
+    overlay.innerHTML=`<div class="modal" style="max-width:500px">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${t?'تعديل إقرار':'إقرار ضريبي جديد'}</h2>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:20px 24px">
+        <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
+          <select id="taxClient" class="input"><option value="">— اختر عميل —</option>${clients.map(c=>`<option value="${c.id}" ${t?.client_id==c.id?'selected':''}>${c.name}</option>`).join('')}</select></div>
+        <div class="form-row" style="margin-bottom:14px">
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الإقرار</label>
+            <select id="taxType" class="input">
+              <option value="vat_monthly" ${t?.return_type==='vat_monthly'?'selected':''}>ق.م. شهري</option>
+              <option value="vat_quarterly" ${t?.return_type==='vat_quarterly'?'selected':''}>ق.م. ربعي</option>
+              <option value="income_annual" ${t?.return_type==='income_annual'?'selected':''}>دخل سنوي</option>
+              <option value="withholding" ${t?.return_type==='withholding'?'selected':''}>خصم وإضافة</option>
+            </select></div>
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">السنة</label>
+            <input id="taxYear" class="input" type="number" value="${t?.period_year||new Date().getFullYear()}" min="2020" max="2030"/></div>
+        </div>
+        <div class="form-row" style="margin-bottom:14px">
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الشهر (اختياري)</label>
+            <input id="taxMonth" class="input" type="number" value="${t?.period_month||''}" min="1" max="12" placeholder="1-12"/></div>
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">مبلغ الضريبة (ج.م.)</label>
+            <input id="taxAmount" class="input" type="number" value="${t?.tax_amount||''}" placeholder="0"/></div>
+        </div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
+          <input id="taxDue" class="input" type="date" value="${t?.due_date||''}"/></div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button id="saveTaxBtn" class="btn btn-primary">💾 ${t?'حفظ':'إضافة'}</button>
+      </div>
+    </div>`;
+    document.body.append(overlay);
+    overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+    document.getElementById('saveTaxBtn').onclick=async()=>{
+      const btn=document.getElementById('saveTaxBtn');
+      btn.disabled=true; btn.textContent='جاري الحفظ...';
+      try {
+        const body={
+          client_id:parseInt($('#taxClient',overlay).value),
+          return_type:$('#taxType',overlay).value,
+          period_year:parseInt($('#taxYear',overlay).value),
+          period_month:parseInt($('#taxMonth',overlay).value)||null,
+          tax_amount:parseFloat($('#taxAmount',overlay).value)||0,
+          due_date:$('#taxDue',overlay).value||null,
+          status:'pending',
+        };
+        if(!body.client_id){toast('اختر العميل','error');btn.disabled=false;return}
+        if(t) await api('PUT',`/api/tax/${t.id}`,body);
+        else await api('POST','/api/tax',body);
+        toast(t?'تم تحديث الإقرار':'تم إضافة الإقرار بنجاح');
+        overlay.remove(); loadTax();
+      } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent=`💾 ${t?'حفظ':'إضافة'}`}
+    };
+  },200);
+}
+
+// ── REPORTS ────────────────────────────────────────
+async function loadReports() {
+  try {
+    const [stats, chart] = await Promise.all([
+      api('GET','/api/dashboard/stats'),
+      api('GET','/api/dashboard/revenue-chart'),
+    ]);
+    if(!stats) return;
+    const main=document.getElementById('main');
+    main.className='page';
+    const months=Array.isArray(chart)?chart:(chart?.months||[]);
+    main.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+      <div class="card" style="padding:20px">
+        <h3 class="section-title" style="font-size:15px">📈 مقارنة الإيرادات الشهرية</h3>
+        <canvas id="reportBarChart" style="max-height:250px"></canvas>
+      </div>
+      <div class="card" style="padding:20px">
+        <h3 class="section-title" style="font-size:15px">📊 الأداء المالي</h3>
+        <canvas id="reportLineChart" style="max-height:250px"></canvas>
+      </div>
+    </div>
+    <div class="card" style="padding:20px">
+      <h3 class="section-title" style="font-size:15px">📋 ملخص المؤشرات</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
+        ${[
+          {label:'إجمالي الفواتير',value:money(stats.financial.total_invoiced),icon:'📄',color:'#1a2472'},
+          {label:'المحصّل',value:money(stats.financial.total_collected),icon:'✅',color:'#16a34a'},
+          {label:'المستحق',value:money(stats.financial.total_outstanding),icon:'⏳',color:'#d97706'},
+          {label:'المتأخرات',value:money(stats.financial.total_overdue),icon:'⚠',color:'#dc2626'},
+          {label:'العملاء النشطون',value:stats.clients.active,icon:'👥',color:'#5b8ec4'},
+          {label:'المهام المعلقة',value:stats.tasks.pending,icon:'📋',color:'#0369a1'},
+        ].map(kpi=>`<div style="padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e8edf3">
+          <div style="font-size:24px;margin-bottom:8px">${kpi.icon}</div>
+          <div style="font-size:18px;font-weight:800;color:${kpi.color}">${kpi.value}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:4px">${kpi.label}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+
+    const ctx1=document.getElementById('reportBarChart').getContext('2d');
+    chartInstances.reportBar=new Chart(ctx1,{
+      type:'bar',
+      data:{labels:months.map(m=>m.month),datasets:[
+        {label:'فواتير',data:months.map(m=>m.invoiced||0),backgroundColor:'rgba(37,99,235,.2)',borderColor:'#1a2472',borderWidth:2,borderRadius:6},
+        {label:'محصّل',data:months.map(m=>m.revenue||m.collected||0),backgroundColor:'rgba(22,163,74,.2)',borderColor:'#16a34a',borderWidth:2,borderRadius:6}
+      ]},
+      options:{responsive:true,plugins:{legend:{labels:{font:{family:'Cairo',size:11}}}},scales:{x:{grid:{display:false},ticks:{font:{family:'Cairo',size:10}}},y:{grid:{color:'#f1f5f9'},ticks:{font:{family:'Cairo',size:10}}}}}
+    });
+
+    const ctx2=document.getElementById('reportLineChart').getContext('2d');
+    chartInstances.reportLine=new Chart(ctx2,{
+      type:'line',
+      data:{labels:months.map(m=>m.month),datasets:[
+        {label:'صافي الإيرادات',data:months.map(m=>m.revenue||m.collected||0),borderColor:'#5b8ec4',backgroundColor:'rgba(124,58,237,.1)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#5b8ec4'}
+      ]},
+      options:{responsive:true,plugins:{legend:{labels:{font:{family:'Cairo',size:11}}}},scales:{x:{grid:{display:false},ticks:{font:{family:'Cairo',size:10}}},y:{grid:{color:'#f1f5f9'},ticks:{font:{family:'Cairo',size:10}}}}}
+    });
+  } catch(e){toast(e.message,'error')}
+}
+
+// ── LEADS (CRM) ────────────────────────────────────
+// ── LEADS GRID ─────────────────────────────────────
+const LEAD_STATUS_COLORS={new:'#4478b0',interested:'#8b5cf6',meeting:'#f59e0b',quotation_sent:'#f97316',paid:'#10b981',under_establishment:'#06b6d4',tax_registered:'#14b8a6',accounting_client:'#22c55e',inactive:'#94a3b8',lost:'#ef4444'};
+const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',meeting:'اجتماع',quotation_sent:'عرض مرسل',paid:'دفع',under_establishment:'قيد التأسيس',tax_registered:'مسجل ضريبياً',accounting_client:'عميل محاسبة',inactive:'غير نشط',lost:'خسارة'};
+const COMPANY_TYPE_OPTS={'':'—',llc:'ش.م.م',jsc:'ش.م.م.ع',sole:'فردي',ngo:'جمعية',branch:'فرع',rep:'مكتب تمثيلي',other:'أخرى'};
+
+function escH(v){if(v==null)return '';return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+let leadsData=[], leadsSearch='', leadsStatusFilter='', leadsUsersData=[], _leadNewSaving=false;
+
+async function loadLeads() {
+  try {
+    const p=new URLSearchParams({limit:'200'});
+    if(leadsSearch) p.append('q',leadsSearch);
+    if(leadsStatusFilter) p.append('status',leadsStatusFilter);
+    const [data,stats,users]=await Promise.all([
+      api('GET',`/api/leads?${p}`),
+      api('GET','/api/leads/stats'),
+      api('GET','/api/users'),
+    ]);
+    if(!data) return;
+    leadsData=data.items||[];
+    leadsUsersData=Array.isArray(users)?users:[];
+    renderLeads(stats);
+  } catch(e){toast(e.message,'error')}
+}
+
+function renderLeads(stats) {
+  const main=document.getElementById('main');
+  main.className='page';
+  main.innerHTML=`
+  ${stats?`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px">
+    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#1a2472">${stats.total}</div><div style="font-size:12px;color:#64748b;margin-top:3px">الإجمالي 🎯</div></div>
+    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#5b8ec4">${stats.new}</div><div style="font-size:12px;color:#64748b;margin-top:3px">جديد</div></div>
+    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#d97706">${stats.in_progress}</div><div style="font-size:12px;color:#64748b;margin-top:3px">قيد المتابعة</div></div>
+    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#16a34a">${stats.converted}</div><div style="font-size:12px;color:#64748b;margin-top:3px">تحوّل لعميل ✅</div></div>
+    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#dc2626">${stats.lost}</div><div style="font-size:12px;color:#64748b;margin-top:3px">خسارة</div></div>
+  </div>`:''}
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="leadsSearchInput" class="input" style="width:200px" placeholder="🔍 بحث بالاسم أو الهاتف..." value="${escH(leadsSearch)}"/>
+      <select id="leadsStatusSelect" class="input" style="width:155px">
+        <option value="">كل الحالات</option>
+        ${Object.entries(LEAD_STATUS_LABEL).map(([v,l])=>`<option value="${v}" ${leadsStatusFilter===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <span style="font-size:13px;color:#94a3b8;font-weight:500">${leadsData.length} عميل</span>
+    </div>
+    <button class="btn btn-primary" onclick="addLeadRow()">+ إضافة صف</button>
+  </div>
+  <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.05)">
+    <table id="leadsGrid" style="width:100%;border-collapse:collapse;min-width:1380px">
+      <thead>
+        <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+          <th style="padding:10px 10px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;width:82px">الكود</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:145px">اسم العميل *</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:120px">رقم الهاتف</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:150px">نشاط الشركة</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:105px">كيان الشركة</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:100px">رأس المال</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:58px">مقر</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:145px">الاسم المقترح</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:132px">حالة العميل</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:158px">ميعاد الميتينج</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">موظف مسؤول</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:160px">ملاحظات</th>
+          <th style="padding:10px 6px;width:34px"></th>
+        </tr>
+      </thead>
+      <tbody id="leadsGridBody">
+        ${leadsData.map(l=>_buildLeadRow(l)).join('')}
+        ${leadsData.length===0?`<tr><td colspan="13" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين بعد — اضغط "+ إضافة صف"</div></td></tr>`:''}
+      </tbody>
+    </table>
+  </div>`;
+  const si=document.getElementById('leadsSearchInput');
+  const ss=document.getElementById('leadsStatusSelect');
+  if(si) si.oninput=e=>{leadsSearch=e.target.value;loadLeads()};
+  if(ss) ss.onchange=e=>{leadsStatusFilter=e.target.value;loadLeads()};
+}
+
+function _cellInput(field,val,extra=''){
+  return `<input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="${field}" value="${escH(val||'')}" ${extra} onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)"/>`;
+}
+function _cellSelect(field,optsHtml,extraStyle=''){
+  return `<select style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:5px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;cursor:pointer;${extraStyle}" data-field="${field}" onchange="saveLeadCell(this)">${optsHtml}</select>`;
+}
+
+function _buildLeadRow(l){
+  const sc=LEAD_STATUS_COLORS[l.status]||'#94a3b8';
+  const usersOpts=`<option value="">— بلا —</option>`+leadsUsersData.map(u=>`<option value="${u.id}" ${l.assigned_to==u.id?'selected':''}>${escH(u.name)}</option>`).join('');
+  const statOpts=Object.entries(LEAD_STATUS_LABEL).map(([v,lbl])=>`<option value="${v}" ${l.status===v?'selected':''}>${lbl}</option>`).join('');
+  const ctOpts=Object.entries(COMPANY_TYPE_OPTS).map(([v,lbl])=>`<option value="${v}" ${(l.company_type||'')===(v)?'selected':''}>${lbl}</option>`).join('');
+  const mtVal=l.meeting_date?l.meeting_date.slice(0,16):'';
+  return `<tr data-id="${l.id||'new'}" style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#fafbff'" onmouseout="this.style.background=''">
+    <td style="padding:4px 10px;white-space:nowrap"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
+    <td style="padding:3px 6px">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
+    <td style="padding:3px 6px">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr"')}</td>
+    <td style="padding:3px 6px">${_cellInput('company_activities',l.company_activities,'placeholder="تجارة، خدمات..."')}</td>
+    <td style="padding:3px 6px">${_cellSelect('company_type',ctOpts)}</td>
+    <td style="padding:3px 6px">${_cellInput('estimated_capital',l.estimated_capital!=null?l.estimated_capital:'','type="number" placeholder="0" style="direction:ltr"')}</td>
+    <td style="padding:3px 6px;text-align:center"><input type="checkbox" data-field="has_office" ${l.has_office?'checked':''} style="width:17px;height:17px;cursor:pointer;accent-color:#1a2472" onchange="saveLeadCell(this)"/></td>
+    <td style="padding:3px 6px">${_cellInput('suggested_name',l.suggested_name,'placeholder="الاسم المقترح"')}</td>
+    <td style="padding:3px 6px">${_cellSelect('status',statOpts,`background:${sc}18;color:${sc};font-weight:700;border-color:${sc}44`)}</td>
+    <td style="padding:3px 6px">${_cellInput('meeting_date',mtVal,'type="datetime-local" style="font-size:11px"')}</td>
+    <td style="padding:3px 6px">${_cellSelect('assigned_to',usersOpts)}</td>
+    <td style="padding:3px 6px">${_cellInput('notes',l.notes,'placeholder="ملاحظات..."')}</td>
+    <td style="padding:3px 6px;text-align:center"><button onclick="deleteLeadRow(${l.id||0})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px" title="حذف" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>
+  </tr>`;
+}
+
+async function saveLeadCell(el) {
+  const row=el.closest('tr[data-id]');
+  if(!row) return;
+  const rowId=row.dataset.id;
+  const field=el.dataset.field;
+  let value;
+  if(el.type==='checkbox') value=el.checked;
+  else if(el.type==='number') value=el.value!==''?parseFloat(el.value):null;
+  else value=el.value||null;
+
+  if(rowId==='new'){
+    const nameEl=row.querySelector('[data-field="name"]');
+    if(!nameEl||!nameEl.value.trim()) return;
+    if(_leadNewSaving) return;
+    _leadNewSaving=true;
+    const body={status:'new'};
+    row.querySelectorAll('[data-field]').forEach(inp=>{
+      const f=inp.dataset.field;
+      if(inp.type==='checkbox') body[f]=inp.checked;
+      else if(inp.type==='number') body[f]=inp.value!==''?parseFloat(inp.value):null;
+      else body[f]=inp.value||null;
+    });
+    try {
+      const result=await api('POST','/api/leads',body);
+      _leadNewSaving=false;
+      if(!result) return;
+      row.dataset.id=String(result.id);
+      const codeEl=row.querySelector('td:first-child span');
+      if(codeEl) codeEl.textContent=result.code||'—';
+      const delBtn=row.querySelector('button[title="حذف"]');
+      if(delBtn) delBtn.setAttribute('onclick',`deleteLeadRow(${result.id})`);
+      leadsData.push(result);
+      row.style.background='';
+      toast('تم إضافة العميل المحتمل');
+    } catch(err){_leadNewSaving=false;toast(err.message,'error');}
+    return;
+  }
+
+  const id=parseInt(rowId);
+  if(!id||isNaN(id)) return;
+
+  const origColor=el.style.borderColor;
+  el.style.borderColor='#f59e0b';
+  try {
+    await api('PUT',`/api/leads/${id}`,{[field]:value});
+    if(field==='status'){
+      const sc=LEAD_STATUS_COLORS[value]||'#94a3b8';
+      el.style.background=`${sc}18`;
+      el.style.color=sc;
+      el.style.borderColor=`${sc}44`;
+    } else {
+      el.style.borderColor='#10b981';
+      setTimeout(()=>{if(el!==document.activeElement)el.style.borderColor='transparent';},1000);
+    }
+    const lead=leadsData.find(l=>l.id===id);
+    if(lead) lead[field]=value;
+  } catch(err){
+    el.style.borderColor='#ef4444';
+    toast(err.message,'error');
+  }
+}
+
+function addLeadRow() {
+  const tbody=document.getElementById('leadsGridBody');
+  if(!tbody){loadLeads();return;}
+  if(tbody.querySelector('tr[data-id="new"]')){
+    const n=tbody.querySelector('tr[data-id="new"] [data-field="name"]');
+    if(n) n.focus();
+    return;
+  }
+  const newLead={id:null,code:null,name:'',phone:'',company_activities:'',company_type:'',estimated_capital:null,has_office:false,suggested_name:'',status:'new',meeting_date:null,assigned_to:null,notes:''};
+  const tmp=document.createElement('table');
+  tmp.innerHTML=`<tbody>${_buildLeadRow(newLead)}</tbody>`;
+  const tr=tmp.querySelector('tr');
+  tr.style.background='#f0fdf4';
+  tbody.insertBefore(tr,tbody.firstChild);
+  const n=tr.querySelector('[data-field="name"]');
+  if(n) n.focus();
+}
+
+async function deleteLeadRow(id) {
+  if(!id){
+    const nr=document.querySelector('tr[data-id="new"]');
+    if(nr) nr.remove();
+    return;
+  }
+  if(!confirm('حذف هذا العميل المحتمل؟')) return;
+  try {
+    await api('DELETE',`/api/leads/${id}`);
+    const row=document.querySelector(`tr[data-id="${id}"]`);
+    if(row) row.remove();
+    leadsData=leadsData.filter(l=>l.id!==id);
+    toast('تم الحذف');
+  } catch(e){toast(e.message,'error');}
+}
+
+// ── ESTABLISHMENT ──────────────────────────────────
+let estData=[];
+
+async function loadEstablishment() {
+  try {
+    const data=await api('GET','/api/establishment');
+    if(!data) return;
+    estData=data.items||[];
+    renderEstablishment();
+  } catch(e){toast(e.message,'error')}
+}
+
+function renderEstablishment() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const statusBadge={in_progress:'badge-blue',done:'badge-green',pending:'badge-gray',cancelled:'badge-red'};
+  const statusLabel={in_progress:'قيد التنفيذ',done:'مكتمل',pending:'معلق',cancelled:'ملغي'};
+  const stageKeys=[
+    {key:'name_reservation',label:'حجز الاسم'},
+    {key:'commercial_register',label:'السجل التجاري'},
+    {key:'tax_card',label:'البطاقة الضريبية'},
+    {key:'vat_registration',label:'ق.م.م'},
+    {key:'insurance',label:'التأمينات'},
+    {key:'bank_account',label:'الحساب البنكي'},
+  ];
+  const stageStatusColor={pending:'#94a3b8',in_progress:'#d97706',done:'#16a34a',blocked:'#dc2626'};
+  const stageStatusIcon={pending:'○',in_progress:'◑',done:'●',blocked:'✕'};
+  const total=estData.length;
+  const inProg=estData.filter(e=>e.status==='in_progress').length;
+  const done=estData.filter(e=>e.status==='done').length;
+  main.innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+    ${[{label:'الإجمالي',val:total,icon:'🏢',color:'#1a2472'},{label:'قيد التنفيذ',val:inProg,icon:'⚙️',color:'#d97706'},{label:'مكتملة',val:done,icon:'✅',color:'#16a34a'}]
+      .map(k=>`<div class="stat-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:24px">${k.icon}</span></div><div style="font-size:26px;font-weight:800;color:#1e293b">${k.val}</div><div style="font-size:12px;color:#64748b;margin-top:4px">${k.label}</div></div>`).join('')}
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <span style="font-size:13px;color:#64748b;font-weight:600">${total} ملف تأسيس</span>
+    <button class="btn btn-primary" onclick="showEstModal()">+ ملف تأسيس جديد</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:12px">
+    ${estData.length===0?`<div class="card" style="padding:48px;text-align:center;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">🏢</div><div>لا توجد ملفات تأسيس</div></div>`:
+      estData.map(est=>`
+      <div class="card" style="overflow:hidden">
+        <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f1f5f9">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:42px;height:42px;background:#eef1fb;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px">🏢</div>
+            <div>
+              <div style="font-weight:700;color:#1e293b;font-size:15px">${est.company_name}</div>
+              <div style="font-size:11px;color:#94a3b8">${est.code||''} ${est.company_type?'· '+est.company_type:''} ${est.assigned_name?'· '+est.assigned_name:''}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <span class="badge ${statusBadge[est.status]||'badge-gray'}">${statusLabel[est.status]||est.status}</span>
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="width:100px;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">
+                  <div style="height:100%;background:#1a2472;border-radius:3px;width:${est.progress||0}%"></div>
+                </div>
+                <span style="font-size:11px;color:#64748b;font-weight:600">${est.progress||0}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:14px 20px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px">
+          ${stageKeys.map(sk=>{
+            const stage=est.stages?.find(s=>s.key===sk.key)||{};
+            const st=stage.status||'pending';
+            return `<div style="text-align:center;padding:8px;background:#f8fafc;border-radius:8px;border:1.5px solid ${st==='done'?'#bbf7d0':st==='in_progress'?'#fef9c3':st==='blocked'?'#fecaca':'#e5e7eb'}">
+              <div style="font-size:18px;color:${stageStatusColor[st]||'#94a3b8'};margin-bottom:4px">${stageStatusIcon[st]||'○'}</div>
+              <div style="font-size:10px;color:#374151;font-weight:600;line-height:1.3">${sk.label}</div>
+              <button onclick="updateEstStage(${est.id},'${sk.key}','${st}')" style="font-size:9px;background:none;border:none;cursor:pointer;color:#1a2472;margin-top:4px;font-family:inherit;padding:0">تحديث</button>
+            </div>`;
+          }).join('')}
+        </div>
+        ${est.notes?`<div style="padding:0 20px 14px;font-size:12px;color:#64748b"><span style="font-weight:600">ملاحظات:</span> ${est.notes}</div>`:''}
+      </div>`).join('')}
+  </div>`;
+}
+
+async function updateEstStage(estId, stageKey, currentStatus) {
+  const stageLabels={pending:'لم يبدأ',in_progress:'جاري',done:'مكتمل',blocked:'موقوف'};
+  const stageKeys_labels={name_reservation:'حجز الاسم',commercial_register:'السجل التجاري',tax_card:'البطاقة الضريبية',vat_registration:'ق.م.م',insurance:'التأمينات',bank_account:'الحساب البنكي'};
+  const stageLabel=stageKeys_labels[stageKey]||stageKey;
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:2000';
+  overlay.innerHTML=`<div style="background:#fff;border-radius:12px;padding:24px;min-width:280px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <h3 class="section-title" style="font-size:15px">تحديث: ${stageLabel}</h3>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${Object.entries(stageLabels).map(([k,v])=>`<button onclick="doUpdateEstStage(${estId},'${stageKey}','${k}')" style="padding:10px 16px;border-radius:8px;border:2px solid ${currentStatus===k?'#1a2472':'#e5e7eb'};background:${currentStatus===k?'#eef1fb':'#fff'};font-size:13px;font-weight:${currentStatus===k?'700':'500'};cursor:pointer;text-align:right;color:#1e293b;font-family:inherit">${v}${currentStatus===k?' ✓':''}</button>`).join('')}
+    </div>
+    <button onclick="this.closest('div[style]').remove()" style="margin-top:14px;width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;cursor:pointer;font-family:inherit;color:#64748b">إلغاء</button>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+}
+
+async function doUpdateEstStage(estId, stageKey, newStatus) {
+  document.querySelector('div[style*="z-index:2000"]')?.remove();
+  try {
+    await api('PUT',`/api/establishment/${estId}/stage`,{stage_key:stageKey,status:newStatus});
+    toast('تم تحديث المرحلة');
+    loadEstablishment();
+  } catch(e){toast(e.message,'error')}
+}
+
+function showEstModal() {
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:540px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">ملف تأسيس شركة جديد</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">اسم الشركة (عربي) *</label>
+          <input id="eNameAr" class="input" placeholder="اسم الشركة بالعربية"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">اسم الشركة (إنجليزي)</label>
+          <input id="eNameEn" class="input" placeholder="Company English Name"/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الشركة</label>
+          <select id="eType" class="input">
+            <option value="llc">ذات مسؤولية محدودة</option>
+            <option value="sole">مؤسسة فردية</option>
+            <option value="partnership">شركة تضامن</option>
+            <option value="joint_stock">شركة مساهمة</option>
+          </select></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رأس المال (ج.م.)</label>
+          <input id="eCapital" class="input" type="number" placeholder="50000"/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">النشاط التجاري</label>
+          <input id="eActivity" class="input" placeholder="استيراد وتصدير..."/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المحافظة</label>
+          <input id="eGov" class="input" placeholder="القاهرة"/></div>
+      </div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
+        <textarea id="eNotes" class="input" rows="2" placeholder="ملاحظات..."></textarea></div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveEstBtn" class="btn btn-primary">🏢 إنشاء الملف</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('saveEstBtn').onclick=async()=>{
+    const btn=document.getElementById('saveEstBtn');
+    const name=$('#eNameAr',overlay).value.trim();
+    if(!name){toast('اسم الشركة مطلوب','error');return}
+    btn.disabled=true; btn.textContent='جاري الإنشاء...';
+    try {
+      await api('POST','/api/establishment',{company_name:name,company_name_en:$('#eNameEn',overlay).value||null,company_type:$('#eType',overlay).value,capital:parseFloat($('#eCapital',overlay).value)||null,activity:$('#eActivity',overlay).value||null,governorate:$('#eGov',overlay).value||null,notes:$('#eNotes',overlay).value||null});
+      toast('تم إنشاء ملف التأسيس');
+      overlay.remove(); loadEstablishment();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='🏢 إنشاء الملف'}
+  };
+}
+
+// ── OBLIGATIONS ────────────────────────────────────
+let obligationsData=[], upcomingData=[], oblTab='upcoming', oblDays=30;
+
+async function loadObligations() {
+  try {
+    const [upc,obl]=await Promise.all([
+      api('GET',`/api/obligations/upcoming?days=${oblDays}`),
+      api('GET','/api/obligations'),
+    ]);
+    if(!upc) return;
+    upcomingData=upc||[];
+    obligationsData=obl?.items||[];
+    renderObligations();
+  } catch(e){toast(e.message,'error')}
+}
+
+function renderObligations() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const oblLabel={vat_monthly:'ق.م.م شهري',vat_quarterly:'ق.م.م ربعي',income_annual:'ضريبة الدخل',payroll_monthly:'مرتبات شهري',withholding_monthly:'خصم وإضافة',stamp_quarterly:'دمغة ربعي'};
+  const instBadge={upcoming:'badge-blue',pending:'badge-yellow',submitted:'badge-green',late:'badge-red',exempt:'badge-gray'};
+  const instLabel={upcoming:'قادم',pending:'معلق',submitted:'مُقدَّم',late:'متأخر',exempt:'معفى'};
+  const freqLabel={monthly:'شهري',quarterly:'ربعي',annual:'سنوي'};
+  const overdue=upcomingData.filter(i=>i.days_remaining<0).length;
+  const soon=upcomingData.filter(i=>i.days_remaining>=0&&i.days_remaining<=7).length;
+  main.innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+    ${[
+      {label:'إجمالي الالتزامات',val:obligationsData.length,icon:'🔔',color:'#1a2472'},
+      {label:'مواعيد قادمة',val:upcomingData.length,icon:'📅',color:'#5b8ec4'},
+      {label:'هذا الأسبوع',val:soon,icon:'⏰',color:'#d97706'},
+      {label:'متأخرة',val:overdue,icon:'🚨',color:'#dc2626'},
+    ].map(k=>`<div class="stat-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:22px">${k.icon}</span></div><div style="font-size:26px;font-weight:800;color:#1e293b">${k.val}</div><div style="font-size:12px;color:#64748b;margin-top:4px">${k.label}</div></div>`).join('')}
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      ${['upcoming','all'].map(t=>`<button onclick="oblTab='${t}';renderObligations()" class="btn btn-sm ${oblTab===t?'btn-primary':'btn-secondary'}">${t==='upcoming'?`المواعيد القادمة (${upcomingData.length})`:`كل الالتزامات (${obligationsData.length})`}</button>`).join('')}
+      ${oblTab==='upcoming'?`<select onchange="oblDays=+this.value;loadObligations()" class="input" style="width:auto;font-size:12px;padding:5px 10px">
+        ${[7,14,30,60].map(d=>`<option value="${d}" ${oblDays===d?'selected':''}>خلال ${d} يوم</option>`).join('')}
+      </select>`:''}
+      <input id="oblSearch" oninput="filterObligations(this.value)" class="input" style="width:200px;font-size:12px;padding:5px 10px" placeholder="🔍 بحث بالعميل..."/>
+    </div>
+    <button class="btn btn-primary" onclick="showObligationModal()">+ إضافة التزام</button>
+  </div>
+  ${oblTab==='upcoming'?`
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>العميل</th><th>نوع الالتزام</th><th>الفترة</th><th>تاريخ الاستحقاق</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+      <tbody class="obl-tbody">
+        ${upcomingData.length===0?`<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8">لا توجد مواعيد قادمة</td></tr>`:
+          upcomingData.map(inst=>{
+            const over=inst.days_remaining<0;
+            const close=inst.days_remaining>=0&&inst.days_remaining<=7;
+            const rowBg=over?'background:#fff5f5':close?'background:#fffbeb':'';
+            return `<tr style="${rowBg}" data-client="${escH(inst.client_name||'')}">
+              <td style="font-weight:600;color:#1e293b">${escH(inst.client_name||'—')}</td>
+              <td style="font-size:12px">${oblLabel[inst.obligation_type]||inst.obligation_type||'—'}</td>
+              <td style="font-size:12px;color:#64748b">${inst.period_label||'—'}</td>
+              <td style="font-size:13px">${dateAr(inst.due_date)}</td>
+              <td style="font-weight:700;color:${over?'#dc2626':close?'#d97706':'#16a34a'}">
+                ${over?`⚠ متأخر ${Math.abs(inst.days_remaining)} يوم`:inst.days_remaining===0?'اليوم!':inst.days_remaining+' يوم'}
+              </td>
+              <td><span class="badge ${instBadge[inst.status]||'badge-gray'}">${instLabel[inst.status]||inst.status}</span></td>
+              <td>${inst.status!=='submitted'?`<button class="btn btn-success btn-sm" onclick="submitObligation(${inst.id})">✅ تقديم</button>`:''}</td>
+            </tr>`;
+          }).join('')}
+      </tbody>
+    </table>
+  </div>`:
+  `<div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>العميل</th><th>نوع الالتزام</th><th>التكرار</th><th>يوم الاستحقاق</th><th>المحاسب</th><th>عدد الفترات</th></tr></thead>
+      <tbody class="obl-tbody">
+        ${obligationsData.length===0?`<tr><td colspan="6" style="text-align:center;padding:40px;color:#94a3b8">لا توجد التزامات</td></tr>`:
+          obligationsData.map(o=>`<tr data-client="${escH(o.client_name||'')}">
+            <td style="font-weight:600;color:#1e293b">${escH(o.client_name||'—')}</td>
+            <td>${oblLabel[o.obligation_type]||o.obligation_type||'—'}</td>
+            <td>${freqLabel[o.frequency]||o.frequency||'—'}</td>
+            <td>اليوم ${o.due_day}</td>
+            <td style="color:#64748b;font-size:12px">${o.assigned_name||'—'}</td>
+            <td>${o.instances_count||0}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`}`;
+}
+
+function filterObligations(q) {
+  const s=q.toLowerCase().trim();
+  const tbody=document.querySelector('.obl-tbody');
+  if(!tbody)return;
+  tbody.querySelectorAll('tr[data-client]').forEach(tr=>{
+    tr.style.display=!s||tr.dataset.client.toLowerCase().includes(s)?'':'none';
+  });
+}
+
+async function submitObligation(instanceId) {
+  try {
+    await api('PUT',`/api/obligations/instances/${instanceId}`,{status:'submitted',submitted_at:new Date().toISOString()});
+    toast('تم تسجيل التقديم');
+    loadObligations();
+  } catch(e){toast(e.message,'error')}
+}
+
+async function showObligationModal() {
+  let clientsList=[];
+  try{const d=await api('GET','/api/clients?limit=200');clientsList=d?.items||[];}catch(e){}
+  {
+    const overlay=document.createElement('div');
+    overlay.className='modal-overlay';
+    overlay.innerHTML=`<div class="modal" style="max-width:460px">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">إضافة التزام ضريبي</h2>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+      </div>
+      <div style="padding:20px 24px">
+        <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
+          <select id="oblClient" class="input">
+            <option value="">— اختر العميل —</option>
+            ${clientsList.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+          </select></div>
+        <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الالتزام</label>
+          <select id="oblType" class="input">
+            <option value="vat_monthly">ق.م.م شهري</option>
+            <option value="vat_quarterly">ق.م.م ربعي</option>
+            <option value="income_annual">ضريبة الدخل السنوية</option>
+            <option value="payroll_monthly">مرتبات شهري</option>
+            <option value="withholding_monthly">خصم وإضافة شهري</option>
+            <option value="stamp_quarterly">دمغة ربعي</option>
+          </select></div>
+        <div class="form-row" style="margin-bottom:14px">
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">التكرار</label>
+            <select id="oblFreq" class="input">
+              <option value="monthly">شهري</option><option value="quarterly">ربعي</option><option value="annual">سنوي</option>
+            </select></div>
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">يوم الاستحقاق</label>
+            <input id="oblDay" class="input" type="number" value="15" min="1" max="28"/></div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button id="saveOblBtn" class="btn btn-primary">🔔 إضافة</button>
+      </div>
+    </div>`;
+    document.body.append(overlay);
+    overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+    document.getElementById('saveOblBtn').onclick=async()=>{
+      const btn=document.getElementById('saveOblBtn');
+      const clientId=parseInt($('#oblClient',overlay).value);
+      if(!clientId){toast('اختر العميل','error');return}
+      btn.disabled=true; btn.textContent='جاري الحفظ...';
+      try {
+        await api('POST','/api/obligations',{client_id:clientId,obligation_type:$('#oblType',overlay).value,frequency:$('#oblFreq',overlay).value,due_day:parseInt($('#oblDay',overlay).value)||15});
+        toast('تم إنشاء الالتزام الضريبي');
+        overlay.remove(); loadObligations();
+      } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='🔔 إضافة'}
+    };
+  }
+}
+
+// ── EMPLOYEES ──────────────────────────────────────
+const ROLE_LABEL={admin:'مدير النظام',manager:'مدير',accountant:'محاسب',viewer:'مشاهد'};
+const ROLE_COLOR={admin:'#5b8ec4',manager:'#1a2472',accountant:'#059669',viewer:'#94a3b8'};
+const SPEC_OPTS=['ضريبة القيمة المضافة','ضريبة الدخل','تأسيس شركات','محاسبة عامة','مرتبات','جمارك','زكاة','مراجعة حسابات','استشارات مالية'];
+
+async function loadEmployees() {
+  const main=document.getElementById('main');
+  main.className='page';
+  main.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <div>
+      <h2 style="font-size:22px;font-weight:800;color:#1a2472;margin:0;padding-right:14px;border-right:4px solid #1a2472">👤 إدارة الموظفين</h2>
+      <p style="font-size:13px;color:#94a3b8;margin:4px 0 0">توزيع المهام والتخصصات والعبء الوظيفي</p>
+    </div>
+    ${currentUser?.role==='admin'?`<button class="btn btn-primary" onclick="showEmployeeModal()">+ إضافة موظف</button>`:''}
+  </div>
+  <div id="empGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px">
+    <div style="text-align:center;padding:60px;color:#94a3b8;grid-column:1/-1">⏳ جاري التحميل...</div>
+  </div>`;
+  try {
+    const users=await api('GET','/api/users/');
+    renderEmployeeGrid(users);
+  } catch(e){toast(e.message,'error');}
+}
+
+function renderEmployeeGrid(users) {
+  const grid=document.getElementById('empGrid');
+  if(!users||!users.length){grid.innerHTML='<div style="text-align:center;padding:60px;color:#94a3b8;grid-column:1/-1">لا يوجد موظفون</div>';return;}
+  grid.innerHTML=users.map(u=>{
+    const specs=Array.isArray(u.specialization)?u.specialization:[];
+    const taskLoad=u.task_count||0;
+    const leadLoad=u.lead_count||0;
+    const loadColor=taskLoad+leadLoad>10?'#ef4444':taskLoad+leadLoad>5?'#f59e0b':'#10b981';
+    const loadPct=Math.min(100,Math.round((taskLoad+leadLoad)/15*100));
+    return `<div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:20px 20px 16px;border-bottom:1px solid #f1f5f9">
+        <div style="display:flex;align-items:flex-start;gap:14px">
+          <div style="width:52px;height:52px;border-radius:50%;background:${ROLE_COLOR[u.role]||'#94a3b8'};display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;flex-shrink:0">
+            ${u.avatar?`<img src="${u.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`:(u.name||'?')[0]}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:3px">${escH(u.name)}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${ROLE_COLOR[u.role]+'22'};color:${ROLE_COLOR[u.role]};font-weight:600">${ROLE_LABEL[u.role]||u.role}</span>
+              <span style="font-size:12px;color:#94a3b8">${escH(u.email||'')}</span>
+            </div>
+            ${u.phone?`<div style="font-size:12px;color:#64748b;margin-top:3px">📞 ${escH(u.phone)}</div>`:''}
+          </div>
+          ${currentUser?.role==='admin'?`<button onclick="showEmployeeModal(${u.id})" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:4px" title="تعديل">✏️</button>`:''}
+        </div>
+      </div>
+      <div style="padding:16px 20px">
+        <div style="display:flex;gap:16px;margin-bottom:14px">
+          <div style="text-align:center;flex:1;padding:10px;background:#f8fafc;border-radius:8px">
+            <div style="font-size:20px;font-weight:700;color:#4478b0">${taskLoad}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">مهام نشطة</div>
+          </div>
+          <div style="text-align:center;flex:1;padding:10px;background:#f8fafc;border-radius:8px">
+            <div style="font-size:20px;font-weight:700;color:#8b5cf6">${leadLoad}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">عملاء محتملين</div>
+          </div>
+          <div style="text-align:center;flex:1;padding:10px;background:#f8fafc;border-radius:8px">
+            <div style="font-size:20px;font-weight:700;color:${loadColor}">${loadPct}%</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">الحمل الوظيفي</div>
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;display:flex;justify-content:space-between">
+            <span>العبء الوظيفي</span><span style="color:${loadColor}">${taskLoad+leadLoad} / 15</span>
+          </div>
+          <div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${loadPct}%;background:${loadColor};border-radius:3px;transition:width .3s"></div>
+          </div>
+        </div>
+        ${specs.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px">
+          ${specs.map(s=>`<span style="font-size:10px;padding:3px 8px;background:#eef1fb;color:#4478b0;border-radius:10px;border:1px solid #b3c4e8">${escH(s)}</span>`).join('')}
+        </div>`:`<div style="font-size:11px;color:#cbd5e1;margin-top:10px;font-style:italic">لا توجد تخصصات محددة</div>`}
+        ${u.notes?`<div style="margin-top:10px;font-size:12px;color:#64748b;padding:8px;background:#fefce8;border-radius:6px;border-right:3px solid #fbbf24">📝 ${escH(u.notes)}</div>`:''}
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;gap:8px">
+        <button onclick="showAssignTaskModal(${u.id},'${escH(u.name)}')" class="btn btn-secondary" style="flex:1;font-size:12px">📋 تعيين مهمة</button>
+        <button onclick="showEmployeeTasks(${u.id},'${escH(u.name)}')" class="btn btn-secondary" style="flex:1;font-size:12px">👁 مهامه</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function showEmployeeModal(userId=null) {
+  let user=null;
+  if(userId){
+    try{const users=await api('GET','/api/users/');user=users.find(u=>u.id===userId)||null;}catch(e){}
+  }
+  const specs=user&&Array.isArray(user.specialization)?user.specialization:[];
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
+  overlay.innerHTML=`<div class="modal" style="width:520px;max-height:90vh;overflow-y:auto">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">${userId?'تعديل بيانات الموظف':'إضافة موظف جديد'}</h3>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">×</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الاسم الكامل *</label>
+          <input id="empName" class="input" value="${escH(user?.name||'')}" placeholder="اسم الموظف"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">البريد الإلكتروني *</label>
+          <input id="empEmail" class="input" type="email" value="${escH(user?.email||'')}" placeholder="email@example.com" ${userId?'disabled style="background:#f8fafc;color:#94a3b8"':''}/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رقم الهاتف</label>
+          <input id="empPhone" class="input" value="${escH(user?.phone||'')}" placeholder="01xxxxxxxxx"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الدور الوظيفي</label>
+          <select id="empRole" class="input">
+            ${Object.entries(ROLE_LABEL).map(([k,v])=>`<option value="${k}" ${(user?.role||'accountant')===k?'selected':''}>${v}</option>`).join('')}
+          </select></div>
+      </div>
+      ${!userId?`<div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">كلمة المرور *</label>
+        <input id="empPass" class="input" type="password" placeholder="••••••••"/></div>`:''}
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
+        <textarea id="empNotes" class="input" rows="2" style="resize:none">${escH(user?.notes||'')}</textarea></div>
+      <div style="margin-bottom:4px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">التخصصات</label>
+        <div id="specList" style="display:flex;flex-wrap:wrap;gap:6px">
+          ${SPEC_OPTS.map(s=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid ${specs.includes(s)?'#4478b0':'#e2e8f0'};border-radius:20px;background:${specs.includes(s)?'#eef1fb':'#fff'};transition:.15s" onclick="this.style.background=this.querySelector('input').checked?'#fff':'#eef1fb';this.style.borderColor=this.querySelector('input').checked?'#e2e8f0':'#4478b0'">
+            <input type="checkbox" style="display:none" value="${s}" ${specs.includes(s)?'checked':''}>${s}
+          </label>`).join('')}
+        </div>
+      </div>
+      ${userId?`<div style="margin-top:16px;padding:12px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">
+        <div style="font-size:12px;font-weight:600;color:#dc2626;margin-bottom:8px">⚠️ تعطيل الحساب</div>
+        <button onclick="deactivateEmployee(${userId})" style="font-size:12px;padding:6px 14px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">تعطيل الموظف</button>
+      </div>`:''}
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveEmpBtn" class="btn btn-primary">${userId?'💾 حفظ التعديلات':'➕ إضافة الموظف'}</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('saveEmpBtn').onclick=async()=>{
+    const btn=document.getElementById('saveEmpBtn');
+    const name=document.getElementById('empName')?.value?.trim();
+    const email=document.getElementById('empEmail')?.value?.trim();
+    const phone=document.getElementById('empPhone')?.value?.trim();
+    const role=document.getElementById('empRole')?.value;
+    const notes=document.getElementById('empNotes')?.value?.trim();
+    const pass=document.getElementById('empPass')?.value;
+    const selectedSpecs=[...overlay.querySelectorAll('#specList input[type=checkbox]:checked')].map(c=>c.value);
+    if(!name){toast('الاسم مطلوب','error');return;}
+    if(!userId&&!email){toast('البريد الإلكتروني مطلوب','error');return;}
+    if(!userId&&(!pass||pass.length<6)){toast('كلمة المرور مطلوبة (6 أحرف على الأقل)','error');return;}
+    btn.disabled=true;btn.textContent='جاري الحفظ...';
+    try{
+      if(userId){
+        await api('PUT',`/api/users/${userId}`,{name,phone:phone||null,role,notes:notes||null,specialization:selectedSpecs});
+        toast('تم تحديث بيانات الموظف');
+      } else {
+        await api('POST','/api/users/',{name,email,password:pass,phone:phone||null,role,specialization:selectedSpecs});
+        toast('تم إضافة الموظف بنجاح');
+      }
+      overlay.remove();
+      loadEmployees();
+    }catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent=userId?'💾 حفظ التعديلات':'➕ إضافة الموظف';}
+  };
+}
+
+async function deactivateEmployee(userId) {
+  if(!confirm('هل أنت متأكد من تعطيل هذا الموظف؟'))return;
+  try{
+    await api('DELETE',`/api/users/${userId}`);
+    toast('تم تعطيل الموظف');
+    document.querySelector('.modal-overlay')?.remove();
+    loadEmployees();
+  }catch(e){toast(e.message,'error');}
+}
+
+async function showAssignTaskModal(userId, userName) {
+  let clients=[];
+  try{const r=await api('GET','/api/clients/');clients=Array.isArray(r)?r:(r.items||[]);}catch(e){}
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
+  overlay.innerHTML=`<div class="modal" style="width:480px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">📋 تعيين مهمة لـ ${escH(userName)}</h3>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">×</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العنوان *</label>
+        <input id="atTitle" class="input" placeholder="عنوان المهمة"/></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل</label>
+        <select id="atClient" class="input">
+          <option value="">— بدون عميل —</option>
+          ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الأولوية</label>
+          <select id="atPrio" class="input">
+            <option value="low">منخفضة</option><option value="medium" selected>متوسطة</option><option value="high">عالية</option><option value="urgent">عاجلة</option>
+          </select></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
+          <input id="atDue" class="input" type="date"/></div>
+      </div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الوصف</label>
+        <textarea id="atDesc" class="input" rows="3" style="resize:none" placeholder="تفاصيل المهمة..."></textarea></div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveAtBtn" class="btn btn-primary">✅ تعيين المهمة</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('saveAtBtn').onclick=async()=>{
+    const btn=document.getElementById('saveAtBtn');
+    const title=document.getElementById('atTitle')?.value?.trim();
+    if(!title){toast('العنوان مطلوب','error');return;}
+    const clientId=parseInt(document.getElementById('atClient')?.value)||null;
+    const due=document.getElementById('atDue')?.value||null;
+    const desc=document.getElementById('atDesc')?.value?.trim()||null;
+    const prio=document.getElementById('atPrio')?.value;
+    btn.disabled=true;btn.textContent='جاري الحفظ...';
+    try{
+      await api('POST','/api/tasks/',{title,description:desc,assigned_to:userId,client_id:clientId,priority:prio,due_date:due?due+'T00:00:00':null});
+      toast('تم تعيين المهمة بنجاح');
+      overlay.remove();
+      loadEmployees();
+    }catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='✅ تعيين المهمة';}
+  };
+}
+
+async function showEmployeeTasks(userId, userName) {
+  let tasks=[];
+  try{const r=await api('GET',`/api/tasks/?assigned_to=${userId}&page_size=100`);tasks=r.items||[];}catch(e){}
+  const TASK_STATUS={pending:'معلقة',in_progress:'جارية',review:'مراجعة',done:'منجزة',cancelled:'ملغاة'};
+  const TASK_COLOR={pending:'#f59e0b',in_progress:'#4478b0',review:'#8b5cf6',done:'#10b981',cancelled:'#94a3b8'};
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
+  overlay.innerHTML=`<div class="modal" style="width:580px;max-height:85vh;display:flex;flex-direction:column">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">📋 مهام ${escH(userName)}</h3>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">×</button>
+    </div>
+    <div style="padding:16px 24px;overflow-y:auto;flex:1">
+      ${!tasks.length?`<div style="text-align:center;padding:40px;color:#94a3b8">لا توجد مهام مسندة</div>`:
+      tasks.map(t=>`<div style="padding:14px;border:1px solid #f1f5f9;border-radius:8px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px">
+        <div style="width:8px;height:8px;border-radius:50%;background:${TASK_COLOR[t.status]||'#94a3b8'};margin-top:5px;flex-shrink:0"></div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(t.title)}</div>
+          ${t.client_name?`<div style="font-size:11px;color:#64748b">👤 ${escH(t.client_name)}</div>`:''}
+          ${t.due_date?`<div style="font-size:11px;color:#94a3b8">📅 ${t.due_date?.substring(0,10)||''}</div>`:''}
+        </div>
+        <span style="font-size:11px;padding:3px 8px;border-radius:10px;background:${TASK_COLOR[t.status]+'22'};color:${TASK_COLOR[t.status]};font-weight:600;white-space:nowrap">${TASK_STATUS[t.status]||t.status}</span>
+      </div>`).join('')}
+    </div>
+    <div style="padding:12px 24px;border-top:1px solid #f1f5f9;text-align:left;flex-shrink:0">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+}
+
+// ── DATA IMPORT ────────────────────────────────────
+let importPreviewData = null;
+let importCsvText = '';
+
+async function loadImport() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `
+  <div style="max-width:900px">
+    <div class="card" style="padding:24px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+        <div style="width:48px;height:48px;background:#eef1fb;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px">📥</div>
+        <div>
+          <h2 style="font-size:18px;font-weight:800;color:#1a2472;margin:0">استيراد البيانات من Google Sheets</h2>
+          <p style="font-size:13px;color:#64748b;margin:4px 0 0">قراءة الشركات والعملاء وإنشاؤهم تلقائياً في النظام</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">رابط Google Sheet</label>
+          <input id="sheetUrl" class="input" value="https://docs.google.com/spreadsheets/d/1ZLwHba3F5jrGQkCvVd7mTcbCCp3OWuaJ_e929XdyxUA/export?format=csv&gid=600176975" style="font-size:11px"/>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:flex-end">
+          <button id="fetchSheetBtn" class="btn btn-primary" onclick="fetchAndPreview()">🔄 جلب البيانات وعرض المعاينة</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#94a3b8;background:#f8fafc;padding:10px 14px;border-radius:8px;border-right:3px solid #4478b0">
+        ℹ️ سيتم تحليل البيانات وعرض معاينة كاملة قبل تنفيذ الاستيراد الفعلي. لا يتم إنشاء أي سجلات حتى تؤكد.
+      </div>
+    </div>
+    <div id="importPreviewArea"></div>
+  </div>`;
+}
+
+async function fetchAndPreview() {
+  const btn = document.getElementById('fetchSheetBtn');
+  const url = document.getElementById('sheetUrl')?.value?.trim();
+  if (!url) { toast('أدخل رابط الشيت', 'error'); return; }
+  btn.disabled = true; btn.textContent = '⏳ جاري التحميل...';
+  const area = document.getElementById('importPreviewArea');
+  area.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:#94a3b8"><div style="font-size:32px;margin-bottom:12px">⏳</div>جاري جلب وتحليل البيانات...</div>`;
+  try {
+    // Convert share URL to CSV export URL if needed
+    let csvUrl = url;
+    if (url.includes('/edit') || url.includes('/view')) {
+      const match = url.match(/spreadsheets\/d\/([^/]+)/);
+      const gidMatch = url.match(/[#&]gid=(\d+)/);
+      if (match) {
+        csvUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv${gidMatch ? '&gid='+gidMatch[1] : ''}`;
+      }
+    }
+    // Fetch CSV via backend proxy
+    const csvResp = await fetch(csvUrl);
+    if (!csvResp.ok) throw new Error('فشل في جلب البيانات من Google Sheets');
+    importCsvText = await csvResp.text();
+    // Send to preview endpoint
+    const preview = await api('POST', '/api/import/preview', { csv_text: importCsvText });
+    importPreviewData = preview;
+    renderImportPreview(preview);
+  } catch(e) {
+    area.innerHTML = `<div class="card" style="padding:30px;text-align:center;color:#ef4444">❌ ${escH(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 جلب البيانات وعرض المعاينة';
+  }
+}
+
+function renderImportPreview(data) {
+  const area = document.getElementById('importPreviewArea');
+  if (!area) return;
+  const STATUS_LABEL = {ACTIVE:'نشط', INACTIVE:'غير نشط', PROSPECT:'محتمل'};
+  const STATUS_COLOR = {ACTIVE:'#10b981', INACTIVE:'#ef4444', PROSPECT:'#f59e0b'};
+  const PAY_LABEL = {paid:'مدفوع', sent:'غير مدفوع', partial:'جزئي'};
+  const PAY_COLOR = {paid:'#10b981', sent:'#ef4444', partial:'#f59e0b'};
+  const rows = data.rows || [];
+  const totalFees = rows.reduce((s,r) => s + (r.contract_value||0), 0);
+  const paidFees = rows.filter(r=>r.payment_status==='paid').reduce((s,r) => s + (r.contract_value||0), 0);
+  const unpaidFees = totalFees - paidFees;
+
+  area.innerHTML = `
+  <!-- Stats -->
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">
+    ${[
+      {label:'إجمالي الشركات', val:data.total, icon:'🏢', color:'#1a2472'},
+      {label:'جاهزة للاستيراد', val:data.clean, icon:'✅', color:'#10b981'},
+      {label:'بها ملاحظات', val:data.with_issues, icon:'⚠️', color:'#f59e0b'},
+      {label:'غير نشطة', val:data.inactive_count, icon:'🔴', color:'#94a3b8'},
+      {label:'مكررة محتملة', val:data.duplicates, icon:'🔁', color:'#8b5cf6'},
+    ].map(k=>`<div class="stat-card" style="padding:14px">
+      <div style="font-size:22px;margin-bottom:6px">${k.icon}</div>
+      <div style="font-size:22px;font-weight:800;color:${k.color}">${k.val}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">${k.label}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Financial Summary -->
+  <div class="card" style="padding:16px 20px;margin-bottom:20px;display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:600;color:#374151">💰 ملخص الاتعاب:</div>
+    ${[
+      {label:'إجمالي الاتعاب', val:totalFees, color:'#1a2472'},
+      {label:'مدفوع', val:paidFees, color:'#10b981'},
+      {label:'غير مدفوع', val:unpaidFees, color:'#ef4444'},
+    ].map(k=>`<div style="text-align:center;padding:8px 16px;background:#f8fafc;border-radius:8px;flex:1">
+      <div style="font-size:16px;font-weight:700;color:${k.color}">${k.val.toLocaleString('ar-EG')} ج.م.</div>
+      <div style="font-size:11px;color:#94a3b8">${k.label}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Filter tabs -->
+  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+    <button onclick="filterImportRows('all')" id="iTab_all" class="btn btn-primary btn-sm">الكل (${data.total})</button>
+    <button onclick="filterImportRows('clean')" id="iTab_clean" class="btn btn-secondary btn-sm">✅ جاهزة (${data.clean})</button>
+    <button onclick="filterImportRows('issues')" id="iTab_issues" class="btn btn-secondary btn-sm">⚠️ بها ملاحظات (${data.with_issues})</button>
+    <button onclick="filterImportRows('inactive')" id="iTab_inactive" class="btn btn-secondary btn-sm">🔴 غير نشطة (${data.inactive_count})</button>
+    ${data.duplicates>0?`<button onclick="filterImportRows('dup')" id="iTab_dup" class="btn btn-secondary btn-sm">🔁 مكررة (${data.duplicates})</button>`:''}
+  </div>
+
+  <!-- Data Table -->
+  <div class="card" style="overflow:hidden;margin-bottom:20px">
+    <div style="overflow-x:auto">
+      <table id="importTable">
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>اسم الشركة</th>
+            <th>المدير</th>
+            <th>الهاتف</th>
+            <th>النوع</th>
+            <th>الحالة</th>
+            <th>الاتعاب</th>
+            <th>السداد</th>
+            <th>الملاحظات</th>
+          </tr>
+        </thead>
+        <tbody id="importTbody">
+          ${rows.map(r => {
+            const isDup = r.is_duplicate;
+            const hasIssue = r.issues && r.issues.length > 0;
+            const rowClass = isDup ? 'dup-row' : hasIssue ? 'issue-row' : 'clean-row';
+            const rowStatus = isDup ? 'dup' : hasIssue ? 'issues' : 'clean';
+            const inactive = r.status === 'INACTIVE';
+            const bgColor = isDup ? '#fdf4ff' : inactive ? '#f8fafc' : hasIssue ? '#fffbeb' : '#fff';
+            return `<tr class="import-row" data-status="${rowStatus}" data-inactive="${inactive}" style="background:${bgColor}">
+              <td style="font-size:11px;color:#94a3b8">${r.row_num}</td>
+              <td>
+                <div style="font-weight:600;color:#1e293b;font-size:13px">${escH(r.name)}</div>
+                ${isDup?`<div style="font-size:10px;color:#8b5cf6">🔁 ${escH(r.duplicate_reason)}</div>`:''}
+                ${hasIssue?`<div style="font-size:10px;color:#d97706">⚠️ ${r.issues.join('، ')}</div>`:''}
+              </td>
+              <td style="font-size:12px;color:#64748b">${escH(r.manager||'—')}</td>
+              <td style="font-size:12px;direction:ltr">${escH(r.phone||'—')}</td>
+              <td style="font-size:11px">${escH(r.legal_type||'—')}</td>
+              <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${STATUS_COLOR[r.status]+'22'};color:${STATUS_COLOR[r.status]};font-weight:600">${STATUS_LABEL[r.status]||r.status}</span></td>
+              <td style="font-size:12px;font-weight:600;color:#1a2472">${r.contract_value ? r.contract_value.toLocaleString('ar-EG')+' ج.م.' : '—'}</td>
+              <td>${r.payment_status?`<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${PAY_COLOR[r.payment_status]+'22'};color:${PAY_COLOR[r.payment_status]}">${PAY_LABEL[r.payment_status]}</span>`:'—'}</td>
+              <td style="font-size:10px;color:#94a3b8;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(r.notes||'')}">${escH((r.notes||'').split('\n')[0]||'—')}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Import Options + Confirm Button -->
+  <div class="card" style="padding:20px">
+    <h3 class="section-title" style="font-size:14px">⚙️ خيارات الاستيراد</h3>
+    <div style="display:flex;gap:20px;margin-bottom:20px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151">
+        <input type="checkbox" id="skipDup" checked style="width:16px;height:16px;accent-color:#1a2472">
+        تجاهل الشركات المكررة (${data.duplicates} مكررة)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151">
+        <input type="checkbox" id="importIssues" checked style="width:16px;height:16px;accent-color:#1a2472">
+        استيراد الشركات ذات الملاحظات (${data.with_issues} بها ملاحظات)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151">
+        <input type="checkbox" id="importInactive" checked style="width:16px;height:16px;accent-color:#1a2472">
+        استيراد الشركات غير النشطة (${data.inactive_count} غير نشطة)
+      </label>
+    </div>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:6px">⚠️ تنبيه مهم قبل الاستيراد</div>
+      <div style="font-size:12px;color:#7f1d1d;line-height:1.8">
+        • سيتم إنشاء <strong>${data.total} عميل/شركة</strong> جديدة في النظام<br>
+        • سيتم إنشاء فواتير تلقائية لـ <strong>${rows.filter(r=>r.contract_value&&r.payment_status).length} عميل</strong> لديهم اتعاب مسجلة<br>
+        • سيتم إنشاء مجلد أرشيف لكل عميل<br>
+        • لا يمكن التراجع عن هذه العملية بسهولة
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="loadImport()">🔄 إعادة المعاينة</button>
+      <button id="confirmImportBtn" class="btn btn-primary" style="background:#10b981;border-color:#10b981;font-size:14px;padding:10px 24px" onclick="confirmImport()">
+        ✅ تأكيد الاستيراد (${data.total - data.duplicates} شركة)
+      </button>
+    </div>
+  </div>`;
+}
+
+function filterImportRows(filter) {
+  // Update active tab
+  ['all','clean','issues','inactive','dup'].forEach(t => {
+    const btn = document.getElementById('iTab_'+t);
+    if (btn) btn.className = 'btn btn-sm ' + (t === filter ? 'btn-primary' : 'btn-secondary');
+  });
+  document.querySelectorAll('.import-row').forEach(row => {
+    const s = row.dataset.status;
+    const inactive = row.dataset.inactive === 'true';
+    let show = false;
+    if (filter === 'all') show = true;
+    else if (filter === 'clean') show = s === 'clean' && !inactive;
+    else if (filter === 'issues') show = s === 'issues';
+    else if (filter === 'inactive') show = inactive;
+    else if (filter === 'dup') show = s === 'dup';
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+async function confirmImport() {
+  if (!importCsvText) { toast('لا توجد بيانات. أعد المعاينة أولاً', 'error'); return; }
+  const skipDup = document.getElementById('skipDup')?.checked !== false;
+  const importIssues = document.getElementById('importIssues')?.checked !== false;
+  const btn = document.getElementById('confirmImportBtn');
+  if (!confirm(`هل أنت متأكد من استيراد ${importPreviewData?.total || 0} شركة؟\nهذه العملية لا يمكن التراجع عنها.`)) return;
+  btn.disabled = true; btn.textContent = '⏳ جاري الاستيراد...';
+  try {
+    const result = await api('POST', '/api/import/confirm', {
+      csv_text: importCsvText,
+      skip_duplicates: skipDup,
+      import_with_issues: importIssues,
+    });
+    renderImportResult(result);
+  } catch(e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✅ تأكيد الاستيراد';
+  }
+}
+
+function renderImportResult(result) {
+  const area = document.getElementById('importPreviewArea');
+  if (!area) return;
+  area.innerHTML = `
+  <div class="card" style="padding:32px;text-align:center">
+    <div style="font-size:56px;margin-bottom:16px">${result.errors > 0 ? '⚠️' : '🎉'}</div>
+    <h2 style="font-size:22px;font-weight:700;color:#1e293b;margin:0 0 8px">
+      ${result.errors > 0 ? 'اكتمل الاستيراد مع بعض الأخطاء' : 'تم الاستيراد بنجاح!'}
+    </h2>
+    <p style="font-size:14px;color:#64748b;margin:0 0 24px">تم معالجة بيانات Google Sheet وإنشاء السجلات</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:500px;margin:0 auto 24px">
+      ${[
+        {label:'تم استيراده', val:result.imported, icon:'✅', color:'#10b981'},
+        {label:'تم تجاهله (مكرر)', val:result.skipped, icon:'🔁', color:'#94a3b8'},
+        {label:'أخطاء', val:result.errors, icon:'❌', color:'#ef4444'},
+      ].map(k=>`<div style="padding:16px;background:#f8fafc;border-radius:10px;border:2px solid ${k.color}22">
+        <div style="font-size:28px;font-weight:800;color:${k.color}">${k.val}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">${k.label} ${k.icon}</div>
+      </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <button class="btn btn-primary" onclick="navigate('clients')">👥 عرض قائمة العملاء</button>
+      <button class="btn btn-secondary" onclick="navigate('invoices')">📄 عرض الفواتير</button>
+    </div>
+    ${result.errors_list?.length ? `
+    <div style="margin-top:20px;text-align:right;background:#fef2f2;padding:14px;border-radius:8px">
+      <div style="font-size:12px;font-weight:600;color:#dc2626;margin-bottom:6px">الأخطاء:</div>
+      ${result.errors_list.map(e=>`<div style="font-size:11px;color:#7f1d1d">${escH(e.name)}: ${escH(e.error)}</div>`).join('')}
+    </div>`:''
+    }
+  </div>`;
+}
+
+// ── SETTINGS ───────────────────────────────────────
+async function loadSettings() {
+  const main=document.getElementById('main');
+  main.className='page';
+
+  // Load current email config in background
+  let emailCfg={configured:false,smtp_host:'smtp.gmail.com',smtp_port:587,smtp_user:'',from_name:'MS Accounting'};
+  try { emailCfg=await api('GET','/api/notifications/settings'); } catch(e){}
+
+  const statusBadge=emailCfg.configured
+    ?`<span style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#16a34a;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">✅ مُفعَّل</span>`
+    :`<span style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;color:#dc2626;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">❌ غير مُفعَّل</span>`;
+
+  main.innerHTML=`
+  <div style="max-width:640px">
+    <div class="card" style="padding:24px;margin-bottom:20px">
+      <h3 style="font-size:16px;font-weight:700;color:#1a2472;margin:0 0 20px;padding-bottom:12px;border-bottom:2px solid #eef1fb;padding-right:12px;border-right:3px solid #1a2472">👤 البيانات الشخصية</h3>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الاسم</label>
+          <input id="profName" class="input" value="${currentUser?.name||''}"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">البريد الإلكتروني</label>
+          <input id="profEmail" class="input" value="${currentUser?.email||''}" disabled style="background:#f8fafc;color:#94a3b8"/></div>
+      </div>
+      <div style="margin-bottom:20px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الهاتف</label>
+        <input id="profPhone" class="input" value="${currentUser?.phone||''}" placeholder="01xxxxxxxxx"/></div>
+      <button class="btn btn-primary" onclick="saveProfile()">💾 حفظ التعديلات</button>
+    </div>
+
+    <div class="card" style="padding:24px;margin-bottom:20px">
+      <h3 style="font-size:16px;font-weight:700;color:#1a2472;margin:0 0 20px;padding-bottom:12px;border-bottom:2px solid #eef1fb;padding-right:12px;border-right:3px solid #1a2472">🔒 تغيير كلمة المرور</h3>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">كلمة المرور الحالية</label>
+        <input id="curPass" class="input" type="password" placeholder="••••••••"/></div>
+      <div class="form-row" style="margin-bottom:20px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">كلمة المرور الجديدة</label>
+          <input id="newPass" class="input" type="password" placeholder="••••••••"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تأكيد كلمة المرور</label>
+          <input id="confPass" class="input" type="password" placeholder="••••••••"/></div>
+      </div>
+      <button class="btn btn-primary" onclick="savePassword()">🔒 تغيير كلمة المرور</button>
+    </div>
+
+    <!-- ── Email / Notifications ───────────────────────────────────────── -->
+    <div class="card" style="padding:24px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #f1f5f9;margin-bottom:20px">
+        <h3 style="font-size:16px;font-weight:700;color:#1a2472;margin:0;padding-right:12px;border-right:3px solid #1a2472">📧 إشعارات البريد الإلكتروني</h3>
+        ${statusBadge}
+      </div>
+
+      <div style="background:#eef1fb;border:1px solid #b3c4e8;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#152060;line-height:1.6">
+        <strong>كيفية الإعداد:</strong><br>
+        ١. سجّل دخول إلى Gmail → الإعدادات → الأمان → كلمات المرور للتطبيقات<br>
+        ٢. أنشئ كلمة مرور تطبيق جديدة (16 حرف) وانسخها هنا
+      </div>
+
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">حساب Gmail (المُرسِل)</label>
+          <input id="smtpUser" class="input" type="email" value="${escH(emailCfg.smtp_user||'')}" placeholder="office@gmail.com"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">كلمة مرور التطبيق (App Password)</label>
+          <input id="smtpPass" class="input" type="password" placeholder="xxxx xxxx xxxx xxxx"/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:20px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">اسم المُرسِل</label>
+          <input id="smtpFromName" class="input" value="${escH(emailCfg.from_name||'MS Accounting')}" placeholder="MS Accounting"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">بريد اختبار الإشعار</label>
+          <input id="testEmailAddr" class="input" type="email" value="${currentUser?.email||''}" placeholder="test@gmail.com"/></div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveEmailSettings()" style="flex:1;min-width:160px">💾 حفظ وتفعيل</button>
+        <button class="btn" onclick="testEmailNow()" style="flex:1;min-width:160px;border:1.5px solid #1a2472;color:#1a2472;background:#fff">📨 إرسال بريد تجريبي</button>
+      </div>
+      <div id="emailSettingsMsg" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" style="padding:24px">
+      <h3 style="font-size:16px;font-weight:700;color:#1a2472;margin:0 0 16px;padding-bottom:12px;border-bottom:2px solid #eef1fb;padding-right:12px;border-right:3px solid #1a2472">ℹ️ معلومات النظام</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${[['النظام','MS Accounting v2.0'],['الخادم','FastAPI + SQLAlchemy'],['قاعدة البيانات','SQLite'],['التاريخ',new Date().toLocaleDateString('ar-EG')]].map(([k,v])=>`<div style="padding:12px;background:#f8fafc;border-radius:8px"><div style="font-size:11px;color:#94a3b8;margin-bottom:2px">${k}</div><div style="font-size:13px;font-weight:600;color:#374151">${v}</div></div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+async function showClientEmailModal(clientId, clientName, clientEmail) {
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:500px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">📧 إرسال تذكير للعميل</h2>
+        <div style="font-size:12px;color:#64748b;margin-top:2px">${escH(clientName)}</div>
+      </div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">📧 إرسال إلى</label>
+        <input id="reminderEmail" class="input" type="email" value="${escH(clientEmail)}" placeholder="client@example.com"/>
+        ${!clientEmail?'<div style="font-size:11px;color:#f59e0b;margin-top:3px">⚠️ لا يوجد إيميل مسجَّل للعميل — أدخله هنا أو حدّثه في بياناته</div>':''}
+      </div>
+      <div style="margin-bottom:14px;display:flex;gap:16px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="inclObl" checked style="width:15px;height:15px"/> الالتزامات الضريبية
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="inclInv" checked style="width:15px;height:15px"/> الفواتير المعلقة
+        </label>
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">💬 رسالة إضافية (اختياري)</label>
+        <textarea id="reminderMsg" class="input" rows="3" placeholder="مثال: نرجو سرعة تسوية الالتزامات لتجنب الغرامات..." style="resize:vertical"></textarea>
+      </div>
+      <div id="reminderResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button id="sendReminderBtn" class="btn btn-primary" onclick="doSendClientReminder(${clientId})">📨 إرسال التذكير</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+}
+
+async function doSendClientReminder(clientId) {
+  const btn=document.getElementById('sendReminderBtn');
+  const resultDiv=document.getElementById('reminderResult');
+  const email=document.getElementById('reminderEmail')?.value?.trim();
+  const inclObl=document.getElementById('inclObl')?.checked;
+  const inclInv=document.getElementById('inclInv')?.checked;
+  const msg=document.getElementById('reminderMsg')?.value?.trim();
+
+  if(!email){resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل البريد الإلكتروني</div>`;return;}
+  btn.disabled=true; btn.textContent='جارٍ الإرسال...';
+  resultDiv.innerHTML=`<div style="color:#64748b;font-size:13px">⏳ جارٍ إرسال التذكير...</div>`;
+  try {
+    const r=await api('POST','/api/notifications/send-client-reminder',{
+      client_id:clientId,
+      to_email:email,
+      include_obligations:inclObl,
+      include_invoices:inclInv,
+      custom_message:msg||null,
+    });
+    resultDiv.innerHTML=`<div style="color:#16a34a;font-size:13px;background:#f0fdf4;padding:10px;border-radius:6px">${escH(r.message)}</div>`;
+    btn.textContent='✅ تم الإرسال';
+    setTimeout(()=>{document.querySelector('.modal-overlay')?.remove();},2000);
+  } catch(e){
+    resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`;
+    btn.disabled=false; btn.textContent='📨 إرسال التذكير';
+  }
+}
+
+async function saveEmailSettings() {
+  const user=document.getElementById('smtpUser')?.value?.trim();
+  const pass=document.getElementById('smtpPass')?.value?.trim();
+  const fromName=document.getElementById('smtpFromName')?.value?.trim()||'MS Accounting';
+  const msg=document.getElementById('emailSettingsMsg');
+  if(!user||!pass){
+    msg.innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ يرجى إدخال حساب Gmail وكلمة مرور التطبيق</div>`;
+    return;
+  }
+  msg.innerHTML=`<div style="color:#64748b;font-size:13px">⏳ جارٍ الحفظ والاختبار…</div>`;
+  try {
+    const r=await api('POST','/api/notifications/save-settings',{
+      smtp_user:user, smtp_pass:pass, from_name:fromName,
+      smtp_host:'smtp.gmail.com', smtp_port:587
+    });
+    msg.innerHTML=`<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message||'تم الحفظ بنجاح')}</div>`;
+    // reload page to update badge
+    setTimeout(()=>loadSettings(),1500);
+  } catch(e){
+    msg.innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message||'فشل الحفظ')}</div>`;
+  }
+}
+
+async function testEmailNow() {
+  const to=document.getElementById('testEmailAddr')?.value?.trim();
+  const msg=document.getElementById('emailSettingsMsg');
+  if(!to){msg.innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل عنوان البريد الإلكتروني للاختبار</div>`;return;}
+  msg.innerHTML=`<div style="color:#64748b;font-size:13px">⏳ جارٍ الإرسال إلى ${escH(to)}…</div>`;
+  try {
+    const r=await api('POST','/api/notifications/test-email',{to_email:to});
+    msg.innerHTML=`<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message||'تم الإرسال')}</div>`;
+  } catch(e){
+    msg.innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message||'فشل الإرسال — تحقق من بيانات SMTP')}</div>`;
+  }
+}
+
+async function saveProfile() {
+  try {
+    const name=document.getElementById('profName')?.value?.trim();
+    const phone=document.getElementById('profPhone')?.value?.trim();
+    if(!name){toast('الاسم مطلوب','error');return}
+    await api('PUT',`/api/users/${currentUser.id}`,{name,phone:phone||null});
+    currentUser={...currentUser,name,phone};
+    localStorage.setItem('ms_user',JSON.stringify(currentUser));
+    toast('تم حفظ البيانات الشخصية بنجاح');
+    renderApp();
+  } catch(e){toast(e.message,'error')}
+}
+
+async function savePassword() {
+  try {
+    const cur=document.getElementById('curPass')?.value;
+    const nw=document.getElementById('newPass')?.value;
+    const cf=document.getElementById('confPass')?.value;
+    if(!cur||!nw){toast('أدخل كلمات المرور','error');return}
+    if(nw!==cf){toast('كلمتا المرور غير متطابقتين','error');return}
+    if(nw.length<6){toast('كلمة المرور قصيرة جداً','error');return}
+    await api('POST','/api/auth/change-password',{current_password:cur,new_password:nw});
+    toast('تم تغيير كلمة المرور بنجاح');
+    document.getElementById('curPass').value='';
+    document.getElementById('newPass').value='';
+    document.getElementById('confPass').value='';
+  } catch(e){toast(e.message,'error')}
+}
+
+// ── Mobile Sidebar ────────────────────────────────────
+function openSidebar() {
+  document.getElementById('sidebar')?.classList.add('open');
+  document.getElementById('sidebarOverlay')?.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebarOverlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+// Close sidebar on nav click (mobile)
+document.addEventListener('click', e => {
+  if (e.target.closest('.sidebar-link') && window.innerWidth <= 768) closeSidebar();
+});
+
+// expose functions globally (required for inline onclick in module scripts)
+window.logout=logout;
+window.openSidebar=openSidebar;
+window.closeSidebar=closeSidebar;
+window.saveProfile=saveProfile;
+window.savePassword=savePassword;
+window.saveEmailSettings=saveEmailSettings;
+window.testEmailNow=testEmailNow;
+window.showClientEmailModal=showClientEmailModal;
+window.doSendClientReminder=doSendClientReminder;
+window.items=[];
+// clients
+window.showClientDetail=showClientDetail;
+window.showClientModal=showClientModal;
+window.addInvoiceForClient=addInvoiceForClient;
+// invoices
+window.showInvoiceModal=showInvoiceModal;
+window.showPaymentModal=showPaymentModal;
+// tasks
+window.updateTaskStatus=updateTaskStatus;
+window.showTaskModal=showTaskModal;
+// documents
+window.showUploadModal=showUploadModal;
+window.openDoc=openDoc;
+// tax
+window.submitTaxReturn=submitTaxReturn;
+window.showTaxModal=showTaxModal;
+// leads grid
+window.addLeadRow=addLeadRow;
+window.deleteLeadRow=deleteLeadRow;
+window.saveLeadCell=saveLeadCell;
+// establishment
+window.updateEstStage=updateEstStage;
+window.doUpdateEstStage=doUpdateEstStage;
+window.showEstModal=showEstModal;
+// obligations
+window.submitObligation=submitObligation;
+window.showObligationModal=showObligationModal;
+window.filterObligations=filterObligations;
+// import
+window.fetchAndPreview=fetchAndPreview;
+window.filterImportRows=filterImportRows;
+window.confirmImport=confirmImport;
+window.renderImportResult=renderImportResult;
+// employees
+window.showEmployeeModal=showEmployeeModal;
+window.deactivateEmployee=deactivateEmployee;
+window.showAssignTaskModal=showAssignTaskModal;
+window.showEmployeeTasks=showEmployeeTasks;
+window.oblTab='upcoming';
+window.oblDays=30;
+
+// ── Boot ───────────────────────────────────────────
+renderApp();
+</script>
+</body>
+</html>
