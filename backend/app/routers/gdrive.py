@@ -140,26 +140,23 @@ def extract_folder_id(url: str) -> Optional[str]:
 
 def list_drive_folder_with_api(folder_id: str, api_key: str) -> List[dict]:
     """List files in a Drive folder using Google Drive API v3."""
-    try:
-        import requests as _requests
-    except ImportError:
-        raise HTTPException(status_code=500, detail="مكتبة requests غير مثبتة. تحقق من requirements.txt")
+    import httpx
     files = []
     page_token = None
 
     while True:
         params = {
             'q': f"'{folder_id}' in parents and trashed=false",
-            'key': api_key,  # type: ignore
+            'key': api_key,
             'fields': 'nextPageToken,files(id,name,mimeType,size,createdTime,parents,webViewLink,thumbnailLink)',
-            'pageSize': 1000,
-            'includeItemsFromAllDrives': True,
-            'supportsAllDrives': True,
+            'pageSize': '1000',
+            'includeItemsFromAllDrives': 'true',
+            'supportsAllDrives': 'true',
         }
         if page_token:
             params['pageToken'] = page_token
 
-        resp = _requests.get('https://www.googleapis.com/drive/v3/files', params=params)
+        resp = httpx.get('https://www.googleapis.com/drive/v3/files', params=params, timeout=20)
         if resp.status_code != 200:
             raise HTTPException(status_code=400,
                                 detail=f"Drive API error: {resp.status_code} — {resp.text[:200]}")
@@ -188,17 +185,14 @@ def list_drive_folder_public(folder_id: str) -> List[dict]:
     List files from a public Google Drive folder without API key.
     Parses the embedded JSON data from the Drive folder HTML page.
     """
-    try:
-        import requests as _requests
-    except ImportError:
-        raise HTTPException(status_code=500, detail="مكتبة requests غير مثبتة")
+    import httpx
 
     url = f"https://drive.google.com/drive/folders/{folder_id}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
 
-    resp = _requests.get(url, headers=headers, timeout=15)
+    resp = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
     if resp.status_code != 200:
         raise HTTPException(status_code=400,
                             detail=f"تعذر الوصول إلى المجلد. تأكد أن الرابط صحيح وأن المجلد مشترك عاماً.")
