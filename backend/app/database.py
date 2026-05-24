@@ -19,6 +19,7 @@ else:
         pool_size=5,
         max_overflow=10,
         pool_recycle=300,         # recycle every 5 min
+        connect_args={"connect_timeout": 10},  # 10s per attempt, avoids infinite hang
         echo=settings.DEBUG,
     )
 
