@@ -108,3 +108,33 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.post("/api/admin/fix-category-column")
+async def fix_category_column():
+    """Admin: force-convert documents.category from enum to varchar."""
+    from app.database import engine
+    from sqlalchemy import text
+    results = []
+    steps = [
+        ("drop_default",
+         "ALTER TABLE documents ALTER COLUMN category DROP DEFAULT"),
+        ("convert_to_varchar",
+         "ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(50) USING lower(category::text)"),
+        ("set_default",
+         "ALTER TABLE documents ALTER COLUMN category SET DEFAULT 'other'"),
+        ("normalize_case",
+         "UPDATE documents SET category = lower(category) WHERE category IS NOT NULL AND category != lower(category)"),
+        ("drop_enum_type",
+         "DROP TYPE IF EXISTS documentcategory"),
+    ]
+    with engine.connect() as conn:
+        for step_name, sql in steps:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+                results.append({"step": step_name, "status": "ok"})
+            except Exception as exc:
+                conn.rollback()
+                results.append({"step": step_name, "status": "error", "detail": str(exc)})
+    return {"results": results}

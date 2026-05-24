@@ -82,7 +82,17 @@ def _run_migrations_pg():
         "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_mime_type VARCHAR(100)",
         "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_folder_path VARCHAR(500)",
         # documents — convert category enum to varchar (lowercase values)
-        # Step 1: convert enum column to varchar (if still enum type)
+        # Step 1: drop default constraint (required before type change)
+        """DO $$ BEGIN
+             IF EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name='documents' AND column_name='category'
+               AND data_type='USER-DEFINED'
+             ) THEN
+               ALTER TABLE documents ALTER COLUMN category DROP DEFAULT;
+             END IF;
+           END $$""",
+        # Step 2: convert enum column to varchar
         """DO $$ BEGIN
              IF EXISTS (
                SELECT 1 FROM information_schema.columns
@@ -92,17 +102,20 @@ def _run_migrations_pg():
                ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(50) USING lower(category::text);
              END IF;
            END $$""",
-        # Step 2: normalize any existing uppercase varchar values to lowercase
+        # Step 3: re-add a varchar default
         """DO $$ BEGIN
              IF EXISTS (
                SELECT 1 FROM information_schema.columns
                WHERE table_name='documents' AND column_name='category'
-               AND data_type IN ('character varying', 'varchar')
+               AND data_type IN ('character varying')
+               AND column_default IS NULL
              ) THEN
-               UPDATE documents SET category = lower(category) WHERE category != lower(category);
+               ALTER TABLE documents ALTER COLUMN category SET DEFAULT 'other';
              END IF;
            END $$""",
-        # Step 3: drop the old enum type if no longer used (cleanup)
+        # Step 4: normalize any uppercase varchar values to lowercase
+        "UPDATE documents SET category = lower(category) WHERE category IS NOT NULL AND category != lower(category)",
+        # Step 5: drop the old enum type if no longer referenced
         "DROP TYPE IF EXISTS documentcategory",
         # documents — allow null file_path for gdrive-only docs
         """DO $$ BEGIN
