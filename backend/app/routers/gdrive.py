@@ -456,7 +456,14 @@ async def import_files(
             is_archived=False,
         )
         db.add(doc)
-        imported += 1
+        # Flush individually to avoid SQLAlchemy 2.0 batch-CTE insert
+        # which uses different type binding and fails on enum columns
+        try:
+            db.flush()
+            imported += 1
+        except Exception as e:
+            db.rollback()
+            errors.append(f"{f.name}: {str(e)[:100]}")
 
     try:
         db.commit()
