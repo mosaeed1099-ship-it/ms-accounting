@@ -270,7 +270,8 @@ const navItems = [
   {id:'dashboard',     icon:'📊', label:'الرئيسية'},
   {id:'clients',       icon:'👥', label:'العملاء'},
   {id:'leads',         icon:'🎯', label:'العملاء المحتملين'},
-  {id:'invoices',      icon:'📄', label:'الفواتير'},
+  {id:'invoices',      icon:'📄', label:'أتعاب الحسابات'},
+  {id:'collections',   icon:'💰', label:'التحصيلات'},
   {id:'tasks',         icon:'✅', label:'المهام'},
   {id:'obligations',   icon:'🔔', label:'الالتزامات الضريبية'},
   {id:'establishment', icon:'🏢', label:'تأسيس الشركات'},
@@ -363,13 +364,13 @@ function setApiStatus(ok) {
 function navigate(page) {
   currentPage = page;
   $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'الفواتير',tasks:'المهام',obligations:'الالتزامات الضريبية',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',employees:'الموظفين',reports:'التقارير',import:'استيراد البيانات',settings:'الإعدادات'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',obligations:'الالتزامات الضريبية',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',employees:'الموظفين',reports:'التقارير',import:'استيراد البيانات',settings:'الإعدادات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,tasks:loadTasks,obligations:loadObligations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,obligations:loadObligations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
   if(pages[page]) pages[page]();
 }
 
@@ -539,11 +540,24 @@ async function loadClients() {
   } catch(e) { toast(e.message,'error'); }
 }
 
+const CLIENT_TYPE_LABEL={
+  'llc':'ش.م.م','one_person':'شخص واحد','sole':'فردية','limited_partnership':'توصية بسيطة',
+  'joint_stock':'مساهمة','partnership':'تضامن','foreign_branch':'فرع أجنبي',
+  'association':'جمعية','foundation':'مؤسسة','holding':'قابضة','free_zone':'منطقة حرة',
+  'individual':'فرد','freelancer':'حر عمل','company':'شركة',
+};
+const CLIENT_TYPE_BADGE={
+  'llc':'badge-blue','one_person':'badge-blue','sole':'badge-green','limited_partnership':'badge-purple',
+  'joint_stock':'badge-blue','partnership':'badge-blue','foreign_branch':'badge-orange',
+  'association':'badge-green','foundation':'badge-green','holding':'badge-purple','free_zone':'badge-yellow',
+  'individual':'badge-green','freelancer':'badge-purple','company':'badge-blue',
+};
+
 function renderClients() {
   const main=document.getElementById('main');
   main.className='page';
-  const typeLabel={'company':'شركة','individual':'فرد','freelancer':'حر'};
-  const typeBadge={'company':'badge-blue','individual':'badge-green','freelancer':'badge-purple'};
+  const typeLabel=CLIENT_TYPE_LABEL;
+  const typeBadge=CLIENT_TYPE_BADGE;
   const statusBadge={'active':'badge-green','inactive':'badge-gray','prospect':'badge-yellow','suspended':'badge-red'};
   const statusLabel={'active':'نشط','inactive':'غير نشط','prospect':'محتمل','suspended':'موقوف'};
   main.innerHTML=`
@@ -601,7 +615,7 @@ function renderClients() {
 function showClientDetail(id) {
   const c = clientsData.find(x=>x.id===id);
   if(!c) return;
-  const typeLabel={'company':'شركة','individual':'فرد','freelancer':'حر'};
+  const typeLabel=CLIENT_TYPE_LABEL;
   const statusLabel={'active':'نشط','inactive':'غير نشط','prospect':'محتمل','suspended':'موقوف'};
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
@@ -653,15 +667,25 @@ function showClientModal(id=null) {
           <input id="cNameEn" class="input" value="${c?.name_en||''}" placeholder="English name"/></div>
       </div>
       <div class="form-row" style="margin-bottom:14px">
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع العميل</label>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الكيان القانوني</label>
           <select id="cType" class="input">
-            <option value="company" ${c?.client_type==='company'?'selected':''}>شركة</option>
-            <option value="individual" ${c?.client_type==='individual'?'selected':''}>فرد</option>
-            <option value="freelancer" ${c?.client_type==='freelancer'?'selected':''}>حر</option>
+            <option value="llc" ${(c?.client_type||'llc')==='llc'?'selected':''}>شركة ذات مسئولية محدودة</option>
+            <option value="one_person" ${c?.client_type==='one_person'?'selected':''}>شركة شخص واحد</option>
+            <option value="sole" ${c?.client_type==='sole'?'selected':''}>منشأة فردية</option>
+            <option value="limited_partnership" ${c?.client_type==='limited_partnership'?'selected':''}>توصية بسيطة</option>
+            <option value="joint_stock" ${c?.client_type==='joint_stock'?'selected':''}>شركة مساهمة</option>
+            <option value="partnership" ${c?.client_type==='partnership'?'selected':''}>شركة تضامن</option>
+            <option value="foreign_branch" ${c?.client_type==='foreign_branch'?'selected':''}>فرع شركة أجنبية</option>
+            <option value="association" ${c?.client_type==='association'?'selected':''}>جمعية</option>
+            <option value="foundation" ${c?.client_type==='foundation'?'selected':''}>مؤسسة</option>
+            <option value="holding" ${c?.client_type==='holding'?'selected':''}>شركة قابضة</option>
+            <option value="free_zone" ${c?.client_type==='free_zone'?'selected':''}>شركة منطقة حرة</option>
+            <option value="individual" ${c?.client_type==='individual'?'selected':''}>فرد / شخص طبيعي</option>
+            <option value="freelancer" ${c?.client_type==='freelancer'?'selected':''}>عمل حر</option>
           </select></div>
         <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
           <select id="cStatus" class="input">
-            <option value="active" ${c?.status==='active'?'selected':''}>نشط</option>
+            <option value="active" ${(c?.status||'active')==='active'?'selected':''}>نشط</option>
             <option value="prospect" ${c?.status==='prospect'?'selected':''}>محتمل</option>
             <option value="inactive" ${c?.status==='inactive'?'selected':''}>غير نشط</option>
           </select></div>
@@ -673,25 +697,59 @@ function showClientModal(id=null) {
           <input id="cGov" class="input" value="${c?.governorate||''}" placeholder="القاهرة"/></div>
       </div>
       <div class="form-row" style="margin-bottom:14px">
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الرقم الضريبي</label>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الرقم الضريبي <span style="color:#94a3b8;font-weight:400">(اختياري)</span></label>
           <input id="cTax" class="input" value="${c?.tax_number||''}" placeholder="xxx-xxx-xxx"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">السجل التجاري <span style="color:#94a3b8;font-weight:400">(اختياري)</span></label>
+          <input id="cCommReg" class="input" value="${c?.commercial_register||''}" placeholder="رقم السجل"/></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رقم ق.م.م <span style="color:#94a3b8;font-weight:400">(اختياري)</span></label>
+          <input id="cVat" class="input" value="${c?.vat_number||''}" placeholder="رقم القيمة المضافة"/></div>
         <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الضريبة</label>
           <select id="cTaxType" class="input">
-            <option value="vat" ${c?.tax_type==='vat'?'selected':''}>قيمة مضافة</option>
+            <option value="vat" ${(c?.tax_type||'vat')==='vat'?'selected':''}>قيمة مضافة</option>
             <option value="income" ${c?.tax_type==='income'?'selected':''}>دخل</option>
+            <option value="withholding" ${c?.tax_type==='withholding'?'selected':''}>خصم وإضافة</option>
+            <option value="stamp" ${c?.tax_type==='stamp'?'selected':''}>دمغة</option>
             <option value="none" ${c?.tax_type==='none'?'selected':''}>لا يوجد</option>
           </select></div>
       </div>
       <div class="form-row" style="margin-bottom:14px">
         <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">النشاط التجاري</label>
           <input id="cActivity" class="input" value="${c?.activity||''}" placeholder="استيراد وتصدير"/></div>
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">قيمة العقد (ج.م.)</label>
-          <input id="cContract" class="input" type="number" value="${c?.contract_value||''}" placeholder="12000"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الأتعاب الشهرية (ج.م.)</label>
+          <input id="cMonthlyFee" class="input" type="number" value="${c?.monthly_fee||''}" placeholder="2000"/></div>
       </div>
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">📧 البريد الإلكتروني للعميل</label>
         <input id="cEmail" class="input" type="email" value="${c?.email||''}" placeholder="client@example.com"/>
         <div style="font-size:11px;color:#94a3b8;margin-top:3px">يُستخدم لإرسال التذكيرات والإشعارات للعميل مباشرةً</div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-size:12px;font-weight:600;color:#374151">الالتزامات الضريبية</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#1a2472;cursor:pointer">
+            <input type="checkbox" id="cOblSelectAll" style="width:14px;height:14px;accent-color:#1a2472"> تحديد الكل
+          </label>
+        </div>
+        <div id="cOblGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+          ${[
+            {key:'vat_monthly',label:'ق.م.م شهري'},
+            {key:'payroll_monthly',label:'مرتبات شهري'},
+            {key:'withholding_monthly',label:'خصم وإضافة شهري'},
+            {key:'income_quarterly',label:'ضريبة الدخل ربعي'},
+            {key:'income_annual',label:'إقرار ضريبة الدخل سنوي'},
+            {key:'stamp_quarterly',label:'دمغة ربعي'},
+            {key:'work_profit',label:'ضريبة كسب العمل'},
+            {key:'social_insurance',label:'التأمينات الاجتماعية'},
+            {key:'quarterly_declaration',label:'الإقرار الربع سنوي'},
+            {key:'annual_declaration',label:'الإقرار السنوي'},
+            {key:'form_41',label:'نموذج 41 سنوي'},
+            {key:'tax_facilities',label:'التسهيلات الضريبية'},
+          ].map(o=>{const checked=(c?.tax_obligations||[]).includes(o.key);return`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 6px;border-radius:6px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
+            <input type="checkbox" class="cOblCheck" data-key="${o.key}" ${checked?'checked':''} style="width:13px;height:13px;accent-color:#1a2472" onchange="toggleOblLabel(this)">${o.label}
+          </label>`}).join('')}
+        </div>
       </div>
     </div>
     <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
@@ -701,10 +759,30 @@ function showClientModal(id=null) {
   </div>`;
   document.body.append(overlay);
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  // Select all obligations checkbox
+  const oblAll=document.getElementById('cOblSelectAll');
+  if(oblAll){
+    const checks=()=>overlay.querySelectorAll('.cOblCheck');
+    oblAll.onchange=()=>{
+      checks().forEach(cb=>{cb.checked=oblAll.checked;toggleOblLabel(cb);});
+    };
+    // Sync select-all with individual checkboxes
+    overlay.querySelectorAll('.cOblCheck').forEach(cb=>{
+      cb.addEventListener('change',()=>{
+        oblAll.checked=[...checks()].every(c=>c.checked);
+        oblAll.indeterminate=[...checks()].some(c=>c.checked)&&![...checks()].every(c=>c.checked);
+      });
+    });
+    // Init indeterminate state
+    const allChecks=[...overlay.querySelectorAll('.cOblCheck')];
+    if(allChecks.some(c=>c.checked)&&!allChecks.every(c=>c.checked)) oblAll.indeterminate=true;
+    if(allChecks.every(c=>c.checked)) oblAll.checked=true;
+  }
   document.getElementById('saveClientBtn').onclick = async () => {
     const btn=document.getElementById('saveClientBtn');
     btn.disabled=true; btn.textContent='جاري الحفظ...';
     try {
+      const selectedObls=[...overlay.querySelectorAll('.cOblCheck:checked')].map(el=>el.dataset.key);
       const body={
         name:$('#cName',overlay).value.trim(),
         name_en:$('#cNameEn',overlay).value.trim()||null,
@@ -713,10 +791,13 @@ function showClientModal(id=null) {
         phone:$('#cPhone',overlay).value.trim()||null,
         governorate:$('#cGov',overlay).value.trim()||null,
         tax_number:$('#cTax',overlay).value.trim()||null,
+        commercial_register:$('#cCommReg',overlay).value.trim()||null,
+        vat_number:$('#cVat',overlay).value.trim()||null,
         tax_type:$('#cTaxType',overlay).value,
         activity:$('#cActivity',overlay).value.trim()||null,
-        contract_value:parseFloat($('#cContract',overlay).value)||null,
+        monthly_fee:parseFloat($('#cMonthlyFee',overlay).value)||0,
         email:$('#cEmail',overlay).value.trim()||null,
+        tax_obligations:selectedObls,
       };
       if(!body.name){toast('الاسم مطلوب','error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`;return}
       if(c) await api('PUT',`/api/clients/${c.id}`,body);
@@ -727,6 +808,12 @@ function showClientModal(id=null) {
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`}
   };
 }
+
+function toggleOblLabel(cb){
+  const lbl=document.getElementById('cObl_'+cb.dataset.key+'_label');
+  if(lbl){lbl.style.borderColor=cb.checked?'#1a2472':'#e5e7eb';lbl.style.background=cb.checked?'#eef1fb':'#fff';}
+}
+window.toggleOblLabel=toggleOblLabel;
 
 function addInvoiceForClient(clientId, clientName) {
   navigate('invoices');
@@ -759,7 +846,7 @@ function renderInvoices() {
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
     <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
       <div style="width:44px;height:44px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📄</div>
-      <div><div style="font-size:18px;font-weight:800;color:#1e293b">${money(total)}</div><div style="font-size:12px;color:#64748b">إجمالي الفواتير</div></div>
+      <div><div style="font-size:18px;font-weight:800;color:#1e293b">${money(total)}</div><div style="font-size:12px;color:#64748b">إجمالي الأتعاب</div></div>
     </div>
     <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
       <div style="width:44px;height:44px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">💵</div>
@@ -774,7 +861,7 @@ function renderInvoices() {
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${['all','paid','sent','partial','overdue','draft'].map(s=>`<button onclick="invoiceFilter='${s}';loadInvoices()" class="btn btn-sm ${invoiceFilter===s?'btn-primary':'btn-secondary'}">${{all:'الكل',paid:'مسددة',sent:'مرسلة',partial:'جزئي',overdue:'متأخرة',draft:'مسودة'}[s]}</button>`).join('')}
     </div>
-    <button class="btn btn-primary" onclick="showInvoiceModal()">+ فاتورة جديدة</button>
+    <button class="btn btn-primary" onclick="showInvoiceModal()">+ أتعاب جديدة</button>
   </div>
   <div class="card" style="overflow:hidden">
     <table>
@@ -818,7 +905,7 @@ async function showInvoiceModal(id=null, preClientId=null) {
   function buildModal() {
     overlay.innerHTML=`<div class="modal" style="max-width:660px">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${inv?'تعديل فاتورة':'فاتورة جديدة'}</h2>
+        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${inv?'تعديل أتعاب':'أتعاب جديدة'}</h2>
         <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
       </div>
       <div style="padding:20px 24px">
@@ -845,7 +932,7 @@ async function showInvoiceModal(id=null, preClientId=null) {
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
-        <button id="saveInvBtn" class="btn btn-primary">💾 ${inv?'حفظ التعديلات':'إنشاء فاتورة'}</button>
+        <button id="saveInvBtn" class="btn btn-primary">💾 ${inv?'حفظ التعديلات':'إنشاء الأتعاب'}</button>
       </div>
     </div>`;
 
@@ -962,8 +1049,8 @@ function renderKanban() {
   const cols=[
     {id:'todo',label:'قيد الانتظار',color:'#64748b',bg:'#f8fafc'},
     {id:'in_progress',label:'جاري التنفيذ',color:'#1a2472',bg:'#eef1fb'},
-    {id:'review',label:'تمت المراجعة',color:'#d97706',bg:'#fffbeb'},
     {id:'done',label:'مكتمل',color:'#16a34a',bg:'#f0fdf4'},
+    {id:'cancelled',label:'ملغى',color:'#dc2626',bg:'#fff5f5'},
   ];
   const priorityColor={urgent:'#dc2626',high:'#f97316',medium:'#eab308',low:'#22c55e'};
   const priorityLabel={urgent:'عاجل',high:'عالي',medium:'متوسط',low:'منخفض'};
@@ -993,7 +1080,7 @@ function renderKanban() {
         ${t.client_name?`<div style="font-size:11px;color:#64748b;margin-bottom:6px">👤 ${t.client_name}</div>`:''}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
           <span class="badge ${catColor[t.category]||'badge-gray'}" style="font-size:10px">${catLabel[t.category]||t.category}</span>
-          ${t.due_date?`<span style="font-size:11px;color:${daysUntil(t.due_date)<=2?'#dc2626':'#64748b'};font-weight:600">${daysUntil(t.due_date)<=0?'⚠ متأخر':dateAr(t.due_date)}</span>`:''}
+          ${t.due_date?`<span style="font-size:11px;color:${(daysUntil(t.due_date)<=2&&t.status!=='done'&&t.status!=='cancelled')?'#dc2626':'#64748b'};font-weight:600">${(daysUntil(t.due_date)<=0&&t.status!=='done'&&t.status!=='cancelled')?'⚠ متأخر':dateAr(t.due_date)}</span>`:''}
         </div>
         <div style="margin-top:10px;display:flex;gap:6px" onclick="event.stopPropagation()">
           ${cols.filter(c=>c.id!==col.id).slice(0,2).map(c=>`<button onclick="updateTaskStatus(${t.id},'${c.id}')" style="font-size:10px;padding:3px 8px;border-radius:6px;background:${c.bg};color:${c.color};border:1px solid ${c.color}33;cursor:pointer;font-family:inherit;font-weight:600">${c.label}</button>`).join('')}
@@ -1054,8 +1141,8 @@ async function showTaskModal(id=null) {
           <select id="tStatus" class="input">
             <option value="todo" ${!t||t?.status==='todo'?'selected':''}>قيد الانتظار</option>
             <option value="in_progress" ${t?.status==='in_progress'?'selected':''}>جاري</option>
-            <option value="review" ${t?.status==='review'?'selected':''}>مراجعة</option>
             <option value="done" ${t?.status==='done'?'selected':''}>مكتمل</option>
+            <option value="cancelled" ${t?.status==='cancelled'?'selected':''}>ملغى</option>
           </select></div>
       </div>
       <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
@@ -1966,7 +2053,7 @@ async function loadEmployees() {
     <div style="text-align:center;padding:60px;color:#94a3b8;grid-column:1/-1">⏳ جاري التحميل...</div>
   </div>`;
   try {
-    const users=await api('GET','/api/users/');
+    const users=await api('GET','/api/users');
     renderEmployeeGrid(users);
   } catch(e){toast(e.message,'error');}
 }
@@ -2036,7 +2123,7 @@ function renderEmployeeGrid(users) {
 async function showEmployeeModal(userId=null) {
   let user=null;
   if(userId){
-    try{const users=await api('GET','/api/users/');user=users.find(u=>u.id===userId)||null;}catch(e){}
+    try{const users=await api('GET','/api/users');user=users.find(u=>u.id===userId)||null;}catch(e){}
   }
   const specs=user&&Array.isArray(user.specialization)?user.specialization:[];
   const overlay=document.createElement('div');
@@ -2103,7 +2190,7 @@ async function showEmployeeModal(userId=null) {
         await api('PUT',`/api/users/${userId}`,{name,phone:phone||null,role,notes:notes||null,specialization:selectedSpecs});
         toast('تم تحديث بيانات الموظف');
       } else {
-        await api('POST','/api/users/',{name,email,password:pass,phone:phone||null,role,specialization:selectedSpecs});
+        await api('POST','/api/users',{name,email,password:pass,phone:phone||null,role,specialization:selectedSpecs});
         toast('تم إضافة الموظف بنجاح');
       }
       overlay.remove();
@@ -2124,7 +2211,7 @@ async function deactivateEmployee(userId) {
 
 async function showAssignTaskModal(userId, userName) {
   let clients=[];
-  try{const r=await api('GET','/api/clients/');clients=Array.isArray(r)?r:(r.items||[]);}catch(e){}
+  try{const r=await api('GET','/api/clients?limit=200');clients=Array.isArray(r)?r:(r.items||[]);}catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
@@ -2169,7 +2256,7 @@ async function showAssignTaskModal(userId, userName) {
     const prio=document.getElementById('atPrio')?.value;
     btn.disabled=true;btn.textContent='جاري الحفظ...';
     try{
-      await api('POST','/api/tasks/',{title,description:desc,assigned_to:userId,client_id:clientId,priority:prio,due_date:due?due+'T00:00:00':null});
+      await api('POST','/api/tasks',{title,description:desc,assigned_to:userId,client_id:clientId,priority:prio,due_date:due||null});
       toast('تم تعيين المهمة بنجاح');
       overlay.remove();
       loadEmployees();
@@ -2179,9 +2266,9 @@ async function showAssignTaskModal(userId, userName) {
 
 async function showEmployeeTasks(userId, userName) {
   let tasks=[];
-  try{const r=await api('GET',`/api/tasks/?assigned_to=${userId}&page_size=100`);tasks=r.items||[];}catch(e){}
-  const TASK_STATUS={pending:'معلقة',in_progress:'جارية',review:'مراجعة',done:'منجزة',cancelled:'ملغاة'};
-  const TASK_COLOR={pending:'#f59e0b',in_progress:'#4478b0',review:'#8b5cf6',done:'#10b981',cancelled:'#94a3b8'};
+  try{const r=await api('GET',`/api/tasks?assigned_to=${userId}&page_size=100`);tasks=r.items||[];}catch(e){}
+  const TASK_STATUS={todo:'معلقة',in_progress:'جارية',done:'منجزة',cancelled:'ملغاة'};
+  const TASK_COLOR={todo:'#f59e0b',in_progress:'#4478b0',done:'#10b981',cancelled:'#94a3b8'};
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
@@ -2208,6 +2295,272 @@ async function showEmployeeTasks(userId, userName) {
   </div>`;
   document.body.append(overlay);
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+}
+
+// ── COLLECTIONS ────────────────────────────────────
+let collectionsData=[], collectionsTab='establishment', collectionsSearch='';
+
+async function loadCollections() {
+  try {
+    const [summary, data] = await Promise.all([
+      api('GET','/api/collections/summary'),
+      api('GET',`/api/collections?page_size=100`),
+    ]);
+    if(!data) return;
+    collectionsData=data.items||[];
+    renderCollections(summary);
+  } catch(e){toast(e.message,'error')}
+}
+
+function renderCollections(summary) {
+  const main=document.getElementById('main');
+  main.className='page';
+  const statusBadge={unpaid:'badge-red',partial:'badge-yellow',paid:'badge-green',overdue:'badge-red'};
+  const statusLabel={unpaid:'غير مدفوع',partial:'جزئي',paid:'مدفوع',overdue:'متأخر'};
+  const typeBadge={establishment:'badge-blue',monthly_fee:'badge-purple'};
+  const typeLabel={establishment:'تأسيس',monthly_fee:'أتعاب شهرية'};
+
+  const estData=collectionsData.filter(c=>c.collection_type==='establishment');
+  const monthlyData=collectionsData.filter(c=>c.collection_type==='monthly_fee');
+
+  main.innerHTML=`
+  <!-- Summary Cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px">
+    ${summary?`
+    <div class="stat-card stat-blue"><div style="font-size:22px;font-weight:800;color:#1e293b">${money(summary.total_agreed)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي المتفق عليه</div></div>
+    <div class="stat-card stat-green"><div style="font-size:22px;font-weight:800;color:#16a34a">${money(summary.total_collected)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي المحصّل</div></div>
+    <div class="stat-card stat-red"><div style="font-size:22px;font-weight:800;color:#dc2626">${money(summary.total_remaining)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">المتبقي</div></div>
+    <div class="stat-card"><div style="font-size:22px;font-weight:800;color:#d97706">${money(summary.current_month_due)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">أتعاب الشهر الحالي</div><div style="font-size:11px;color:#16a34a;margin-top:3px">محصّل: ${money(summary.current_month_paid)}</div></div>
+    `:''}
+  </div>
+
+  <!-- Tabs -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:8px">
+      <button onclick="switchCollTab('establishment')" class="btn btn-sm ${collectionsTab==='establishment'?'btn-primary':'btn-secondary'}">🏢 تحصيلات التأسيس (${estData.length})</button>
+      <button onclick="switchCollTab('monthly_fee')" class="btn btn-sm ${collectionsTab==='monthly_fee'?'btn-primary':'btn-secondary'}">🔄 الأتعاب الشهرية (${monthlyData.length})</button>
+    </div>
+    <button class="btn btn-primary" onclick="showCollectionModal('${collectionsTab}')">+ إضافة عقد</button>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr>
+        <th>العميل</th><th>العنوان</th><th>المبلغ المتفق عليه</th><th>المدفوع</th><th>المتبقي</th>
+        ${collectionsTab==='monthly_fee'?'<th>الشهري</th>':''}
+        <th>الحالة</th><th>إجراءات</th>
+      </tr></thead>
+      <tbody>
+        ${(collectionsTab==='establishment'?estData:monthlyData).length===0
+          ?`<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد عقود</td></tr>`
+          :(collectionsTab==='establishment'?estData:monthlyData).map(c=>`
+          <tr>
+            <td style="font-weight:600;color:#1e293b">${escH(c.client_name||'—')}</td>
+            <td style="font-size:12px;color:#374151;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(c.title)}</td>
+            <td style="font-weight:700;color:#1a2472">${money(c.agreed_amount)}</td>
+            <td style="color:#16a34a;font-weight:600">${money(c.total_paid)}</td>
+            <td style="color:${c.total_remaining>0?'#dc2626':'#16a34a'};font-weight:600">${money(c.total_remaining)}</td>
+            ${collectionsTab==='monthly_fee'?`<td style="color:#5b8ec4;font-weight:600">${c.monthly_amount?money(c.monthly_amount)+'/شهر':'—'}</td>`:''}
+            <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
+            <td>
+              <div style="display:flex;gap:5px">
+                ${c.total_remaining>0?`<button class="btn btn-success btn-sm" onclick="showCollectionPaymentModal(${c.id},${c.total_remaining},'${escH(c.title)}',${c.collection_type==='monthly_fee'})">💵 دفعة</button>`:''}
+                <button class="btn btn-secondary btn-sm" onclick="showCollectionDetail(${c.id})">👁</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+async function showCollectionModal(type='establishment') {
+  let clients=[];
+  try{const d=await api('GET','/api/clients?limit=200');clients=d?.items||[];}catch(e){}
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:560px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${type==='monthly_fee'?'🔄 عقد أتعاب شهرية':'🏢 عقد تحصيل تأسيس'}</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
+        <select id="colClient" class="input">
+          <option value="">— اختر العميل —</option>
+          ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+        </select></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">وصف العقد / الخدمة *</label>
+        <input id="colTitle" class="input" placeholder="${type==='monthly_fee'?'أتعاب محاسبة شهرية - 2026':'تأسيس شركة ذات مسئولية محدودة'}"/></div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">إجمالي المبلغ المتفق عليه (ج.م.) *</label>
+          <input id="colAgreed" class="input" type="number" placeholder="${type==='monthly_fee'?'24000':'15000'}"/></div>
+        ${type==='monthly_fee'?`<div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">قيمة الشهر الواحد (ج.م.)</label>
+          <input id="colMonthly" class="input" type="number" placeholder="2000"/></div>`:'<div></div>'}
+      </div>
+      ${type==='monthly_fee'?`<div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="colRecurring" checked style="width:15px;height:15px;accent-color:#1a2472"> توليد استحقاقات شهرية تلقائياً
+        </label>
+      </div>`:''}
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ البداية</label>
+          <input id="colStart" class="input" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الانتهاء</label>
+          <input id="colEnd" class="input" type="date"/></div>
+      </div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
+        <textarea id="colNotes" class="input" rows="2" placeholder="ملاحظات..."></textarea></div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveColBtn" class="btn btn-primary">💾 إنشاء العقد</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('saveColBtn').onclick=async()=>{
+    const btn=document.getElementById('saveColBtn');
+    const clientId=parseInt($('#colClient',overlay).value);
+    const title=$('#colTitle',overlay).value.trim();
+    const agreed=parseFloat($('#colAgreed',overlay).value);
+    if(!clientId){toast('اختر العميل','error');return;}
+    if(!title){toast('وصف العقد مطلوب','error');return;}
+    if(!agreed||agreed<=0){toast('المبلغ المتفق عليه مطلوب','error');return;}
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      const monthly=type==='monthly_fee'?parseFloat($('#colMonthly',overlay)?.value)||0:0;
+      const recurring=type==='monthly_fee'&&(document.getElementById('colRecurring')?.checked||false);
+      await api('POST','/api/collections',{
+        client_id:clientId,
+        collection_type:type,
+        title,
+        agreed_amount:agreed,
+        monthly_amount:monthly,
+        is_recurring:recurring,
+        start_date:$('#colStart',overlay).value||null,
+        end_date:$('#colEnd',overlay).value||null,
+        notes:$('#colNotes',overlay).value||null,
+      });
+      toast('تم إنشاء عقد التحصيل بنجاح');
+      overlay.remove(); loadCollections();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💾 إنشاء العقد';}
+  };
+}
+
+async function showCollectionPaymentModal(contractId, remaining, title, isMonthly=false) {
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  const now=new Date();
+  overlay.innerHTML=`<div class="modal" style="max-width:440px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">💵 تسجيل دفعة</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:16px 24px">
+      <div style="font-size:13px;color:#64748b;margin-bottom:14px">${escH(title)}</div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المبلغ (ج.م.) *</label>
+        <input id="cpAmount" class="input" type="number" value="${remaining}" placeholder="المبلغ"/></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الدفعة</label>
+        <input id="cpDate" class="input" type="date" value="${now.toISOString().split('T')[0]}"/></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">طريقة الدفع</label>
+        <select id="cpMethod" class="input">
+          <option value="cash">نقدي</option>
+          <option value="bank_transfer">تحويل بنكي</option>
+          <option value="check">شيك</option>
+          <option value="instapay">InstaPay</option>
+          <option value="vodafone_cash">Vodafone Cash</option>
+        </select></div>
+      ${isMonthly?`
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الشهر</label>
+          <select id="cpMonth" class="input">
+            ${['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'].map((m,i)=>`<option value="${i+1}" ${i+1===now.getMonth()+1?'selected':''}>${m}</option>`).join('')}
+          </select></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">السنة</label>
+          <input id="cpYear" class="input" type="number" value="${now.getFullYear()}" min="2020" max="2030"/></div>
+      </div>`:''}
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">مرجع / رقم شيك</label>
+        <input id="cpRef" class="input" placeholder="اختياري"/></div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="savePayColBtn" class="btn btn-success">💵 تسجيل الدفعة</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('savePayColBtn').onclick=async()=>{
+    const btn=document.getElementById('savePayColBtn');
+    const amount=parseFloat($('#cpAmount',overlay).value);
+    if(!amount||amount<=0){toast('أدخل مبلغاً صحيحاً','error');return;}
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      const body={
+        contract_id:contractId,
+        amount,
+        payment_date:$('#cpDate',overlay).value,
+        payment_method:$('#cpMethod',overlay).value,
+        reference:$('#cpRef',overlay).value||null,
+      };
+      if(isMonthly){
+        body.period_month=parseInt($('#cpMonth',overlay).value);
+        body.period_year=parseInt($('#cpYear',overlay).value);
+      }
+      await api('POST','/api/collections/payments',body);
+      toast('تم تسجيل الدفعة بنجاح');
+      overlay.remove(); loadCollections();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💵 تسجيل الدفعة';}
+  };
+}
+
+async function showCollectionDetail(contractId) {
+  try {
+    const c=await api('GET',`/api/collections/${contractId}`);
+    if(!c) return;
+    const statusLabel={unpaid:'غير مدفوع',partial:'جزئي',paid:'مدفوع',overdue:'متأخر'};
+    const methodLabel={cash:'نقدي',bank_transfer:'تحويل بنكي',check:'شيك',instapay:'InstaPay',vodafone_cash:'Vodafone Cash'};
+    const overlay=document.createElement('div');
+    overlay.className='modal-overlay';
+    overlay.innerHTML=`<div class="modal" style="max-width:580px">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">${escH(c.title)}</h2>
+          <div style="font-size:12px;color:#64748b;margin-top:2px">${escH(c.client_name||'')} · ${statusLabel[c.status]||c.status}</div>
+        </div>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+      </div>
+      <div style="padding:16px 24px">
+        <!-- Totals -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+          <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:10px"><div style="font-size:16px;font-weight:800;color:#1a2472">${money(c.agreed_amount)}</div><div style="font-size:11px;color:#94a3b8">المتفق عليه</div></div>
+          <div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px"><div style="font-size:16px;font-weight:800;color:#16a34a">${money(c.total_paid)}</div><div style="font-size:11px;color:#94a3b8">المحصّل</div></div>
+          <div style="text-align:center;padding:12px;background:${c.total_remaining>0?'#fff5f5':'#f0fdf4'};border-radius:10px"><div style="font-size:16px;font-weight:800;color:${c.total_remaining>0?'#dc2626':'#16a34a'}">${money(c.total_remaining)}</div><div style="font-size:11px;color:#94a3b8">المتبقي</div></div>
+        </div>
+        <!-- Payments list -->
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">سجل الدفعات (${c.payments?.length||0})</div>
+        <div style="max-height:240px;overflow-y:auto">
+          ${!c.payments?.length
+            ?`<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">لا توجد دفعات مسجلة بعد</div>`
+            :c.payments.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f1f5f9">
+              <div>
+                <div style="font-size:14px;font-weight:700;color:#16a34a">${money(p.amount)}</div>
+                <div style="font-size:11px;color:#94a3b8">${dateAr(p.payment_date)} · ${methodLabel[p.payment_method]||p.payment_method||'—'} ${p.reference?'· '+p.reference:''}</div>
+                ${p.period_month?`<div style="font-size:10px;color:#5b8ec4">عن شهر: ${['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][p.period_month-1]} ${p.period_year}</div>`:''}
+              </div>
+              <div style="font-size:11px;color:#94a3b8">${escH(p.collector_name||'')}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px">
+        ${c.total_remaining>0?`<button class="btn btn-success" onclick="this.closest('.modal-overlay').remove();showCollectionPaymentModal(${c.id},${c.total_remaining},'${escH(c.title)}',${c.collection_type==='monthly_fee'})">💵 تسجيل دفعة</button>`:''}
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
+      </div>
+    </div>`;
+    document.body.append(overlay);
+    overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  } catch(e){toast(e.message,'error');}
 }
 
 // ── DATA IMPORT ────────────────────────────────────
@@ -2751,6 +3104,12 @@ window.showEstModal=showEstModal;
 window.submitObligation=submitObligation;
 window.showObligationModal=showObligationModal;
 window.filterObligations=filterObligations;
+// collections
+window.showCollectionModal=showCollectionModal;
+window.showCollectionPaymentModal=showCollectionPaymentModal;
+window.showCollectionDetail=showCollectionDetail;
+window.renderCollections=renderCollections;
+window.switchCollTab=function(tab){collectionsTab=tab;renderCollections();};
 // import
 window.fetchAndPreview=fetchAndPreview;
 window.filterImportRows=filterImportRows;
@@ -2763,6 +3122,7 @@ window.showAssignTaskModal=showAssignTaskModal;
 window.showEmployeeTasks=showEmployeeTasks;
 window.oblTab='upcoming';
 window.oblDays=30;
+window.collectionsTab='establishment';
 
 // ── Boot ───────────────────────────────────────────
 renderApp();
