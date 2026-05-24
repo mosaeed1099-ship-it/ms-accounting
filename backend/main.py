@@ -66,6 +66,7 @@ app = FastAPI(
     description="نظام إدارة مكتب المحاسبة - MS",
     version=settings.APP_VERSION,
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 app.add_middleware(
