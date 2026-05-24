@@ -422,19 +422,10 @@ async def import_files(
             skipped_duplicates += 1
             continue
 
-        # Validate category — map new values to existing PostgreSQL enum values
-        # (until migration converts enum column to varchar)
-        _safe_category_map = {
-            'establishment': 'other',
-            'tax_card': 'id_documents',
-            'national_id': 'id_documents',
-            'vat_certificate': 'tax_return',
-        }
-        cat_value = _safe_category_map.get(f.category, f.category)
-        try:
-            category = DocumentCategory(cat_value)
-        except ValueError:
-            category = DocumentCategory.OTHER
+        # Validate category — use plain string (column is now VARCHAR)
+        _valid_categories = {e.value for e in DocumentCategory}
+        cat_value = f.category if f.category in _valid_categories else "other"
+        category = cat_value  # plain string, no enum wrapper needed
 
         # Get extension from mime type or name
         ext_map = {

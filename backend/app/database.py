@@ -81,16 +81,29 @@ def _run_migrations_pg():
         "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_thumb_url VARCHAR(500)",
         "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_mime_type VARCHAR(100)",
         "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_folder_path VARCHAR(500)",
-        # documents — convert category enum to varchar (with USING clause for PostgreSQL)
+        # documents — convert category enum to varchar (lowercase values)
+        # Step 1: convert enum column to varchar (if still enum type)
         """DO $$ BEGIN
              IF EXISTS (
                SELECT 1 FROM information_schema.columns
                WHERE table_name='documents' AND column_name='category'
                AND data_type='USER-DEFINED'
              ) THEN
-               ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(50) USING category::text;
+               ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(50) USING lower(category::text);
              END IF;
            END $$""",
+        # Step 2: normalize any existing uppercase varchar values to lowercase
+        """DO $$ BEGIN
+             IF EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name='documents' AND column_name='category'
+               AND data_type IN ('character varying', 'varchar')
+             ) THEN
+               UPDATE documents SET category = lower(category) WHERE category != lower(category);
+             END IF;
+           END $$""",
+        # Step 3: drop the old enum type if no longer used (cleanup)
+        "DROP TYPE IF EXISTS documentcategory",
         # documents — allow null file_path for gdrive-only docs
         """DO $$ BEGIN
              IF EXISTS (

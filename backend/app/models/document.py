@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text, ForeignKey, BigInteger
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -47,8 +47,7 @@ class Document(Base):
     file_path = Column(String(500))          # local path (optional if gdrive)
     file_type = Column(String(50))
     file_size = Column(BigInteger)
-    category = Column(Enum(DocumentCategory, values_callable=lambda x: [e.value for e in x]),
-                       default=DocumentCategory.OTHER)
+    category = Column(String(50), default="other")
     client_id = Column(Integer, ForeignKey("clients.id"))
     description = Column(Text)
     tags = Column(String(500))
