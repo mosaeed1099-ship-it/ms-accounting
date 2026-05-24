@@ -27,13 +27,16 @@ class ClientCreate(BaseModel):
     city: Optional[str] = None
     commercial_register: Optional[str] = None
     tax_number: Optional[str] = None
+    vat_number: Optional[str] = None
     national_id: Optional[str] = None
     activity: Optional[str] = None
     activity_code: Optional[str] = None
     tax_type: TaxType = TaxType.VAT
+    monthly_fee: float = 0
     contract_value: float = 0
     payment_terms: int = 30
     credit_limit: float = 0
+    tax_obligations: Optional[list] = None
     contract_start: Optional[date] = None
     contract_end: Optional[date] = None
     contract_renewal_date: Optional[date] = None
@@ -55,12 +58,15 @@ class ClientUpdate(BaseModel):
     city: Optional[str] = None
     commercial_register: Optional[str] = None
     tax_number: Optional[str] = None
+    vat_number: Optional[str] = None
     national_id: Optional[str] = None
     activity: Optional[str] = None
     tax_type: Optional[TaxType] = None
+    monthly_fee: Optional[float] = None
     contract_value: Optional[float] = None
     payment_terms: Optional[int] = None
     credit_limit: Optional[float] = None
+    tax_obligations: Optional[list] = None
     contract_start: Optional[date] = None
     contract_end: Optional[date] = None
     contract_renewal_date: Optional[date] = None
@@ -90,10 +96,13 @@ def client_to_dict(client: Client) -> dict:
         "city": client.city,
         "commercial_register": client.commercial_register,
         "tax_number": client.tax_number,
+        "vat_number": client.vat_number,
         "national_id": client.national_id,
         "activity": client.activity,
         "activity_code": client.activity_code,
         "tax_type": client.tax_type,
+        "monthly_fee": client.monthly_fee,
+        "tax_obligations": client.tax_obligations,
         "contract_value": client.contract_value,
         "payment_terms": client.payment_terms,
         "credit_limit": client.credit_limit,
