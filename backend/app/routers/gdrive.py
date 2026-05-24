@@ -21,6 +21,9 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.config import settings
 
+# requests is used lazily inside functions (not imported at module level)
+# to avoid import failures if the package is not installed
+
 router = APIRouter(prefix="/api/gdrive", tags=["gdrive"])
 
 # ─── Keyword → Category mapping ──────────────────────────────────────────────
@@ -137,14 +140,17 @@ def extract_folder_id(url: str) -> Optional[str]:
 
 def list_drive_folder_with_api(folder_id: str, api_key: str) -> List[dict]:
     """List files in a Drive folder using Google Drive API v3."""
-    import requests
+    try:
+        import requests as _requests
+    except ImportError:
+        raise HTTPException(status_code=500, detail="مكتبة requests غير مثبتة. تحقق من requirements.txt")
     files = []
     page_token = None
 
     while True:
         params = {
             'q': f"'{folder_id}' in parents and trashed=false",
-            'key': api_key,
+            'key': api_key,  # type: ignore
             'fields': 'nextPageToken,files(id,name,mimeType,size,createdTime,parents,webViewLink,thumbnailLink)',
             'pageSize': 1000,
             'includeItemsFromAllDrives': True,
@@ -153,7 +159,7 @@ def list_drive_folder_with_api(folder_id: str, api_key: str) -> List[dict]:
         if page_token:
             params['pageToken'] = page_token
 
-        resp = requests.get('https://www.googleapis.com/drive/v3/files', params=params)
+        resp = _requests.get('https://www.googleapis.com/drive/v3/files', params=params)
         if resp.status_code != 200:
             raise HTTPException(status_code=400,
                                 detail=f"Drive API error: {resp.status_code} — {resp.text[:200]}")
@@ -182,14 +188,17 @@ def list_drive_folder_public(folder_id: str) -> List[dict]:
     List files from a public Google Drive folder without API key.
     Parses the embedded JSON data from the Drive folder HTML page.
     """
-    import requests
+    try:
+        import requests as _requests
+    except ImportError:
+        raise HTTPException(status_code=500, detail="مكتبة requests غير مثبتة")
 
     url = f"https://drive.google.com/drive/folders/{folder_id}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
 
-    resp = requests.get(url, headers=headers, timeout=15)
+    resp = _requests.get(url, headers=headers, timeout=15)
     if resp.status_code != 200:
         raise HTTPException(status_code=400,
                             detail=f"تعذر الوصول إلى المجلد. تأكد أن الرابط صحيح وأن المجلد مشترك عاماً.")
