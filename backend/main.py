@@ -35,8 +35,20 @@ def seed_admin():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_tables()
-    seed_admin()
+    import time
+    # Retry DB init up to 60s — Postgres may still be starting
+    for attempt in range(12):
+        try:
+            create_tables()
+            seed_admin()
+            print("✅ Database ready")
+            break
+        except Exception as exc:
+            if attempt < 11:
+                print(f"⏳ DB not ready (attempt {attempt+1}/12): {exc} — retrying in 5s")
+                time.sleep(5)
+            else:
+                print(f"⚠️  DB init failed after 12 attempts: {exc} — starting anyway")
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.BACKUP_DIR, exist_ok=True)
     yield
