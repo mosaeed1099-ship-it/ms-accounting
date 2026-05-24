@@ -64,7 +64,7 @@ async def list_documents(
                 "file_path": make_url(d),
                 "file_type": d.file_type,
                 "file_size": d.file_size,
-                "category": d.category,
+                "category": d.category.lower() if isinstance(d.category, str) else (d.category.value if hasattr(d.category, 'value') else str(d.category)),
                 "client_id": d.client_id,
                 "client_name": d.client.name if d.client else None,
                 "description": d.description,

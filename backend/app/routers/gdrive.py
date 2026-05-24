@@ -478,6 +478,35 @@ async def import_files(
     )
 
 
+class BulkClientLinkItem(BaseModel):
+    gdrive_file_id: str
+    client_id: int
+
+
+class BulkClientLinkRequest(BaseModel):
+    items: List[BulkClientLinkItem]
+
+
+@router.post("/bulk-link-clients")
+async def bulk_link_clients(
+    req: BulkClientLinkRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk-update client_id for documents by their gdrive_file_id."""
+    updated = 0
+    not_found = 0
+    for item in req.items:
+        doc = db.query(Document).filter(Document.gdrive_file_id == item.gdrive_file_id).first()
+        if doc:
+            doc.client_id = item.client_id
+            updated += 1
+        else:
+            not_found += 1
+    db.commit()
+    return {"updated": updated, "not_found": not_found}
+
+
 @router.get("/proxy/{file_id}")
 async def proxy_file(
     file_id: str,
