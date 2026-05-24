@@ -45,14 +45,14 @@ async def list_documents(
     total = query.count()
     docs = query.order_by(Document.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
-    def make_url(file_path: str) -> str:
-        """Convert stored file_path to a publicly accessible URL"""
-        if not file_path:
+    def make_url(d) -> Optional[str]:
+        """Return accessible URL: Drive view URL or local path."""
+        if d.gdrive_view_url:
+            return d.gdrive_view_url
+        if not d.file_path:
             return None
-        # file_path is like "uploads/4/filename.png"
-        # normalize to forward slashes and strip leading slash
-        normalized = file_path.replace("\\", "/").lstrip("/")
-        return normalized  # frontend will prepend API base
+        normalized = d.file_path.replace("\\", "/").lstrip("/")
+        return normalized
 
     return {
         "total": total,
@@ -61,7 +61,7 @@ async def list_documents(
                 "id": d.id,
                 "name": d.name,
                 "original_name": d.original_name,
-                "file_path": make_url(d.file_path),
+                "file_path": make_url(d),
                 "file_type": d.file_type,
                 "file_size": d.file_size,
                 "category": d.category,
@@ -73,6 +73,11 @@ async def list_documents(
                 "month": d.month,
                 "uploaded_by": d.uploader.name if d.uploader else None,
                 "created_at": d.created_at.isoformat() if d.created_at else None,
+                # Drive-specific
+                "gdrive_file_id": d.gdrive_file_id,
+                "gdrive_view_url": d.gdrive_view_url,
+                "gdrive_folder_path": d.gdrive_folder_path,
+                "source": "gdrive" if d.gdrive_file_id else "upload",
             }
             for d in docs
         ],

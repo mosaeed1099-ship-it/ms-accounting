@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: Optional[str] = None
 
+    # Google Drive Integration
+    GOOGLE_DRIVE_API_KEY: Optional[str] = None
+
     # Email / SMTP
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

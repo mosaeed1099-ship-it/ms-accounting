@@ -75,6 +75,24 @@ def _run_migrations_pg():
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS period_year INTEGER",
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS period_label VARCHAR(50)",
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS included_obligations JSON",
+        # documents — Google Drive fields
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_file_id VARCHAR(100)",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_view_url VARCHAR(500)",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_thumb_url VARCHAR(500)",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_mime_type VARCHAR(100)",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS gdrive_folder_path VARCHAR(500)",
+        # documents — new category values (convert enum to varchar if needed)
+        """DO $$ BEGIN
+             IF EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name='documents' AND column_name='category'
+               AND data_type='USER-DEFINED'
+             ) THEN
+               ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(50);
+             END IF;
+           END $$""",
+        # allow null file_path for gdrive-only docs
+        "ALTER TABLE documents ALTER COLUMN file_path DROP NOT NULL",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -101,6 +119,11 @@ def _run_migrations_sqlite():
         ("invoices", "period_year", "INTEGER"),
         ("invoices", "period_label", "TEXT"),
         ("invoices", "included_obligations", "TEXT"),
+        ("documents", "gdrive_file_id", "TEXT"),
+        ("documents", "gdrive_view_url", "TEXT"),
+        ("documents", "gdrive_thumb_url", "TEXT"),
+        ("documents", "gdrive_mime_type", "TEXT"),
+        ("documents", "gdrive_folder_path", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:
