@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+*.egg-info/
+
+# Database (local only — cloud uses PostgreSQL)
+*.db
+*.sqlite3
+backend/ms_accounting.db
+
+# Environment secrets
+.env
+backend/.env
+*.env.local
+
+# Uploads & backups (use cloud storage in production)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/backups/*
+!backend/backups/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

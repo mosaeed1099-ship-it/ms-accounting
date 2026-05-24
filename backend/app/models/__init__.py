@@ -1,0 +1,29 @@
+from app.models.user import User, UserRole
+from app.models.client import Client, ClientType, ClientStatus, TaxType
+from app.models.client_contact import ClientContact
+from app.models.invoice import Invoice, InvoiceItem, Payment, InvoiceStatus
+from app.models.task import Task, TaskComment, TaskStatus, TaskPriority, TaskCategory
+from app.models.document import Document, DocumentCategory
+from app.models.tax import TaxReturn, TaxReturnType, TaxReturnStatus
+from app.models.activity import ActivityLog
+
+# CRM/ERP Models
+from app.models.lead import Lead, LeadActivity, Meeting, FollowUp, LeadStatus, LeadSource
+from app.models.quotation import Quotation
+from app.models.establishment import CompanyEstablishment, CompanyType, EstablishmentStatus
+from app.models.obligation import TaxObligation, ObligationInstance, ObligationStatus, ObligationType, Notification
+
+__all__ = [
+    "User", "UserRole",
+    "Client", "ClientType", "ClientStatus", "TaxType",
+    "ClientContact",
+    "Invoice", "InvoiceItem", "Payment", "InvoiceStatus",
+    "Task", "TaskComment", "TaskStatus", "TaskPriority", "TaskCategory",
+    "Document", "DocumentCategory",
+    "TaxReturn", "TaxReturnType", "TaxReturnStatus",
+    "ActivityLog",
+    "Lead", "LeadActivity", "Meeting", "FollowUp", "LeadStatus", "LeadSource",
+    "Quotation",
+    "CompanyEstablishment", "CompanyType", "EstablishmentStatus",
+    "TaxObligation", "ObligationInstance", "ObligationStatus", "ObligationType", "Notification",
+]
