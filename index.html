@@ -1191,11 +1191,24 @@ async function loadDocuments() {
   } catch(e){toast(e.message,'error')}
 }
 
-const DOC_CAT_ICON={contract:'📝',invoice:'📄',tax_return:'🧾',financial_statement:'📊',id_documents:'🪪',commercial_register:'🏢',bank_statement:'🏦',payroll:'💰',other:'📁'};
-const DOC_CAT_LABEL={contract:'عقد',invoice:'فاتورة',tax_return:'إقرار ضريبي',financial_statement:'قوائم مالية',id_documents:'وثائق هوية',commercial_register:'سجل تجاري',bank_statement:'كشف بنكي',payroll:'مرتبات',other:'أخرى'};
+const DOC_CAT_ICON={
+  contract:'📝',invoice:'📄',tax_return:'🧾',financial_statement:'📊',
+  id_documents:'🪪',commercial_register:'🏢',tax_card:'💳',
+  vat_certificate:'✅',bank_statement:'🏦',payroll:'💰',
+  establishment:'🏗️',national_id:'🪪',other:'📁'
+};
+const DOC_CAT_LABEL={
+  contract:'عقد',invoice:'فاتورة',tax_return:'إقرار ضريبي',
+  financial_statement:'قوائم مالية',id_documents:'وثائق هوية',
+  commercial_register:'سجل تجاري',tax_card:'بطاقة ضريبية',
+  vat_certificate:'شهادة ق.م.ض',bank_statement:'كشف بنكي',
+  payroll:'مرتبات',establishment:'تأسيس',national_id:'رقم قومي',other:'أخرى'
+};
 
 function docFileUrl(d){
-  if(!d||!d.file_path) return null;
+  if(!d) return null;
+  if(d.gdrive_view_url) return d.gdrive_view_url;
+  if(!d.file_path) return null;
   const parts=d.file_path.replace(/\\/g,'/').split('/');
   return API+'/'+parts.map(p=>encodeURIComponent(p)).join('/');
 }
@@ -1208,46 +1221,352 @@ function openDoc(idx){
   window.open(url,'_blank');
 }
 
+// ── FILTER state ──
+let docCatFilter='', docClientFilter='', docSearchQ='';
+
 function renderDocuments() {
   const main=document.getElementById('main');
   main.className='page';
   const imgExts=['.jpg','.jpeg','.png','.gif','.webp'];
 
+  // Filter
+  let filtered=docsData;
+  if(docCatFilter) filtered=filtered.filter(d=>d.category===docCatFilter);
+  if(docClientFilter) filtered=filtered.filter(d=>String(d.client_id)===docClientFilter);
+  if(docSearchQ) filtered=filtered.filter(d=>(d.name||'').toLowerCase().includes(docSearchQ.toLowerCase())||(d.client_name||'').toLowerCase().includes(docSearchQ.toLowerCase()));
+
+  // Group by client
+  const grouped={};
+  filtered.forEach(d=>{
+    const key=d.client_id?String(d.client_id):'__general__';
+    if(!grouped[key]) grouped[key]={client_name:d.client_name||'عام',docs:[]};
+    grouped[key].docs.push(d);
+  });
+
   function docCard(d,idx){
     const url=docFileUrl(d);
     const ext=(d.file_type||'').toLowerCase();
     const isImg=imgExts.includes(ext);
+    const isDrive=!!d.gdrive_file_id;
     const sizeTxt=d.file_size?(d.file_size<1024*1024?(d.file_size/1024).toFixed(1)+' KB':(d.file_size/1024/1024).toFixed(2)+' MB'):'';
-    const clientBadge=d.client_name?`<span style="font-size:10px;color:#64748b;background:#f1f5f9;padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:6px">👤 ${escH(d.client_name)}</span>`:'';
     const icon=DOC_CAT_ICON[d.category]||'📁';
+    const driveBadge=isDrive?`<span style="font-size:9px;background:#e3f0ff;color:#1a73e8;padding:1px 6px;border-radius:4px;font-weight:700">
+      <svg width="9" height="9" viewBox="0 0 87.3 78" fill="none" style="vertical-align:middle;margin-right:2px"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L38 42.55H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-14-24.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 45.5c-.8 1.4-1.2 2.95-1.2 4.5h38z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57c.8-1.4 1.2-2.95 1.2-4.5H49.3l8.1 15.45z" fill="#ea4335"/><path d="M43.65 25 57.65.8C56.3 0 54.75-.4 53.2-.4H34.1c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/><path d="M49.3 52.05H87.3c0-1.55-.4-3.1-1.2-4.5L71.15 20.3 57.65.8 43.65 25z" fill="#2684fc"/><path d="M13.8 76.8c1.35.8 2.9 1.2 4.45 1.2h50.8c1.55 0 3.1-.4 4.45-1.2L38 42.55l-24.2 34.25z" fill="#ffba00"/></svg>Drive
+    </span>`:'';
     const preview=isImg&&url
-      ?`<div style="height:110px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:#f8fafc;border:1px solid #e2e8f0">
-          <img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='<div style=&quot;text-align:center;padding:35px;font-size:32px&quot;>${icon}</div>'"/>
+      ?`<div style="height:90px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:#f8fafc;border:1px solid #e2e8f0">
+          <img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='<div style=&quot;text-align:center;padding:25px;font-size:28px&quot;>${icon}</div>'"/>
         </div>`
-      :`<div style="font-size:38px;margin-bottom:10px;text-align:center;padding:10px 0">${icon}</div>`;
-    return `<div class="card" style="padding:14px;cursor:pointer;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" onclick="openDoc(${idx})">
+      :`<div style="font-size:34px;margin-bottom:8px;text-align:center;padding:8px 0">${icon}</div>`;
+    return `<div class="card" style="padding:12px;cursor:pointer;transition:transform .15s,box-shadow .15s;position:relative" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" onclick="openDoc(${idx})">
       ${preview}
-      <div style="font-size:12px;font-weight:600;color:#1e293b;margin-bottom:5px;word-break:break-word;line-height:1.4">${escH(d.original_name||d.name||'')}</div>
-      ${clientBadge}
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
-        <span class="badge badge-gray" style="font-size:10px">${DOC_CAT_LABEL[d.category]||d.category||'أخرى'}</span>
-        <span style="font-size:10px;color:#94a3b8">${sizeTxt}</span>
+      <div style="font-size:11px;font-weight:600;color:#1e293b;margin-bottom:5px;word-break:break-word;line-height:1.4">${escH(d.original_name||d.name||'')}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:3px;margin-bottom:4px">
+        <span class="badge badge-gray" style="font-size:9px">${DOC_CAT_LABEL[d.category]||'أخرى'}</span>
+        ${driveBadge}
+        <span style="font-size:9px;color:#94a3b8">${sizeTxt}</span>
       </div>
-      <div style="font-size:10px;color:#cbd5e1;margin-top:5px">${dateAr(d.created_at)}</div>
+      <div style="font-size:10px;color:#cbd5e1">${dateAr(d.created_at)}</div>
     </div>`;
   }
 
+  // Build unique client list for filter
+  const clientOpts=[...new Map(docsData.filter(d=>d.client_id).map(d=>[d.client_id,d.client_name])).entries()];
+
   main.innerHTML=`
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-    <span style="font-size:13px;color:#64748b;font-weight:600">${docsData.length} ملف مرفوع</span>
-    <button class="btn btn-primary" onclick="showUploadModal()">⬆️ رفع ملف</button>
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:13px;color:#64748b;font-weight:600">${docsData.length} ملف إجمالي</span>
+      <span style="font-size:13px;color:#1a73e8;font-weight:600">${docsData.filter(d=>d.gdrive_file_id).length} من Drive</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="showDriveImportWizard()" style="background:#e3f0ff;color:#1a73e8;border-color:#bbd4f8;font-weight:700">
+        <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none" style="vertical-align:middle;margin-left:4px"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L38 42.55H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-14-24.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 45.5c-.8 1.4-1.2 2.95-1.2 4.5h38z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57c.8-1.4 1.2-2.95 1.2-4.5H49.3l8.1 15.45z" fill="#ea4335"/><path d="M43.65 25 57.65.8C56.3 0 54.75-.4 53.2-.4H34.1c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/><path d="M49.3 52.05H87.3c0-1.55-.4-3.1-1.2-4.5L71.15 20.3 57.65.8 43.65 25z" fill="#2684fc"/><path d="M13.8 76.8c1.35.8 2.9 1.2 4.45 1.2h50.8c1.55 0 3.1-.4 4.45-1.2L38 42.55l-24.2 34.25z" fill="#ffba00"/></svg>
+        استيراد من Google Drive
+      </button>
+      <button class="btn btn-primary" onclick="showUploadModal()">⬆️ رفع ملف</button>
+    </div>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
-    ${docsData.length===0
-      ? `<div style="grid-column:1/-1;text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:14px">📁</div><div style="font-size:14px">لا توجد ملفات مرفوعة</div></div>`
-      : docsData.map((d,i)=>docCard(d,i)).join('')}
+
+  <!-- Filters -->
+  <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <input class="input" style="max-width:200px;font-size:12px" placeholder="🔍 بحث في الملفات..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;renderDocuments()"/>
+    <select class="input" style="max-width:180px;font-size:12px" onchange="docCatFilter=this.value;renderDocuments()">
+      <option value="">كل التصنيفات</option>
+      ${Object.entries(DOC_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${docCatFilter===k?'selected':''}>${DOC_CAT_ICON[k]||'📁'} ${v}</option>`).join('')}
+    </select>
+    <select class="input" style="max-width:200px;font-size:12px" onchange="docClientFilter=this.value;renderDocuments()">
+      <option value="">كل العملاء</option>
+      ${clientOpts.map(([id,name])=>`<option value="${id}" ${docClientFilter===String(id)?'selected':''}>${escH(name)}</option>`).join('')}
+    </select>
+  </div>
+
+  <!-- Files Grid (grouped by client) -->
+  ${Object.keys(grouped).length===0
+    ? `<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:14px">📁</div><div style="font-size:14px">لا توجد ملفات</div></div>`
+    : Object.entries(grouped).map(([key,g])=>`
+        <div style="margin-bottom:24px">
+          <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+            <span style="background:#f1f5f9;border-radius:6px;padding:3px 10px">👤 ${escH(g.client_name)}</span>
+            <span style="color:#94a3b8;font-weight:400">${g.docs.length} ملف</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px">
+            ${g.docs.map(d=>docCard(d,docsData.indexOf(d))).join('')}
+          </div>
+        </div>`).join('')}`;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GOOGLE DRIVE IMPORT WIZARD
+// ──────────────────────────────────────────────────────────────────────────────
+let driveWizardOverlay=null;
+let driveScannedFiles=[];
+let driveClientsCache=[];
+
+async function showDriveImportWizard() {
+  // Load clients
+  if(!driveClientsCache.length) {
+    try { const d=await api('GET','/api/clients?page_size=200'); driveClientsCache=d?.items||[]; } catch(e){}
+  }
+
+  driveWizardOverlay=document.createElement('div');
+  driveWizardOverlay.className='modal-overlay';
+  driveWizardOverlay.innerHTML=`<div class="modal" style="max-width:680px;height:90vh;display:flex;flex-direction:column">
+    <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0;display:flex;align-items:center;gap:8px">
+          <svg width="20" height="18" viewBox="0 0 87.3 78" fill="none"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L38 42.55H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-14-24.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 45.5c-.8 1.4-1.2 2.95-1.2 4.5h38z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57c.8-1.4 1.2-2.95 1.2-4.5H49.3l8.1 15.45z" fill="#ea4335"/><path d="M43.65 25 57.65.8C56.3 0 54.75-.4 53.2-.4H34.1c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/><path d="M49.3 52.05H87.3c0-1.55-.4-3.1-1.2-4.5L71.15 20.3 57.65.8 43.65 25z" fill="#2684fc"/><path d="M13.8 76.8c1.35.8 2.9 1.2 4.45 1.2h50.8c1.55 0 3.1-.4 4.45-1.2L38 42.55l-24.2 34.25z" fill="#ffba00"/></svg>
+          استيراد من Google Drive
+        </h2>
+        <div id="driveWizardStep" style="font-size:11px;color:#94a3b8;margin-top:2px">الخطوة 1 من 3 — أدخل رابط المجلد</div>
+      </div>
+      <button onclick="driveWizardOverlay.remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+
+    <!-- Step 1: Enter URL -->
+    <div id="driveStep1" style="padding:20px;flex:1;overflow-y:auto">
+      <div style="background:#e3f0ff;border-radius:10px;padding:14px 16px;margin-bottom:20px;border:1px solid #bbd4f8">
+        <div style="font-size:12px;font-weight:700;color:#1a73e8;margin-bottom:6px">📋 كيفية الاستخدام</div>
+        <ol style="font-size:11px;color:#3d5a80;margin:0;padding-right:18px;line-height:2">
+          <li>افتح Google Drive وانتقل للمجلد</li>
+          <li>انقر بزر الماوس الأيمن ← <b>نسخ الرابط (Copy link)</b></li>
+          <li>الصق الرابط أدناه وانقر <b>فحص المجلد</b></li>
+          <li>راجع الملفات وتأكد من ربطها بالعملاء الصحيحين</li>
+          <li>انقر <b>استيراد الكل</b> ✅</li>
+        </ol>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">رابط مجلد Google Drive *</label>
+        <input id="driveFolderUrl" class="input" placeholder="https://drive.google.com/drive/folders/..." style="font-size:13px;direction:ltr"/>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">مثال: https://drive.google.com/drive/folders/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs</div>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">
+          Google Drive API Key
+          <span style="font-weight:400;color:#94a3b8">(اختياري — للمجلدات العامة يعمل بدونه)</span>
+        </label>
+        <input id="driveApiKey" class="input" placeholder="AIzaSy..." style="font-size:13px;direction:ltr"/>
+        <div style="font-size:10px;color:#94a3b8;margin-top:3px">للمجلدات الخاصة أو للمزيد من الملفات: احصل على مفتاح API مجاني من <a href="https://console.cloud.google.com" target="_blank" style="color:#1a73e8">Google Cloud Console</a></div>
+      </div>
+      <div id="driveScanError" style="display:none;background:#fef2f2;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button id="driveScanBtn" class="btn btn-primary" style="width:100%;background:#1a73e8;border-color:#1a73e8" onclick="runDriveScan()">
+        🔍 فحص المجلد واستخراج الملفات
+      </button>
+    </div>
+
+    <!-- Step 2: Review files (hidden initially) -->
+    <div id="driveStep2" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div id="driveScanSummary" style="font-size:12px;color:#374151"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="driveSelectAll(true)">تحديد الكل</button>
+          <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="driveSelectAll(false)">إلغاء الكل</button>
+          <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="driveShowStep(1)">← رجوع</button>
+        </div>
+      </div>
+      <div id="driveFilesList" style="flex:1;overflow-y:auto;padding:16px 20px"></div>
+      <div style="padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end;flex-shrink:0">
+        <button class="btn btn-secondary" onclick="driveWizardOverlay.remove()">إلغاء</button>
+        <button id="driveImportBtn" class="btn btn-primary" style="background:#1a73e8;border-color:#1a73e8" onclick="runDriveImport()">
+          ✅ استيراد الملفات المحددة
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: Result -->
+    <div id="driveStep3" style="display:none;padding:40px;text-align:center">
+      <div id="driveResultIcon" style="font-size:56px;margin-bottom:16px">✅</div>
+      <div id="driveResultMsg" style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:8px"></div>
+      <div id="driveResultDetail" style="font-size:13px;color:#64748b;margin-bottom:24px"></div>
+      <button class="btn btn-primary" onclick="driveWizardOverlay.remove();loadDocuments()">عرض الملفات</button>
+    </div>
+  </div>`;
+
+  document.body.append(driveWizardOverlay);
+  driveWizardOverlay.onclick=e=>{if(e.target===driveWizardOverlay)driveWizardOverlay.remove()};
+}
+
+function driveShowStep(n){
+  [1,2,3].forEach(i=>{
+    const el=document.getElementById('driveStep'+i);
+    if(el) el.style.display=i===n?(i===2?'flex':'block'):'none';
+  });
+  const stepEl=document.getElementById('driveWizardStep');
+  if(stepEl) stepEl.textContent={1:'الخطوة 1 من 3 — أدخل رابط المجلد',2:'الخطوة 2 من 3 — راجع الملفات',3:'الخطوة 3 من 3 — اكتمل الاستيراد'}[n]||'';
+}
+
+async function runDriveScan(){
+  const url=document.getElementById('driveFolderUrl').value.trim();
+  const apiKey=document.getElementById('driveApiKey').value.trim();
+  const errEl=document.getElementById('driveScanError');
+  const btn=document.getElementById('driveScanBtn');
+  errEl.style.display='none';
+
+  if(!url){errEl.textContent='أدخل رابط المجلد أولاً';errEl.style.display='block';return;}
+
+  btn.disabled=true; btn.textContent='⏳ جاري الفحص...';
+  try {
+    const result=await api('POST','/api/gdrive/scan',{
+      folder_url: url,
+      api_key: apiKey||null
+    });
+    if(!result) throw new Error('لم يتم الحصول على نتائج');
+
+    driveScannedFiles=result.files||[];
+
+    // Show step 2
+    driveShowStep(2);
+    const summary=document.getElementById('driveScanSummary');
+    if(summary) summary.innerHTML=`
+      <b>${result.total_files}</b> ملف •
+      <span style="color:#16a34a"><b>${result.matched_files}</b> مرتبط بعميل</span> •
+      <span style="color:#dc2626"><b>${result.unmatched_files}</b> غير مرتبط</span>
+      ${driveScannedFiles.filter(f=>f.is_duplicate).length>0?` • <span style="color:#f59e0b"><b>${driveScannedFiles.filter(f=>f.is_duplicate).length}</b> مكرر</span>`:''}
+    `;
+    renderDriveFilesList();
+  } catch(e){
+    errEl.textContent=e.message||'خطأ في الاتصال بـ Google Drive';
+    errEl.style.display='block';
+  } finally {
+    btn.disabled=false; btn.textContent='🔍 فحص المجلد واستخراج الملفات';
+  }
+}
+
+function renderDriveFilesList(){
+  const container=document.getElementById('driveFilesList');
+  if(!container) return;
+
+  // Group by folder_path
+  const grouped={};
+  driveScannedFiles.forEach((f,i)=>{
+    const key=f.folder_path||'المجلد الرئيسي';
+    if(!grouped[key]) grouped[key]=[];
+    grouped[key].push({...f,_idx:i});
+  });
+
+  container.innerHTML=Object.entries(grouped).map(([folder,files])=>`
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;padding:4px 8px;background:#f8fafc;border-radius:6px">
+        📂 ${escH(folder)}
+      </div>
+      ${files.map(f=>driveFileRow(f)).join('')}
+    </div>
+  `).join('');
+}
+
+function driveFileRow(f){
+  const isDup=f.is_duplicate;
+  const ext=(f.name||'').split('.').pop().toLowerCase();
+  const iconMap={pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',xlsx:'📊',xls:'📊',docx:'📝',doc:'📝',csv:'📊'};
+  const fileIcon=iconMap[ext]||'📁';
+  const clientOpts=driveClientsCache.map(c=>
+    `<option value="${c.id}" ${f.suggested_client_id===c.id?'selected':''}>${escH(c.name)}</option>`
+  ).join('');
+
+  return `<div id="driveRow_${f._idx}" style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid ${isDup?'#fef3c7':'#e2e8f0'};border-radius:8px;margin-bottom:8px;background:${isDup?'#fffbeb':'#fff'};transition:.15s" ${isDup?'title="هذا الملف موجود مسبقاً"':''}>
+    <input type="checkbox" id="driveChk_${f._idx}" ${isDup?'':'checked'} style="margin-top:3px;flex-shrink:0;width:16px;height:16px;cursor:pointer" onchange="updateDriveImportBtn()"/>
+    <div style="font-size:22px;flex-shrink:0">${fileIcon}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escH(f.name)}">${escH(f.name)}</div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <select id="driveCat_${f._idx}" class="input" style="font-size:11px;padding:3px 6px;height:auto;max-width:160px">
+          ${Object.entries(DOC_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${f.suggested_category===k?'selected':''}>${DOC_CAT_ICON[k]||'📁'} ${v}</option>`).join('')}
+        </select>
+        <select id="driveCli_${f._idx}" class="input" style="font-size:11px;padding:3px 6px;height:auto;max-width:180px">
+          <option value="">— بدون عميل —</option>
+          ${clientOpts}
+        </select>
+      </div>
+      ${f.suggested_client_name?`<div style="font-size:10px;color:#16a34a;margin-top:3px">✓ مرتبط بـ ${escH(f.suggested_client_name)}</div>`:'<div style="font-size:10px;color:#f59e0b;margin-top:3px">⚠ غير مرتبط بعميل</div>'}
+      ${isDup?`<div style="font-size:10px;color:#d97706;margin-top:3px">⚠ موجود مسبقاً في النظام</div>`:''}
+    </div>
+    <a href="${escH(f.view_url)}" target="_blank" style="color:#64748b;font-size:18px;text-decoration:none;flex-shrink:0" title="فتح في Drive">🔗</a>
   </div>`;
 }
+
+function driveSelectAll(checked){
+  driveScannedFiles.forEach((_,i)=>{
+    const chk=document.getElementById('driveChk_'+i);
+    if(chk) chk.checked=checked;
+  });
+  updateDriveImportBtn();
+}
+
+function updateDriveImportBtn(){
+  const count=driveScannedFiles.filter((_,i)=>{
+    const chk=document.getElementById('driveChk_'+i);
+    return chk&&chk.checked;
+  }).length;
+  const btn=document.getElementById('driveImportBtn');
+  if(btn) btn.textContent=`✅ استيراد ${count} ملف`;
+}
+
+async function runDriveImport(){
+  const btn=document.getElementById('driveImportBtn');
+  btn.disabled=true; btn.textContent='⏳ جاري الاستيراد...';
+
+  const filesToImport=driveScannedFiles
+    .map((f,i)=>{
+      const chk=document.getElementById('driveChk_'+i);
+      if(!chk||!chk.checked) return null;
+      const catSel=document.getElementById('driveCat_'+i);
+      const cliSel=document.getElementById('driveCli_'+i);
+      return {
+        gdrive_file_id: f.id,
+        name: f.name,
+        client_id: cliSel&&cliSel.value?parseInt(cliSel.value):null,
+        category: catSel?catSel.value:'other',
+        folder_path: f.folder_path||'',
+        mime_type: f.mime_type||null,
+        size: f.size||null,
+      };
+    })
+    .filter(Boolean);
+
+  if(!filesToImport.length){toast('لم تحدد أي ملفات','error');btn.disabled=false;btn.textContent='✅ استيراد الملفات المحددة';return;}
+
+  try {
+    const result=await api('POST','/api/gdrive/import',{files:filesToImport});
+    driveShowStep(3);
+    document.getElementById('driveResultMsg').textContent=`تم استيراد ${result.imported} ملف بنجاح`;
+    document.getElementById('driveResultDetail').innerHTML=`
+      ✅ مستورد: <b>${result.imported}</b> &nbsp;&nbsp;
+      ⚠️ مكرر (تخطي): <b>${result.skipped_duplicates}</b>
+      ${result.errors&&result.errors.length?`<br><span style="color:#dc2626">أخطاء: ${result.errors.join(' | ')}</span>`:''}
+    `;
+  } catch(e){
+    toast(e.message||'خطأ في الاستيراد','error');
+    btn.disabled=false; btn.textContent='✅ استيراد الملفات المحددة';
+  }
+}
+
+window.showDriveImportWizard=showDriveImportWizard;
+window.runDriveScan=runDriveScan;
+window.runDriveImport=runDriveImport;
+window.driveSelectAll=driveSelectAll;
+window.updateDriveImportBtn=updateDriveImportBtn;
+window.driveShowStep=driveShowStep;
 
 async function showUploadModal() {
   let clients=[];
@@ -1272,12 +1591,15 @@ async function showUploadModal() {
       <div>
         <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">التصنيف</label>
         <select id="docCat" class="input">
+          <option value="commercial_register">🏢 سجل تجاري</option>
+          <option value="tax_card">💳 بطاقة ضريبية</option>
+          <option value="vat_certificate">✅ شهادة القيمة المضافة</option>
+          <option value="national_id">🪪 بطاقة رقم قومي</option>
           <option value="contract">📝 عقد</option>
           <option value="invoice">📄 فاتورة</option>
           <option value="tax_return">🧾 إقرار ضريبي</option>
           <option value="financial_statement">📊 قوائم مالية</option>
-          <option value="id_documents">🪪 وثائق هوية</option>
-          <option value="commercial_register">🏢 سجل تجاري</option>
+          <option value="establishment">🏗️ مستندات تأسيس</option>
           <option value="bank_statement">🏦 كشف بنكي</option>
           <option value="payroll">💰 مرتبات</option>
           <option value="other">📁 أخرى</option>
