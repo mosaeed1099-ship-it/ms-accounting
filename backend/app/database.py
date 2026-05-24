@@ -21,7 +21,6 @@ else:
         pool_recycle=300,         # recycle every 5 min
         connect_args={
             "connect_timeout": 10,   # 10s per attempt, avoids infinite hang
-            "sslmode": "require",    # Railway public proxy requires SSL
         },
         echo=settings.DEBUG,
     )
