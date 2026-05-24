@@ -74,7 +74,7 @@ def user_to_dict(user: User, db: Session = None) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -83,7 +83,7 @@ async def list_users(
     return [user_to_dict(u, db) for u in users]
 
 
-@router.post("/")
+@router.post("")
 async def create_user(
     data: UserCreate,
     db: Session = Depends(get_db),

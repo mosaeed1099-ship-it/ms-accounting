@@ -110,7 +110,7 @@ def client_to_dict(client: Client) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_clients(
     q: Optional[str] = Query(None),
     status: Optional[ClientStatus] = None,
@@ -177,7 +177,7 @@ async def get_client(
     return data
 
 
-@router.post("/")
+@router.post("")
 async def create_client(
     data: ClientCreate,
     db: Session = Depends(get_db),

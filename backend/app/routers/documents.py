@@ -20,7 +20,7 @@ def get_file_size(file_path: str) -> int:
     return os.path.getsize(file_path)
 
 
-@router.get("/")
+@router.get("")
 async def list_documents(
     client_id: Optional[int] = None,
     category: Optional[DocumentCategory] = None,

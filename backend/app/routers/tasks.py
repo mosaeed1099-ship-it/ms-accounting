@@ -69,7 +69,7 @@ def task_to_dict(task: Task) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_tasks(
     status: Optional[TaskStatus] = None,
     priority: Optional[TaskPriority] = None,
@@ -146,7 +146,7 @@ async def get_task(task_id: int, db: Session = Depends(get_db), current_user: Us
     return data
 
 
-@router.post("/")
+@router.post("")
 async def create_task(
     data: TaskCreate,
     db: Session = Depends(get_db),

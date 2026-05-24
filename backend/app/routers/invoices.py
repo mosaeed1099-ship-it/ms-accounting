@@ -114,7 +114,7 @@ def invoice_to_dict(invoice: Invoice) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_invoices(
     client_id: Optional[int] = None,
     status: Optional[InvoiceStatus] = None,
@@ -161,7 +161,7 @@ async def get_invoice(invoice_id: int, db: Session = Depends(get_db), current_us
     return invoice_to_dict(invoice)
 
 
-@router.post("/")
+@router.post("")
 async def create_invoice(
     data: InvoiceCreate,
     db: Session = Depends(get_db),

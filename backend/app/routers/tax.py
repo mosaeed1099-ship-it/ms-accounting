@@ -67,7 +67,7 @@ def tax_to_dict(r: TaxReturn) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_tax_returns(
     client_id: Optional[int] = None,
     status: Optional[TaxReturnStatus] = None,
@@ -105,7 +105,7 @@ async def tax_calendar(
     return [tax_to_dict(r) for r in items]
 
 
-@router.post("/")
+@router.post("")
 async def create_tax_return(
     data: TaxReturnCreate,
     db: Session = Depends(get_db),
