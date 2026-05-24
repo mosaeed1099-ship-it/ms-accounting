@@ -107,7 +107,8 @@ async def tasks_board(
     current_user: User = Depends(get_current_user),
 ):
     result = {}
-    for status in TaskStatus:
+    board_statuses = [TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.CANCELLED]
+    for status in board_statuses:
         tasks = db.query(Task).filter(Task.status == status).order_by(Task.priority.desc()).limit(50).all()
         result[status] = [task_to_dict(t) for t in tasks]
     return result

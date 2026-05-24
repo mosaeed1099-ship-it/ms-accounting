@@ -1,4 +1,8 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text, Float, Date, ForeignKey
+"""
+أتعاب الحسابات — Accounting Fees (formerly Invoices)
+يدير أتعاب المحاسبة الشهرية المتكررة والفواتير
+"""
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text, Float, Date, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -22,14 +26,57 @@ class PaymentMethod(str, enum.Enum):
     VODAFONE_CASH = "vodafone_cash"
 
 
+class ServiceType(str, enum.Enum):
+    ACCOUNTING = "accounting"          # محاسبة عامة
+    TAX_RETURNS = "tax_returns"        # إقرارات ضريبية
+    PAYROLL = "payroll"                # مرتبات
+    VAT = "vat"                        # قيمة مضافة
+    AUDIT = "audit"                    # مراجعة حسابات
+    CONSULTATION = "consultation"      # استشارات
+    ESTABLISHMENT = "establishment"    # تأسيس
+    OTHER = "other"                    # أخرى
+
+
+# الالتزامات الضريبية في مصر
+EGYPTIAN_TAX_OBLIGATIONS = [
+    {"key": "vat_monthly", "label": "ضريبة القيمة المضافة (شهري)", "frequency": "monthly", "due_day": 15},
+    {"key": "payroll_monthly", "label": "ضريبة المرتبات (شهري)", "frequency": "monthly", "due_day": 15},
+    {"key": "income_quarterly", "label": "ضريبة الدخل (ربع سنوي)", "frequency": "quarterly", "due_day": 30},
+    {"key": "income_annual", "label": "إقرار ضريبة الدخل (سنوي)", "frequency": "annual", "due_day": 31},
+    {"key": "withholding_monthly", "label": "الخصم والإضافة (شهري)", "frequency": "monthly", "due_day": 15},
+    {"key": "stamp_quarterly", "label": "ضريبة الدمغة (ربع سنوي)", "frequency": "quarterly", "due_day": 30},
+    {"key": "work_profit", "label": "ضريبة كسب العمل", "frequency": "monthly", "due_day": 15},
+    {"key": "social_insurance", "label": "التأمينات الاجتماعية", "frequency": "monthly", "due_day": 15},
+    {"key": "tax_facilities", "label": "التسهيلات الضريبية", "frequency": "annual", "due_day": 31},
+    {"key": "quarterly_declaration", "label": "الإقرار الربع سنوي", "frequency": "quarterly", "due_day": 30},
+    {"key": "annual_declaration", "label": "الإقرار السنوي", "frequency": "annual", "due_day": 31},
+    {"key": "form_41", "label": "نموذج 41 (سنوي)", "frequency": "annual", "due_day": 31},
+]
+
+
 class Invoice(Base):
+    """أتعاب الحسابات — Accounting Fees Record"""
     __tablename__ = "invoices"
 
     id = Column(Integer, primary_key=True, index=True)
     invoice_number = Column(String(30), unique=True, index=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
 
-    status = Column(Enum(InvoiceStatus, values_callable=lambda x: [e.value for e in x]), default=InvoiceStatus.DRAFT)
+    # نوع الخدمة
+    service_type = Column(Enum(ServiceType, values_callable=lambda x: [e.value for e in x]),
+                          default=ServiceType.ACCOUNTING)
+
+    # للأتعاب الشهرية المتكررة
+    is_monthly_fee = Column(Boolean, default=True)
+    period_month = Column(Integer)    # الشهر (1-12)
+    period_year = Column(Integer)     # السنة
+    period_label = Column(String(50)) # "يناير 2026"
+
+    # الالتزامات المشمولة في هذا الأتعاب (JSON)
+    included_obligations = Column(JSON, default=list)
+
+    status = Column(Enum(InvoiceStatus, values_callable=lambda x: [e.value for e in x]),
+                    default=InvoiceStatus.DRAFT)
     issue_date = Column(Date, nullable=False)
     due_date = Column(Date)
     payment_date = Column(Date)
@@ -37,7 +84,7 @@ class Invoice(Base):
     subtotal = Column(Float, default=0)
     discount_percent = Column(Float, default=0)
     discount_amount = Column(Float, default=0)
-    tax_percent = Column(Float, default=14)  # Egyptian VAT 14%
+    tax_percent = Column(Float, default=0)
     tax_amount = Column(Float, default=0)
     stamp_tax = Column(Float, default=0)
     withholding_tax = Column(Float, default=0)

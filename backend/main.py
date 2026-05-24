@@ -10,6 +10,7 @@ from app.routers import auth, users, clients, invoices, tasks, documents, tax, d
 from app.routers import leads, establishment, obligations
 from app.routers import import_data
 from app.routers import notifications
+from app.routers import collection
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -91,6 +92,7 @@ app.include_router(establishment.router)
 app.include_router(obligations.router)
 app.include_router(import_data.router)
 app.include_router(notifications.router)
+app.include_router(collection.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

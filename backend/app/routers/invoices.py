@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import date
 from app.database import get_db
-from app.models.invoice import Invoice, InvoiceItem, Payment, InvoiceStatus, PaymentMethod
+from app.models.invoice import Invoice, InvoiceItem, Payment, InvoiceStatus, PaymentMethod, ServiceType
 from app.models.client import Client
 from app.models.activity import ActivityLog
 from app.core.deps import get_current_user
@@ -26,8 +26,14 @@ class InvoiceCreate(BaseModel):
     client_id: int
     issue_date: date
     due_date: Optional[date] = None
+    service_type: Optional[ServiceType] = ServiceType.ACCOUNTING
+    is_monthly_fee: bool = False
+    period_month: Optional[int] = None
+    period_year: Optional[int] = None
+    period_label: Optional[str] = None
+    included_obligations: Optional[list] = []
     discount_percent: float = 0
-    tax_percent: float = 14
+    tax_percent: float = 0
     stamp_tax: float = 0
     withholding_tax: float = 0
     description: Optional[str] = None
@@ -72,6 +78,12 @@ def invoice_to_dict(invoice: Invoice) -> dict:
         "invoice_number": invoice.invoice_number,
         "client_id": invoice.client_id,
         "client_name": invoice.client.name if invoice.client else None,
+        "service_type": invoice.service_type,
+        "is_monthly_fee": invoice.is_monthly_fee,
+        "period_month": invoice.period_month,
+        "period_year": invoice.period_year,
+        "period_label": invoice.period_label,
+        "included_obligations": invoice.included_obligations or [],
         "status": invoice.status,
         "issue_date": invoice.issue_date,
         "due_date": invoice.due_date,
@@ -178,6 +190,12 @@ async def create_invoice(
         client_id=data.client_id,
         issue_date=data.issue_date,
         due_date=data.due_date,
+        service_type=data.service_type,
+        is_monthly_fee=data.is_monthly_fee,
+        period_month=data.period_month,
+        period_year=data.period_year,
+        period_label=data.period_label,
+        included_obligations=data.included_obligations or [],
         discount_percent=data.discount_percent,
         tax_percent=data.tax_percent,
         stamp_tax=data.stamp_tax,
