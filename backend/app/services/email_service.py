@@ -25,9 +25,10 @@ class EmailConfig:
         self.from_name = getattr(settings, 'EMAIL_FROM_NAME', 'MS Accounting')
         self.from_email = getattr(settings, 'EMAIL_FROM', self.smtp_user)
         self.resend_key = os.environ.get('RESEND_API_KEY', '')
-        self.brevo_key  = os.environ.get('BREVO_API_KEY', '')
+        self.brevo_key    = os.environ.get('BREVO_API_KEY', '')
+        self.sendgrid_key = os.environ.get('SENDGRID_API_KEY', '')
         # enabled = any provider is configured
-        self.enabled = bool(self.brevo_key or self.resend_key or (self.smtp_user and self.smtp_pass))
+        self.enabled = bool(self.sendgrid_key or self.brevo_key or self.resend_key or (self.smtp_user and self.smtp_pass))
 
 
 _config = None
@@ -370,6 +371,30 @@ def test_email_template(sent_to: str) -> tuple[str, str]:
 
 
 # ── Core Sender ─────────────────────────────────────────────────────────────
+def _send_via_sendgrid(to_email: str, subject: str, html_body: str, cfg: EmailConfig) -> bool:
+    """Send via SendGrid HTTP API — verified single sender, no domain needed."""
+    import os, requests as req
+    api_key = os.environ.get('SENDGRID_API_KEY', '')
+    if not api_key:
+        raise Exception("SENDGRID_API_KEY not set")
+    sender_email = cfg.smtp_user or "mosaeed1099@gmail.com"
+    resp = req.post(
+        "https://api.sendgrid.com/v3/mail/send",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "personalizations": [{"to": [{"email": to_email}]}],
+            "from": {"email": sender_email, "name": cfg.from_name},
+            "subject": subject,
+            "content": [{"type": "text/html", "value": html_body}],
+        },
+        timeout=20,
+    )
+    if resp.status_code not in (200, 201, 202):
+        raise Exception(f"SendGrid error {resp.status_code}: {resp.text}")
+    logger.info(f"Email sent via SendGrid to {to_email}: {subject}")
+    return True
+
+
 def _send_via_brevo(to_email: str, subject: str, html_body: str, cfg: EmailConfig) -> bool:
     """Send via Brevo (Sendinblue) HTTP API — no domain verification needed."""
     import os, requests as req
@@ -467,28 +492,36 @@ def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
     """
     import os
     cfg = get_config()
-    brevo_key  = os.environ.get('BREVO_API_KEY', '')
-    resend_key = os.environ.get('RESEND_API_KEY', '')
+    sendgrid_key = os.environ.get('SENDGRID_API_KEY', '')
+    brevo_key    = os.environ.get('BREVO_API_KEY', '')
+    resend_key   = os.environ.get('RESEND_API_KEY', '')
 
-    # 1. Brevo — best option: no domain verification needed
+    # 1. SendGrid — verified single sender, sends to anyone
+    if sendgrid_key:
+        try:
+            return _send_via_sendgrid(to_email, subject, html_body, cfg)
+        except Exception as e:
+            logger.warning(f"SendGrid failed: {e}")
+
+    # 2. Brevo fallback
     if brevo_key:
         try:
             return _send_via_brevo(to_email, subject, html_body, cfg)
         except Exception as e:
-            logger.warning(f"Brevo failed, trying Resend: {e}")
+            logger.warning(f"Brevo failed: {e}")
 
-    # 2. Resend — requires verified domain for non-owner emails
+    # 3. Resend fallback (requires verified domain)
     if resend_key:
         try:
             return _send_via_resend(to_email, subject, html_body, cfg)
         except Exception as e:
-            logger.warning(f"Resend failed, trying SMTP: {e}")
+            logger.warning(f"Resend failed: {e}")
 
-    # 3. SMTP fallback
+    # 4. SMTP last resort
     if cfg.smtp_user and cfg.smtp_pass:
         return _send_via_smtp(to_email, subject, html_body, cfg)
 
-    raise Exception("لم يتم تكوين البريد الإلكتروني. أضف BREVO_API_KEY في Railway.")
+    raise Exception("لم يتم تكوين البريد الإلكتروني. أضف SENDGRID_API_KEY في Railway.")
 
 
 async def send_email_async(to_email: str, subject: str, html_body: str) -> bool:
