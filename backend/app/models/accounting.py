@@ -34,7 +34,8 @@ class AccAccount(Base):
     created_at     = Column(DateTime, default=datetime.utcnow)
 
     lines    = relationship("AccJournalLine", back_populates="account")
-    children = relationship("AccAccount", backref="parent", foreign_keys=[parent_id])
+    children = relationship("AccAccount", back_populates="parent")
+    parent   = relationship("AccAccount", back_populates="children", remote_side=[id])
 
 
 # ── Journal Entries ────────────────────────────────────────────────────────────
