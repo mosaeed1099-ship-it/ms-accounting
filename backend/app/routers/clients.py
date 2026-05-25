@@ -202,6 +202,14 @@ async def create_client(
     db.add(log)
     db.commit()
 
+    # ── Smart Automation: auto-generate obligations ──
+    if client.tax_obligations:
+        try:
+            from app.routers.obligations import _auto_generate_for_client
+            _auto_generate_for_client(db, client, months_ahead=12)
+        except Exception:
+            pass  # don't fail client creation if automation fails
+
     return client_to_dict(client)
 
 

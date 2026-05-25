@@ -334,6 +334,25 @@ function renderApp() {
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <span class="topbar-date" style="font-size:12px;color:#94a3b8">${new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</span>
+          <!-- Notification Bell -->
+          <div id="notifBellWrap" style="position:relative">
+            <button id="notifBellBtn" onclick="toggleNotifDropdown()" title="الإشعارات" style="position:relative;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
+              🔔
+              <span id="notifBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#dc2626;color:white;font-size:10px;font-weight:700;border-radius:99px;min-width:18px;height:18px;line-height:18px;text-align:center;padding:0 4px;border:2px solid white"></span>
+            </button>
+            <div id="notifDropdown" style="display:none;position:absolute;top:44px;left:0;width:340px;background:white;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.14);border:1px solid #e8edf3;z-index:200;overflow:hidden">
+              <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:13px;font-weight:700;color:#1e293b">الإشعارات</span>
+                <button onclick="markAllNotifsRead()" style="background:none;border:none;font-size:11px;color:#1a2472;cursor:pointer;font-weight:600;font-family:inherit">تحديد الكل كمقروء ✓</button>
+              </div>
+              <div id="notifList" style="max-height:340px;overflow-y:auto">
+                <div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">⏳ جاري التحميل...</div>
+              </div>
+              <div style="padding:10px 16px;border-top:1px solid #f1f5f9;text-align:center">
+                <button onclick="navigate('obligations');toggleNotifDropdown()" style="background:none;border:none;font-size:12px;color:#1a2472;cursor:pointer;font-weight:600;font-family:inherit">عرض كل الالتزامات ←</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <!-- Page content -->
@@ -355,6 +374,103 @@ function renderApp() {
   fetch(`${API}/`).then(r=>r.ok?null:setApiStatus(false)).catch(()=>setApiStatus(false));
 
   navigate(currentPage);
+
+  // Load notifications count
+  loadNotifCount();
+  // Refresh every 2 minutes
+  setInterval(loadNotifCount, 120000);
+}
+
+// ── Notifications Bell ─────────────────────────────
+let notifData = [], notifDropdownOpen = false;
+
+async function loadNotifCount() {
+  try {
+    const d = await api('GET', '/api/obligations/notifications?unread_only=true&limit=1');
+    if (!d) return;
+    const badge = document.getElementById('notifBadge');
+    if (badge) {
+      const cnt = d.unread_count || 0;
+      badge.textContent = cnt > 99 ? '99+' : cnt;
+      badge.style.display = cnt > 0 ? 'block' : 'none';
+    }
+  } catch(e) {}
+}
+
+async function loadNotifData() {
+  try {
+    const d = await api('GET', '/api/obligations/notifications?limit=20');
+    notifData = d?.items || [];
+    renderNotifList();
+    const badge = document.getElementById('notifBadge');
+    if (badge) {
+      const cnt = d?.unread_count || 0;
+      badge.textContent = cnt > 99 ? '99+' : cnt;
+      badge.style.display = cnt > 0 ? 'block' : 'none';
+    }
+  } catch(e) { document.getElementById('notifList').innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8">تعذّر تحميل الإشعارات</div>'; }
+}
+
+function renderNotifList() {
+  const el = document.getElementById('notifList');
+  if (!el) return;
+  if (!notifData.length) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">🎉 لا توجد إشعارات جديدة</div>';
+    return;
+  }
+  const typeIcon = {warning:'⚠️', info:'📅', error:'🚨', success:'✅', deadline:'⏰'};
+  el.innerHTML = notifData.map(n=>`
+    <div onclick="markNotifRead(${n.id})" style="padding:12px 16px;border-bottom:1px solid #f8fafc;cursor:pointer;background:${n.is_read?'white':'#f0f7ff'};transition:background .15s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='${n.is_read?'white':'#f0f7ff'}'">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <span style="font-size:16px;flex-shrink:0;margin-top:1px">${typeIcon[n.type]||'🔔'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:${n.is_read?600:700};color:#1e293b;margin-bottom:2px;line-height:1.4">${escH(n.title)}</div>
+          <div style="font-size:11px;color:#64748b;line-height:1.4">${escH(n.message||'')}</div>
+          <div style="font-size:10px;color:#cbd5e1;margin-top:4px">${dateAr(n.created_at)}</div>
+        </div>
+        ${!n.is_read?'<span style="width:8px;height:8px;background:#1a73e8;border-radius:50%;flex-shrink:0;margin-top:4px"></span>':''}
+      </div>
+    </div>`).join('');
+}
+
+function toggleNotifDropdown() {
+  notifDropdownOpen = !notifDropdownOpen;
+  const dd = document.getElementById('notifDropdown');
+  if (!dd) return;
+  dd.style.display = notifDropdownOpen ? 'block' : 'none';
+  if (notifDropdownOpen) {
+    loadNotifData();
+    // Close on outside click
+    setTimeout(()=>document.addEventListener('click', closeNotifOnOutside, {once:true}), 10);
+  }
+}
+
+function closeNotifOnOutside(e) {
+  const wrap = document.getElementById('notifBellWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    const dd = document.getElementById('notifDropdown');
+    if (dd) dd.style.display = 'none';
+    notifDropdownOpen = false;
+  }
+}
+
+async function markNotifRead(id) {
+  try {
+    await api('PUT', `/api/obligations/notifications/${id}/read`);
+    notifData = notifData.map(n => n.id===id ? {...n, is_read:true} : n);
+    renderNotifList();
+    loadNotifCount();
+  } catch(e) {}
+}
+
+async function markAllNotifsRead() {
+  try {
+    await api('PUT', '/api/obligations/notifications/read-all');
+    notifData = notifData.map(n=>({...n,is_read:true}));
+    renderNotifList();
+    const badge = document.getElementById('notifBadge');
+    if (badge) badge.style.display = 'none';
+  } catch(e) {}
 }
 
 function setApiStatus(ok) {
@@ -614,42 +730,103 @@ function renderClients() {
   document.getElementById('clientFilterSelect').onchange=e=>{clientFilter=e.target.value;loadClients()};
 }
 
-function showClientDetail(id) {
+async function showClientDetail(id) {
   const c = clientsData.find(x=>x.id===id);
   if(!c) return;
   const typeLabel=CLIENT_TYPE_LABEL;
   const statusLabel={'active':'نشط','inactive':'غير نشط','prospect':'محتمل','suspended':'موقوف'};
+
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
-  overlay.innerHTML=`<div class="modal" style="max-width:520px">
-    <div style="padding:24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+  overlay.innerHTML=`<div class="modal" style="max-width:560px">
+    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
       <div>
-        <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin:0">${c.name}</h2>
+        <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin:0 0 2px">${escH(c.name)}</h2>
         <span style="font-size:12px;color:#64748b">${c.code||''} · ${typeLabel[c.client_type]||c.client_type}</span>
       </div>
       <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
     </div>
-    <div style="padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      ${[
-        ['الهاتف',c.phone||'—'],['المحافظة',c.governorate||'—'],
-        ['الرقم الضريبي',c.tax_number||'—'],['السجل التجاري',c.commercial_register||'—'],
-        ['النشاط',c.activity||'—'],['نوع الضريبة',c.tax_type||'—'],
-        ['قيمة العقد',c.contract_value?money(c.contract_value):'—'],['الحالة',statusLabel[c.status]||c.status],
-      ].map(([k,v])=>`<div><div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">${k}</div><div style="font-size:13.5px;color:#1e293b;font-weight:500">${v}</div></div>`).join('')}
+    <!-- Health Score Banner -->
+    <div id="healthScoreBanner" style="padding:14px 24px;background:linear-gradient(135deg,#f0f7ff,#eef1fb);border-bottom:1px solid #e2e8f0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="healthScoreCircle" style="width:48px;height:48px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#94a3b8;flex-shrink:0">⏳</div>
+        <div style="flex:1">
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:2px">مؤشر صحة العميل</div>
+          <div id="healthScoreBar" style="height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden">
+            <div id="healthScoreBarFill" style="height:100%;background:#94a3b8;width:0;border-radius:99px;transition:width .6s ease"></div>
+          </div>
+        </div>
+        <div id="healthScoreLabel" style="font-size:12px;font-weight:700;color:#94a3b8">جاري...</div>
+      </div>
+      <!-- Health score breakdown (hidden until loaded) -->
+      <div id="healthScoreDetails" style="display:none;margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
     </div>
-    ${c.notes?`<div style="padding:0 24px 16px"><div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">ملاحظات</div><div style="font-size:13px;color:#374151;background:#f8fafc;padding:10px;border-radius:8px">${c.notes}</div></div>`:''}
-    ${c.email?`<div style="padding:0 24px 12px;display:flex;align-items:center;gap:8px;font-size:13px;color:#1a2472">
-      <span>📧</span><span>${escH(c.email)}</span>
+    <div style="padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      ${[
+        ['📞 الهاتف',c.phone||'—'],['🏙️ المحافظة',c.governorate||'—'],
+        ['🔢 الرقم الضريبي',c.tax_number||'—'],['🏢 السجل التجاري',c.commercial_register||'—'],
+        ['⚙️ النشاط',c.activity||'—'],['💳 نوع الضريبة',c.tax_type||'—'],
+        ['💰 قيمة العقد',c.contract_value?money(c.contract_value):'—'],['✅ الحالة',statusLabel[c.status]||c.status],
+      ].map(([k,v])=>`<div><div style="font-size:10px;color:#94a3b8;font-weight:700;margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px">${k}</div><div style="font-size:13px;color:#1e293b;font-weight:600">${escH(String(v))}</div></div>`).join('')}
+    </div>
+    ${c.tax_obligations&&c.tax_obligations.length?`
+    <div style="padding:0 24px 14px">
+      <div style="font-size:11px;color:#94a3b8;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">الالتزامات الضريبية المسجلة</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${c.tax_obligations.map(t=>`<span style="background:#eef1fb;color:#1a2472;font-size:11px;padding:3px 10px;border-radius:6px;font-weight:600">${OBL_ICON[t]||'📋'} ${OBL_NAME_AR[t]||t}</span>`).join('')}
+      </div>
     </div>`:''}
-    <div style="padding:16px 24px 24px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove();showClientModal(${c.id})">✏️ تعديل</button>
-      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove();addInvoiceForClient(${c.id},'${c.name}')">📄 فاتورة جديدة</button>
-      <button class="btn" onclick="showClientEmailModal(${c.id},'${escH(c.name)}','${escH(c.email||'')}')" style="background:#eef1fb;color:#1a2472;border:1.5px solid #b3c4e8">📧 إرسال تذكير</button>
-      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
+    ${c.notes?`<div style="padding:0 24px 14px"><div style="font-size:11px;color:#94a3b8;font-weight:700;margin-bottom:5px">ملاحظات</div><div style="font-size:13px;color:#374151;background:#f8fafc;padding:10px;border-radius:8px">${escH(c.notes)}</div></div>`:''}
+    ${c.email?`<div style="padding:0 24px 12px;display:flex;align-items:center;gap:8px;font-size:13px;color:#1a2472"><span>📧</span><span>${escH(c.email)}</span></div>`:''}
+    <div style="padding:14px 24px 20px;border-top:1px solid #f1f5f9;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="this.closest('.modal-overlay').remove();showClientModal(${c.id})">✏️ تعديل</button>
+      <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove();addInvoiceForClient(${c.id},'${escH(c.name)}')">📄 فاتورة</button>
+      <button class="btn btn-secondary btn-sm" onclick="showUploadModal(${c.id})">📎 رفع ملف</button>
+      <button class="btn btn-secondary btn-sm" onclick="showObligationModal(${c.id})">🔔 التزام</button>
+      ${c.tax_obligations&&c.tax_obligations.length?`<button class="btn btn-sm" style="background:#eef1fb;color:#1a2472;border:1.5px solid #b3c4e8" onclick="autoGenClientObligations(${c.id})">⚙️ Auto-Generate</button>`:''}
+      <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
     </div>
   </div>`;
   document.body.append(overlay);
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+
+  // Load health score async
+  try {
+    const hs = await api('GET', `/api/obligations/health-score/${c.id}`);
+    if (!hs) return;
+    const circle = document.getElementById('healthScoreCircle');
+    const fill = document.getElementById('healthScoreBarFill');
+    const label = document.getElementById('healthScoreLabel');
+    const details = document.getElementById('healthScoreDetails');
+    if (circle) { circle.textContent=hs.score; circle.style.background=hs.color+'22'; circle.style.color=hs.color; }
+    if (fill) { fill.style.width=hs.score+'%'; fill.style.background=hs.color; }
+    if (label) { label.textContent=hs.rating_ar; label.style.color=hs.color; }
+    if (details) {
+      details.style.display='grid';
+      details.innerHTML=[
+        {k:'الدفع',v:hs.details.payment?.score,m:30,icon:'💰'},
+        {k:'الالتزامات',v:hs.details.compliance?.score,m:30,icon:'📋'},
+        {k:'الملفات',v:hs.details.documents?.score,m:20,icon:'📁'},
+        {k:'المهام',v:hs.details.tasks?.score,m:20,icon:'✅'},
+      ].map(d=>`<div style="text-align:center;background:white;border-radius:8px;padding:6px">
+        <div style="font-size:13px">${d.icon}</div>
+        <div style="font-size:13px;font-weight:700;color:#1e293b">${d.v||0}</div>
+        <div style="font-size:9px;color:#94a3b8">/ ${d.m}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:1px">${d.k}</div>
+      </div>`).join('');
+    }
+  } catch(e) {
+    const circle = document.getElementById('healthScoreCircle');
+    if(circle) circle.textContent='—';
+  }
+}
+
+async function autoGenClientObligations(clientId) {
+  try {
+    const r = await api('POST', `/api/obligations/auto-generate/${clientId}`);
+    toast(`⚙️ ${r.message}`);
+    loadNotifCount();
+  } catch(e){ toast(e.message,'error'); }
 }
 
 function showClientModal(id=null) {
@@ -736,19 +913,17 @@ function showClientModal(id=null) {
         </div>
         <div id="cOblGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
           ${[
-            {key:'vat_monthly',label:'ق.م.م شهري'},
-            {key:'payroll_monthly',label:'مرتبات شهري'},
-            {key:'withholding_monthly',label:'خصم وإضافة شهري'},
-            {key:'income_quarterly',label:'ضريبة الدخل ربعي'},
-            {key:'income_annual',label:'إقرار ضريبة الدخل سنوي'},
-            {key:'stamp_quarterly',label:'دمغة ربعي'},
-            {key:'work_profit',label:'ضريبة كسب العمل'},
-            {key:'social_insurance',label:'التأمينات الاجتماعية'},
-            {key:'quarterly_declaration',label:'الإقرار الربع سنوي'},
-            {key:'annual_declaration',label:'الإقرار السنوي'},
-            {key:'form_41',label:'نموذج 41 سنوي'},
-            {key:'tax_facilities',label:'التسهيلات الضريبية'},
-          ].map(o=>{const checked=(c?.tax_obligations||[]).includes(o.key);return`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 6px;border-radius:6px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
+            {key:'vat_monthly',       label:'🧾 ق.م.م شهري'},
+            {key:'vat_quarterly',     label:'🧾 ق.م.م ربعي'},
+            {key:'payroll_monthly',   label:'💼 مرتبات شهري'},
+            {key:'withholding_monthly',label:'✂️ خصم وإضافة شهري'},
+            {key:'insurance_monthly', label:'🛡️ تأمينات شهرية'},
+            {key:'stamp_quarterly',   label:'🔏 دمغة ربعي'},
+            {key:'income_annual',     label:'📊 ضريبة الدخل سنوي'},
+            {key:'corporate_tax',     label:'🏛️ أرباح تجارية سنوي'},
+            {key:'form_41',           label:'📋 نموذج 41 سنوي'},
+            {key:'commercial_register_renewal', label:'📜 تجديد السجل سنوي'},
+          ].map(o=>{const checked=(c?.tax_obligations||[]).includes(o.key);return`<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;padding:5px 8px;border-radius:7px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
             <input type="checkbox" class="cOblCheck" data-key="${o.key}" ${checked?'checked':''} style="width:13px;height:13px;accent-color:#1a2472" onchange="toggleOblLabel(this)">${o.label}
           </label>`}).join('')}
         </div>
@@ -2224,163 +2399,397 @@ function showEstModal() {
 }
 
 // ── OBLIGATIONS ────────────────────────────────────
-let obligationsData=[], upcomingData=[], oblTab='upcoming', oblDays=30;
+// ─────────────────────────────────────────────────────────────────────────────
+// SMART AUTOMATION ENGINE — الالتزامات الضريبية
+// ─────────────────────────────────────────────────────────────────────────────
+const OBL_NAME_AR = {
+  vat_monthly:              'إقرار القيمة المضافة الشهري',
+  vat_quarterly:            'إقرار القيمة المضافة الربعي',
+  payroll_monthly:          'نموذج 1 — مرتبات شهري',
+  withholding_monthly:      'خصم وإضافة شهري',
+  insurance_monthly:        'تأمينات اجتماعية شهرية',
+  stamp_quarterly:          'الدمغة النسبية ربعي',
+  income_annual:            'إقرار ضريبة الدخل السنوي',
+  form_41:                  'نموذج 41 — إقرار المرتبات السنوي',
+  corporate_tax:            'ضريبة الأرباح التجارية السنوية',
+  commercial_register_renewal: 'تجديد السجل التجاري',
+};
+const OBL_ICON = {
+  vat_monthly:'🧾', vat_quarterly:'🧾', payroll_monthly:'💼', withholding_monthly:'✂️',
+  insurance_monthly:'🛡️', stamp_quarterly:'🔏', income_annual:'📊', form_41:'📋',
+  corporate_tax:'🏛️', commercial_register_renewal:'📜',
+};
+const OBL_STATUS_BADGE = {
+  upcoming:'badge-blue', pending:'badge-yellow', in_progress:'badge-purple',
+  submitted:'badge-green', paid:'badge-green', late:'badge-red', exempted:'badge-gray'
+};
+const OBL_STATUS_AR = {
+  upcoming:'قادم', pending:'معلق', in_progress:'قيد التنفيذ',
+  submitted:'مُقدَّم', paid:'مدفوع', late:'متأخر', exempted:'معفى'
+};
+const PRIORITY_COLOR = {urgent:'#dc2626', high:'#f97316', medium:'#d97706', low:'#16a34a'};
+const PRIORITY_AR = {urgent:'عاجل', high:'مرتفع', medium:'متوسط', low:'منخفض'};
+const FREQ_AR = {monthly:'شهري', quarterly:'ربعي', annual:'سنوي'};
+
+let oblStats={}, oblInstances=[], oblTab='upcoming', oblDays=30, oblClientFilter='', oblTypeFilter='', oblStatusFilter='';
+let oblClientsCache=[];
 
 async function loadObligations() {
   try {
-    const [upc,obl]=await Promise.all([
-      api('GET',`/api/obligations/upcoming?days=${oblDays}`),
-      api('GET','/api/obligations'),
+    const [stats, inst] = await Promise.all([
+      api('GET', '/api/obligations/stats'),
+      api('GET', `/api/obligations/instances?days_ahead=${oblDays}&page_size=200`),
     ]);
-    if(!upc) return;
-    upcomingData=upc||[];
-    obligationsData=obl?.items||[];
+    if (!stats) return;
+    oblStats = stats;
+    oblInstances = inst?.items || [];
+    // Also refresh notifications badge
+    loadNotifCount();
     renderObligations();
-  } catch(e){toast(e.message,'error')}
+  } catch(e){ toast(e.message,'error'); }
 }
 
 function renderObligations() {
-  const main=document.getElementById('main');
-  main.className='page';
-  const oblLabel={vat_monthly:'ق.م.م شهري',vat_quarterly:'ق.م.م ربعي',income_annual:'ضريبة الدخل',payroll_monthly:'مرتبات شهري',withholding_monthly:'خصم وإضافة',stamp_quarterly:'دمغة ربعي'};
-  const instBadge={upcoming:'badge-blue',pending:'badge-yellow',submitted:'badge-green',late:'badge-red',exempt:'badge-gray'};
-  const instLabel={upcoming:'قادم',pending:'معلق',submitted:'مُقدَّم',late:'متأخر',exempt:'معفى'};
-  const freqLabel={monthly:'شهري',quarterly:'ربعي',annual:'سنوي'};
-  const overdue=upcomingData.filter(i=>i.days_remaining<0).length;
-  const soon=upcomingData.filter(i=>i.days_remaining>=0&&i.days_remaining<=7).length;
-  main.innerHTML=`
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+  const main = document.getElementById('main');
+  main.className = 'page';
+
+  // Filter instances
+  let filtered = oblInstances;
+  if (oblClientFilter) filtered = filtered.filter(i=>String(i.client_id)===oblClientFilter);
+  if (oblTypeFilter) filtered = filtered.filter(i=>i.obligation_type===oblTypeFilter);
+  if (oblStatusFilter) filtered = filtered.filter(i=>i.status===oblStatusFilter);
+
+  const overdueLst = filtered.filter(i=>i.days_remaining<0);
+  const soonLst = filtered.filter(i=>i.days_remaining>=0&&i.days_remaining<=7);
+  const okLst = filtered.filter(i=>i.days_remaining>7);
+
+  // KPI row
+  const kpiRow = `
+  <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:22px">
     ${[
-      {label:'إجمالي الالتزامات',val:obligationsData.length,icon:'🔔',color:'#1a2472'},
-      {label:'مواعيد قادمة',val:upcomingData.length,icon:'📅',color:'#5b8ec4'},
-      {label:'هذا الأسبوع',val:soon,icon:'⏰',color:'#d97706'},
-      {label:'متأخرة',val:overdue,icon:'🚨',color:'#dc2626'},
-    ].map(k=>`<div class="stat-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:22px">${k.icon}</span></div><div style="font-size:26px;font-weight:800;color:#1e293b">${k.val}</div><div style="font-size:12px;color:#64748b;margin-top:4px">${k.label}</div></div>`).join('')}
-  </div>
+      {label:'التزام نشط',val:oblStats.total_active_obligations||0,icon:'🔔',cls:'stat-blue'},
+      {label:'خلال 30 يوم',val:oblStats.upcoming_30_days||0,icon:'📅',cls:'stat-purple'},
+      {label:'هذا الأسبوع',val:oblStats.due_this_week||0,icon:'⏰',cls:''},
+      {label:'متأخرة',val:oblStats.overdue||0,icon:'🚨',cls:'stat-red'},
+      {label:'مُقدَّم هذا الشهر',val:oblStats.submitted_this_month||0,icon:'✅',cls:'stat-green'},
+      {label:'عملاء لديهم التزامات',val:oblStats.clients_with_obligations||0,icon:'👥',cls:'stat-blue'},
+    ].map(k=>`<div class="stat-card ${k.cls}" style="padding:16px">
+      <div style="font-size:22px;margin-bottom:6px">${k.icon}</div>
+      <div style="font-size:26px;font-weight:800;color:#1e293b;line-height:1">${k.val}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">${k.label}</div>
+    </div>`).join('')}
+  </div>`;
+
+  // Build client options from instances
+  const clientMap = new Map(oblInstances.filter(i=>i.client_id).map(i=>[i.client_id,i.client_name]));
+  const typeSet = [...new Set(oblInstances.map(i=>i.obligation_type).filter(Boolean))];
+
+  // Toolbar
+  const toolbar = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-      ${['upcoming','all'].map(t=>`<button onclick="oblTab='${t}';renderObligations()" class="btn btn-sm ${oblTab===t?'btn-primary':'btn-secondary'}">${t==='upcoming'?`المواعيد القادمة (${upcomingData.length})`:`كل الالتزامات (${obligationsData.length})`}</button>`).join('')}
-      ${oblTab==='upcoming'?`<select onchange="oblDays=+this.value;loadObligations()" class="input" style="width:auto;font-size:12px;padding:5px 10px">
-        ${[7,14,30,60].map(d=>`<option value="${d}" ${oblDays===d?'selected':''}>خلال ${d} يوم</option>`).join('')}
-      </select>`:''}
-      <input id="oblSearch" oninput="filterObligations(this.value)" class="input" style="width:200px;font-size:12px;padding:5px 10px" placeholder="🔍 بحث بالعميل..."/>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblDays=+this.value;loadObligations()">
+        ${[7,14,30,60,90].map(d=>`<option value="${d}" ${oblDays===d?'selected':''}>خلال ${d} يوم</option>`).join('')}
+      </select>
+      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblClientFilter=this.value;renderObligations()">
+        <option value="">كل العملاء</option>
+        ${[...clientMap.entries()].map(([id,name])=>`<option value="${id}" ${oblClientFilter===String(id)?'selected':''}>${escH(name||'')}</option>`).join('')}
+      </select>
+      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblTypeFilter=this.value;renderObligations()">
+        <option value="">كل الأنواع</option>
+        ${typeSet.map(t=>`<option value="${t}" ${oblTypeFilter===t?'selected':''}>${OBL_NAME_AR[t]||t}</option>`).join('')}
+      </select>
+      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblStatusFilter=this.value;renderObligations()">
+        <option value="">كل الحالات</option>
+        ${Object.entries(OBL_STATUS_AR).map(([k,v])=>`<option value="${k}" ${oblStatusFilter===k?'selected':''}>${v}</option>`).join('')}
+      </select>
     </div>
-    <button class="btn btn-primary" onclick="showObligationModal()">+ إضافة التزام</button>
-  </div>
-  ${oblTab==='upcoming'?`
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="runBulkGenerate()" title="توليد الالتزامات لجميع العملاء تلقائياً">⚙️ Auto-Generate الكل</button>
+      <button class="btn btn-secondary" onclick="runRefreshNotifs()">🔔 تحديث الإشعارات</button>
+      <button class="btn btn-primary" onclick="showObligationModal()">+ إضافة التزام</button>
+    </div>
+  </div>`;
+
+  // Instance table builder
+  function instRow(i) {
+    const over = i.days_remaining < 0;
+    const close = i.days_remaining >= 0 && i.days_remaining <= 7;
+    const rowStyle = over ? 'background:#fff5f5' : close ? 'background:#fffbeb' : '';
+    const daysText = over
+      ? `<span style="color:#dc2626;font-weight:700">⚠ ${Math.abs(i.days_remaining)} يوم متأخر</span>`
+      : i.days_remaining === 0
+        ? `<span style="color:#dc2626;font-weight:700">اليوم!</span>`
+        : `<span style="color:${close?'#d97706':'#16a34a'};font-weight:600">${i.days_remaining} يوم</span>`;
+    const prioColor = PRIORITY_COLOR[i.priority] || '#94a3b8';
+    return `<tr style="${rowStyle}" data-id="${i.id}">
+      <td>
+        <div style="font-weight:600;color:#1e293b;font-size:13px">${escH(i.client_name||'—')}</div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:15px">${OBL_ICON[i.obligation_type]||'📋'}</span>
+          <div>
+            <div style="font-size:12px;font-weight:600;color:#374151">${OBL_NAME_AR[i.obligation_type]||i.obligation_type||'—'}</div>
+            <div style="font-size:10px;color:#94a3b8">${i.period_label||''}</div>
+          </div>
+        </div>
+      </td>
+      <td style="font-size:13px">${dateAr(i.due_date)}</td>
+      <td>${daysText}</td>
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;background:${prioColor}22;color:${prioColor};padding:2px 8px;border-radius:99px;font-weight:700">
+          ${PRIORITY_AR[i.priority]||'—'}
+        </span>
+      </td>
+      <td><span class="badge ${OBL_STATUS_BADGE[i.status]||'badge-gray'}">${OBL_STATUS_AR[i.status]||i.status}</span></td>
+      <td style="color:#64748b;font-size:12px">${escH(i.assigned_name||'—')}</td>
+      <td onclick="event.stopPropagation()">
+        <div style="display:flex;gap:4px">
+          ${i.status!=='submitted'&&i.status!=='paid'?`<button class="btn btn-success btn-sm" onclick="submitObligation(${i.id})" title="تقديم">✅</button>`:''}
+          ${i.status!=='paid'?`<button class="btn btn-secondary btn-sm" onclick="showUpdateOblModal(${i.id})" title="تعديل">✏️</button>`:''}
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  const tableSection = `
   <div class="card" style="overflow:hidden">
+    <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:13px;font-weight:700;color:#1e293b">
+        ${filtered.length} التزام
+        ${overdueLst.length?`<span style="color:#dc2626;margin-right:8px">• ${overdueLst.length} متأخر</span>`:''}
+        ${soonLst.length?`<span style="color:#d97706;margin-right:8px">• ${soonLst.length} هذا الأسبوع</span>`:''}
+      </span>
+      <span style="font-size:11px;color:#94a3b8">مرتب حسب الأقرب</span>
+    </div>
+    <div style="overflow-x:auto">
     <table>
-      <thead><tr><th>العميل</th><th>نوع الالتزام</th><th>الفترة</th><th>تاريخ الاستحقاق</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead>
-      <tbody class="obl-tbody">
-        ${upcomingData.length===0?`<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8">لا توجد مواعيد قادمة</td></tr>`:
-          upcomingData.map(inst=>{
-            const over=inst.days_remaining<0;
-            const close=inst.days_remaining>=0&&inst.days_remaining<=7;
-            const rowBg=over?'background:#fff5f5':close?'background:#fffbeb':'';
-            return `<tr style="${rowBg}" data-client="${escH(inst.client_name||'')}">
-              <td style="font-weight:600;color:#1e293b">${escH(inst.client_name||'—')}</td>
-              <td style="font-size:12px">${oblLabel[inst.obligation_type]||inst.obligation_type||'—'}</td>
-              <td style="font-size:12px;color:#64748b">${inst.period_label||'—'}</td>
-              <td style="font-size:13px">${dateAr(inst.due_date)}</td>
-              <td style="font-weight:700;color:${over?'#dc2626':close?'#d97706':'#16a34a'}">
-                ${over?`⚠ متأخر ${Math.abs(inst.days_remaining)} يوم`:inst.days_remaining===0?'اليوم!':inst.days_remaining+' يوم'}
-              </td>
-              <td><span class="badge ${instBadge[inst.status]||'badge-gray'}">${instLabel[inst.status]||inst.status}</span></td>
-              <td>${inst.status!=='submitted'?`<button class="btn btn-success btn-sm" onclick="submitObligation(${inst.id})">✅ تقديم</button>`:''}</td>
-            </tr>`;
-          }).join('')}
+      <thead><tr>
+        <th>العميل</th><th>الالتزام</th><th>الاستحقاق</th><th>المتبقي</th>
+        <th>الأولوية</th><th>الحالة</th><th>المحاسب</th><th>إجراءات</th>
+      </tr></thead>
+      <tbody>
+        ${filtered.length===0
+          ? `<tr><td colspan="8" style="text-align:center;padding:50px;color:#94a3b8"><div style="font-size:40px;margin-bottom:10px">✅</div><div>لا توجد التزامات بالفلاتر المختارة</div></td></tr>`
+          : [...overdueLst,...soonLst,...okLst].map(instRow).join('')}
       </tbody>
     </table>
-  </div>`:
-  `<div class="card" style="overflow:hidden">
-    <table>
-      <thead><tr><th>العميل</th><th>نوع الالتزام</th><th>التكرار</th><th>يوم الاستحقاق</th><th>المحاسب</th><th>عدد الفترات</th></tr></thead>
-      <tbody class="obl-tbody">
-        ${obligationsData.length===0?`<tr><td colspan="6" style="text-align:center;padding:40px;color:#94a3b8">لا توجد التزامات</td></tr>`:
-          obligationsData.map(o=>`<tr data-client="${escH(o.client_name||'')}">
-            <td style="font-weight:600;color:#1e293b">${escH(o.client_name||'—')}</td>
-            <td>${oblLabel[o.obligation_type]||o.obligation_type||'—'}</td>
-            <td>${freqLabel[o.frequency]||o.frequency||'—'}</td>
-            <td>اليوم ${o.due_day}</td>
-            <td style="color:#64748b;font-size:12px">${o.assigned_name||'—'}</td>
-            <td>${o.instances_count||0}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>`}`;
+    </div>
+  </div>`;
+
+  main.innerHTML = kpiRow + toolbar + tableSection;
 }
 
-function filterObligations(q) {
-  const s=q.toLowerCase().trim();
-  const tbody=document.querySelector('.obl-tbody');
-  if(!tbody)return;
-  tbody.querySelectorAll('tr[data-client]').forEach(tr=>{
-    tr.style.display=!s||tr.dataset.client.toLowerCase().includes(s)?'':'none';
-  });
+async function runBulkGenerate() {
+  try {
+    const btn = document.activeElement;
+    if(btn) { btn.disabled=true; btn.textContent='⏳ جاري...'; }
+    const r = await api('POST', '/api/obligations/bulk-generate');
+    toast(`تم: ${r.total_obligations_created} التزام جديد لـ ${r.processed_clients} عميل`);
+    loadObligations();
+  } catch(e){ toast(e.message,'error'); }
+}
+
+async function runRefreshNotifs() {
+  try {
+    const r = await api('POST', '/api/obligations/refresh-notifications');
+    toast(`${r.created_notifications} إشعار جديد`);
+    loadNotifCount();
+  } catch(e){ toast(e.message,'error'); }
 }
 
 async function submitObligation(instanceId) {
   try {
-    await api('PUT',`/api/obligations/instances/${instanceId}`,{status:'submitted',submitted_at:new Date().toISOString()});
-    toast('تم تسجيل التقديم');
+    await api('PUT', `/api/obligations/instances/${instanceId}`, {status:'submitted', submitted_at:new Date().toISOString()});
+    toast('✅ تم تسجيل التقديم');
     loadObligations();
-  } catch(e){toast(e.message,'error')}
+  } catch(e){ toast(e.message,'error'); }
 }
 
-async function showObligationModal() {
-  let clientsList=[];
-  try{const d=await api('GET','/api/clients?limit=200');clientsList=d?.items||[];}catch(e){}
-  {
-    const overlay=document.createElement('div');
-    overlay.className='modal-overlay';
-    overlay.innerHTML=`<div class="modal" style="max-width:460px">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">إضافة التزام ضريبي</h2>
-        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+async function showUpdateOblModal(instanceId) {
+  const inst = oblInstances.find(i=>i.id===instanceId);
+  if (!inst) return;
+  let usersLst=[];
+  try{ const u=await api('GET','/api/users'); usersLst=u||[]; }catch(e){}
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:440px">
+    <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">تعديل الالتزام</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:18px 22px">
+      <div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:#374151">
+        <b>${OBL_ICON[inst.obligation_type]||'📋'} ${OBL_NAME_AR[inst.obligation_type]||inst.obligation_type}</b><br/>
+        ${escH(inst.client_name||'')} • ${inst.period_label||''} • استحقاق ${dateAr(inst.due_date)}
       </div>
-      <div style="padding:20px 24px">
-        <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
-          <select id="oblClient" class="input">
-            <option value="">— اختر العميل —</option>
-            ${clientsList.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
-          </select></div>
-        <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الالتزام</label>
-          <select id="oblType" class="input">
-            <option value="vat_monthly">ق.م.م شهري</option>
-            <option value="vat_quarterly">ق.م.م ربعي</option>
-            <option value="income_annual">ضريبة الدخل السنوية</option>
-            <option value="payroll_monthly">مرتبات شهري</option>
-            <option value="withholding_monthly">خصم وإضافة شهري</option>
-            <option value="stamp_quarterly">دمغة ربعي</option>
-          </select></div>
-        <div class="form-row" style="margin-bottom:14px">
-          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">التكرار</label>
-            <select id="oblFreq" class="input">
-              <option value="monthly">شهري</option><option value="quarterly">ربعي</option><option value="annual">سنوي</option>
-            </select></div>
-          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">يوم الاستحقاق</label>
-            <input id="oblDay" class="input" type="number" value="15" min="1" max="28"/></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
+        <select id="updStatus" class="input">
+          ${Object.entries(OBL_STATUS_AR).map(([k,v])=>`<option value="${k}" ${inst.status===k?'selected':''}>${v}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المبلغ (اختياري)</label>
+          <input id="updAmount" class="input" type="number" placeholder="0" value="${inst.tax_amount||''}"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الغرامة</label>
+          <input id="updPenalty" class="input" type="number" placeholder="0" value="${inst.penalty||''}"/></div>
+      </div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المحاسب المسؤول</label>
+        <select id="updAssigned" class="input">
+          <option value="">— غير محدد —</option>
+          ${usersLst.map(u=>`<option value="${u.id}" ${inst.assigned_to===u.id?'selected':''}>${escH(u.name)}</option>`).join('')}
+        </select></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
+        <textarea id="updNotes" class="input" rows="2">${escH(inst.notes||'')}</textarea></div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="updOblBtn" class="btn btn-primary">💾 حفظ</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('updOblBtn').onclick=async()=>{
+    const btn=document.getElementById('updOblBtn');
+    btn.disabled=true; btn.textContent='جاري...';
+    try {
+      const status=$('#updStatus',overlay).value;
+      const body={status};
+      const amt=$('#updAmount',overlay).value;
+      const pen=$('#updPenalty',overlay).value;
+      const ass=$('#updAssigned',overlay).value;
+      const notes=$('#updNotes',overlay).value;
+      if(amt) body.tax_amount=parseFloat(amt);
+      if(pen) body.penalty=parseFloat(pen);
+      if(ass) body.assigned_to=parseInt(ass);
+      if(notes) body.notes=notes;
+      if(status==='submitted') body.submitted_at=new Date().toISOString();
+      await api('PUT',`/api/obligations/instances/${instanceId}`,body);
+      toast('تم حفظ التعديلات');
+      overlay.remove(); loadObligations();
+    } catch(e){ toast(e.message,'error'); btn.disabled=false; btn.textContent='💾 حفظ'; }
+  };
+}
+
+async function showObligationModal(preClientId=null) {
+  let clientsList=[];
+  try{ const d=await api('GET','/api/clients?page_size=200'); clientsList=d?.items||[]; }catch(e){}
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:500px">
+    <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">🔔 إضافة التزام ضريبي</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:18px 22px">
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
+        <select id="oblClient" class="input">
+          <option value="">— اختر العميل —</option>
+          ${clientsList.map(c=>`<option value="${c.id}" ${preClientId===c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الالتزام</label>
+        <select id="oblType" class="input" onchange="autoFillOblFields(this.value)">
+          <option value="">— اختر النوع —</option>
+          <optgroup label="▸ شهرية">
+            <option value="vat_monthly">🧾 إقرار القيمة المضافة الشهري</option>
+            <option value="payroll_monthly">💼 نموذج 1 — مرتبات شهري</option>
+            <option value="withholding_monthly">✂️ خصم وإضافة شهري</option>
+            <option value="insurance_monthly">🛡️ تأمينات اجتماعية شهرية</option>
+          </optgroup>
+          <optgroup label="▸ ربع سنوية">
+            <option value="vat_quarterly">🧾 إقرار القيمة المضافة الربعي</option>
+            <option value="stamp_quarterly">🔏 الدمغة النسبية ربعي</option>
+          </optgroup>
+          <optgroup label="▸ سنوية">
+            <option value="income_annual">📊 إقرار ضريبة الدخل السنوي</option>
+            <option value="form_41">📋 نموذج 41 — إقرار المرتبات السنوي</option>
+            <option value="corporate_tax">🏛️ ضريبة الأرباح التجارية</option>
+            <option value="commercial_register_renewal">📜 تجديد السجل التجاري</option>
+          </optgroup>
+        </select>
+        <div id="oblTypeDesc" style="font-size:11px;color:#64748b;margin-top:4px;min-height:14px"></div>
+      </div>
+      <div class="form-row" style="margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">التكرار</label>
+          <select id="oblFreq" class="input">
+            <option value="monthly">شهري</option>
+            <option value="quarterly">ربعي</option>
+            <option value="annual">سنوي</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">يوم الاستحقاق</label>
+          <input id="oblDay" class="input" type="number" value="15" min="1" max="31"/>
         </div>
       </div>
-      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:space-between;align-items:center">
+      <button class="btn btn-secondary" style="background:#f0f7ff;color:#1a2472;border-color:#bbd4f8;font-size:12px" onclick="autoGenerateForClient()">⚙️ Auto-Generate للعميل</button>
+      <div style="display:flex;gap:8px">
         <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
         <button id="saveOblBtn" class="btn btn-primary">🔔 إضافة</button>
       </div>
-    </div>`;
-    document.body.append(overlay);
-    overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
-    document.getElementById('saveOblBtn').onclick=async()=>{
-      const btn=document.getElementById('saveOblBtn');
-      const clientId=parseInt($('#oblClient',overlay).value);
-      if(!clientId){toast('اختر العميل','error');return}
-      btn.disabled=true; btn.textContent='جاري الحفظ...';
-      try {
-        await api('POST','/api/obligations',{client_id:clientId,obligation_type:$('#oblType',overlay).value,frequency:$('#oblFreq',overlay).value,due_day:parseInt($('#oblDay',overlay).value)||15});
-        toast('تم إنشاء الالتزام الضريبي');
-        overlay.remove(); loadObligations();
-      } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='🔔 إضافة'}
-    };
-  }
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+
+  // Auto-fill rules
+  const oblDescMap = {
+    vat_monthly:'تقديم وسداد الإقرار قبل اليوم 15 من الشهر التالي',
+    payroll_monthly:'نموذج 1 الخاص بالمرتبات قبل اليوم 15',
+    withholding_monthly:'تسوية الخصم والإضافة على المدفوعات للغير',
+    insurance_monthly:'سداد اشتراكات التأمينات الاجتماعية قبل 15',
+    vat_quarterly:'للمنشآت الصغيرة — إقرار ربعي قبل 15 من الشهر التالي للربع',
+    stamp_quarterly:'ضريبة الدمغة النسبية على المعاملات التجارية',
+    income_annual:'الإقرار السنوي لضريبة الدخل — 30 أبريل من كل عام',
+    form_41:'الإقرار السنوي عن المرتبات — 31 يناير',
+    corporate_tax:'ضريبة الأرباح التجارية والصناعية — 30 أبريل',
+    commercial_register_renewal:'تجديد السجل التجاري سنويًا',
+  };
+
+  window.autoFillOblFields = function(type) {
+    const freqMap = {vat_monthly:'monthly',payroll_monthly:'monthly',withholding_monthly:'monthly',insurance_monthly:'monthly',vat_quarterly:'quarterly',stamp_quarterly:'quarterly',income_annual:'annual',form_41:'annual',corporate_tax:'annual',commercial_register_renewal:'annual'};
+    const dayMap = {vat_monthly:15,payroll_monthly:15,withholding_monthly:15,insurance_monthly:15,vat_quarterly:15,stamp_quarterly:15,income_annual:30,form_41:31,corporate_tax:30,commercial_register_renewal:28};
+    const freq = freqMap[type]; const day = dayMap[type];
+    if(freq){ const f=document.getElementById('oblFreq'); if(f) f.value=freq; }
+    if(day){ const d=document.getElementById('oblDay'); if(d) d.value=day; }
+    const desc=document.getElementById('oblTypeDesc');
+    if(desc) desc.textContent=oblDescMap[type]||'';
+  };
+
+  window.autoGenerateForClient = async function() {
+    const clientId=parseInt(document.getElementById('oblClient').value);
+    if(!clientId){toast('اختر العميل أولاً','error');return;}
+    try {
+      const r=await api('POST',`/api/obligations/auto-generate/${clientId}`);
+      toast(`تم: ${r.created.length} التزام جديد للعميل`);
+      overlay.remove(); loadObligations();
+    } catch(e){toast(e.message,'error');}
+  };
+
+  document.getElementById('saveOblBtn').onclick=async()=>{
+    const btn=document.getElementById('saveOblBtn');
+    const clientId=parseInt(document.getElementById('oblClient').value);
+    const oblType=document.getElementById('oblType').value;
+    if(!clientId){toast('اختر العميل','error');return;}
+    if(!oblType){toast('اختر نوع الالتزام','error');return;}
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      await api('POST','/api/obligations',{
+        client_id:clientId,
+        obligation_type:oblType,
+        frequency:document.getElementById('oblFreq').value,
+        due_day:parseInt(document.getElementById('oblDay').value)||15,
+      });
+      toast('تم إنشاء الالتزام الضريبي');
+      overlay.remove(); loadObligations();
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='🔔 إضافة';}
+  };
 }
 
 // ── EMPLOYEES ──────────────────────────────────────
@@ -3427,6 +3836,7 @@ window.doSendClientReminder=doSendClientReminder;
 window.items=[];
 // clients
 window.showClientDetail=showClientDetail;
+window.autoGenClientObligations=autoGenClientObligations;
 window.showClientModal=showClientModal;
 window.addInvoiceForClient=addInvoiceForClient;
 // invoices
@@ -3450,10 +3860,16 @@ window.saveLeadCell=saveLeadCell;
 window.updateEstStage=updateEstStage;
 window.doUpdateEstStage=doUpdateEstStage;
 window.showEstModal=showEstModal;
-// obligations
+// obligations + notifications
 window.submitObligation=submitObligation;
 window.showObligationModal=showObligationModal;
-window.filterObligations=filterObligations;
+window.showUpdateOblModal=showUpdateOblModal;
+window.runBulkGenerate=runBulkGenerate;
+window.runRefreshNotifs=runRefreshNotifs;
+window.toggleNotifDropdown=toggleNotifDropdown;
+window.markNotifRead=markNotifRead;
+window.markAllNotifsRead=markAllNotifsRead;
+window.navigate=navigate;
 // collections
 window.showCollectionModal=showCollectionModal;
 window.showCollectionPaymentModal=showCollectionPaymentModal;
