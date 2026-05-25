@@ -274,3 +274,142 @@ async def client_activity(
         }
         for l in logs
     ]
+
+
+@router.get("/{client_id}/timeline")
+async def client_timeline(
+    client_id: int,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Smart Client Timeline — يجمع كل نشاط العميل من جميع المصادر:
+    المدفوعات، الالتزامات، المهام، الملفات، الفواتير، النشاطات
+    """
+    from app.models.invoice import Invoice, Payment, InvoiceStatus
+    from app.models.task import Task, TaskStatus
+    from app.models.document import Document
+    from app.models.obligation import ObligationInstance, ObligationStatus
+    from datetime import datetime
+
+    events = []
+
+    # ── Activity Logs (all system events) ────────────────────────────────
+    logs = db.query(ActivityLog).filter(ActivityLog.client_id == client_id).all()
+    action_map = {
+        "create_client": ("👤", "تم إضافة العميل", "client"),
+        "update_client": ("✏️", "تم تعديل بيانات العميل", "client"),
+        "create_invoice": ("📄", "تم إنشاء فاتورة", "invoice"),
+        "update_invoice": ("📝", "تم تعديل فاتورة", "invoice"),
+        "create_task": ("✅", "تم إنشاء مهمة", "task"),
+    }
+    for l in logs:
+        icon, label, etype = action_map.get(l.action, ("📝", l.action, "activity"))
+        events.append({
+            "type": etype,
+            "icon": icon,
+            "title": l.description or label,
+            "subtitle": l.user.name if l.user else None,
+            "date": l.created_at.isoformat() if l.created_at else None,
+            "color": "#6366f1",
+            "ref_id": l.entity_id,
+        })
+
+    # ── Invoices ──────────────────────────────────────────────────────────
+    invoices = db.query(Invoice).filter(Invoice.client_id == client_id).all()
+    status_ar = {
+        InvoiceStatus.DRAFT: "مسودة", InvoiceStatus.SENT: "مرسلة",
+        InvoiceStatus.PAID: "مسددة", InvoiceStatus.PARTIAL: "مسددة جزئياً",
+        InvoiceStatus.OVERDUE: "متأخرة", InvoiceStatus.CANCELLED: "ملغاة",
+    }
+    for inv in invoices:
+        events.append({
+            "type": "invoice",
+            "icon": "📄",
+            "title": f"فاتورة #{inv.invoice_number or inv.id} — {status_ar.get(inv.status, inv.status)}",
+            "subtitle": f"{inv.total:,.0f} ج.م." if inv.total else None,
+            "date": inv.issue_date.isoformat() if inv.issue_date else (inv.created_at.isoformat() if inv.created_at else None),
+            "color": "#16a34a" if inv.status == InvoiceStatus.PAID else "#d97706" if inv.status == InvoiceStatus.PARTIAL else "#dc2626" if inv.status == InvoiceStatus.OVERDUE else "#1a2472",
+            "ref_id": inv.id,
+            "amount": inv.total,
+        })
+
+    # ── Payments ──────────────────────────────────────────────────────────
+    payments = (
+        db.query(Payment)
+        .join(Invoice, Payment.invoice_id == Invoice.id)
+        .filter(Invoice.client_id == client_id)
+        .all()
+    )
+    for p in payments:
+        events.append({
+            "type": "payment",
+            "icon": "💰",
+            "title": f"تم استلام دفعة — {p.amount:,.0f} ج.م.",
+            "subtitle": p.notes or (p.invoice.invoice_number if p.invoice else None),
+            "date": p.created_at.isoformat() if p.created_at else None,
+            "color": "#16a34a",
+            "ref_id": p.id,
+            "amount": p.amount,
+        })
+
+    # ── Tasks ──────────────────────────────────────────────────────────────
+    tasks = db.query(Task).filter(Task.client_id == client_id).all()
+    task_status_ar = {
+        TaskStatus.TODO: "⬜ للتنفيذ", TaskStatus.IN_PROGRESS: "🔄 قيد التنفيذ",
+        TaskStatus.DONE: "✅ منجزة", TaskStatus.CANCELLED: "❌ ملغاة",
+    }
+    for t in tasks:
+        events.append({
+            "type": "task",
+            "icon": "✅" if t.status == TaskStatus.DONE else "📋",
+            "title": t.title,
+            "subtitle": task_status_ar.get(t.status, t.status),
+            "date": t.completed_at.isoformat() if t.completed_at else (t.created_at.isoformat() if t.created_at else None),
+            "color": "#16a34a" if t.status == TaskStatus.DONE else "#d97706",
+            "ref_id": t.id,
+        })
+
+    # ── Obligation Instances (submitted/paid only) ─────────────────────────
+    obl_insts = db.query(ObligationInstance).filter(
+        ObligationInstance.client_id == client_id,
+        ObligationInstance.status.in_([ObligationStatus.SUBMITTED, "paid"])
+    ).all()
+    for oi in obl_insts:
+        obl_type = oi.obligation.obligation_type if oi.obligation else ""
+        events.append({
+            "type": "obligation",
+            "icon": "🧾",
+            "title": f"تم تقديم: {oi.period_label}",
+            "subtitle": obl_type,
+            "date": oi.submitted_at.isoformat() if oi.submitted_at else (oi.updated_at.isoformat() if oi.updated_at else None),
+            "color": "#16a34a",
+            "ref_id": oi.id,
+        })
+
+    # ── Documents ─────────────────────────────────────────────────────────
+    docs = db.query(Document).filter(
+        Document.client_id == client_id,
+        Document.is_archived == False
+    ).order_by(Document.created_at.desc()).limit(20).all()
+    for doc in docs:
+        events.append({
+            "type": "document",
+            "icon": "📁",
+            "title": f"ملف مرفوع: {doc.original_name or doc.name}",
+            "subtitle": doc.category or None,
+            "date": doc.created_at.isoformat() if doc.created_at else None,
+            "color": "#6366f1",
+            "ref_id": doc.id,
+        })
+
+    # Sort by date descending, filter out None dates
+    events = [e for e in events if e.get("date")]
+    events.sort(key=lambda x: x["date"], reverse=True)
+
+    return {
+        "client_id": client_id,
+        "total": len(events),
+        "events": events[:limit],
+    }
