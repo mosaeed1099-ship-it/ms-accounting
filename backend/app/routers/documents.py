@@ -135,6 +135,25 @@ async def upload_document(
     return {"id": doc.id, "name": doc.name, "file_path": doc.file_path, "message": "تم رفع الملف بنجاح"}
 
 
+@router.patch("/{doc_id}")
+async def update_document(
+    doc_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Partially update a document (client_id, category, tags, description, etc.)"""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="الملف غير موجود")
+    allowed = {"client_id", "category", "description", "tags", "year", "month", "name"}
+    for field, value in data.items():
+        if field in allowed:
+            setattr(doc, field, value)
+    db.commit()
+    return {"message": "تم التحديث", "id": doc.id}
+
+
 @router.delete("/{doc_id}")
 async def delete_document(
     doc_id: int,
@@ -145,7 +164,7 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="الملف غير موجود")
 
-    if os.path.exists(doc.file_path):
+    if doc.file_path and os.path.exists(doc.file_path):
         os.remove(doc.file_path)
 
     db.delete(doc)
