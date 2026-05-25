@@ -153,28 +153,41 @@ let chartInstances = {};
 const $ = (s,c=document) => c.querySelector(s);
 const $$ = (s,c=document) => [...c.querySelectorAll(s)];
 
-async function api(method, path, body=null) {
+async function api(method, path, body=null, {retries=1, retryDelay=1500}={}) {
   const opts = {
     method,
-    headers:{'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{})}
+    headers:{'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{})},
+    signal: AbortSignal.timeout(30000),   // 30s hard timeout per request
   };
   if (body) opts.body = JSON.stringify(body);
-  try {
-    const r = await fetch(API+path, opts);
-    if (r.status===401){logout();return null}
-    const data = await r.json().catch(()=>({}));
-    if (!r.ok) {
-      let msg = 'خطأ في الطلب';
-      if (typeof data.detail === 'string') msg = data.detail;
-      else if (Array.isArray(data.detail)) msg = data.detail.map(e=>e.msg||e).join(' | ');
-      else if (data.message) msg = data.message;
-      throw new Error(msg);
+
+  let lastErr;
+  for(let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if(attempt > 0) await new Promise(res => setTimeout(res, retryDelay * attempt));
+      const r = await fetch(API+path, opts);
+      if(r.status === 401){ logout(); return null; }
+      const data = await r.json().catch(()=>({}));
+      if(!r.ok) {
+        let msg = 'خطأ في الطلب';
+        if(typeof data.detail === 'string') msg = data.detail;
+        else if(Array.isArray(data.detail)) msg = data.detail.map(e=>e.msg||e).join(' | ');
+        else if(data.message) msg = data.message;
+        throw new Error(msg);
+      }
+      // Restore green status on success if was offline
+      if(_connState === 'offline') { _connState = 'ok'; setApiStatus(true, 'API متصل'); }
+      return data;
+    } catch(e) {
+      lastErr = e;
+      const isNetworkErr = e.name === 'TimeoutError' || e.name === 'AbortError'
+                        || (e.message && (e.message.includes('fetch') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')));
+      if(isNetworkErr && attempt < retries) continue;   // retry
+      if(isNetworkErr) throw new Error('تعذّر الاتصال بالخادم — تحقق من الإنترنت أو أعد المحاولة لاحقاً');
+      throw e;
     }
-    return data;
-  } catch(e) {
-    if (e.message && e.message.includes('fetch')) throw new Error('تعذّر الاتصال بالخادم — تأكد من تشغيل الـ Backend');
-    throw e;
   }
+  throw lastErr;
 }
 
 function toast(msg, type='success') {
@@ -319,8 +332,8 @@ function renderApp() {
           <button onclick="logout()" style="background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:4px" title="خروج">🚪</button>
         </div>
         <div id="apiStatus" style="display:flex;align-items:center;gap:6px;margin-top:10px;justify-content:center">
-          <span id="apiDot" style="width:8px;height:8px;border-radius:50%;background:#22c55e"></span>
-          <span style="font-size:11px;color:#64748b">API متصل</span>
+          <span id="apiDot" style="width:8px;height:8px;border-radius:50%;background:#22c55e;transition:background .4s"></span>
+          <span id="apiStatusLabel" style="font-size:11px;color:#64748b">API متصل</span>
         </div>
       </div>
     </div>
@@ -381,8 +394,8 @@ function renderApp() {
     nav.append(a);
   });
 
-  // Check API
-  fetch(`${API}/`).then(r=>r.ok?null:setApiStatus(false)).catch(()=>setApiStatus(false));
+  // Start connection monitor (keeps checking every 30s + handles offline/online events)
+  _startConnMonitor();
 
   navigate(currentPage);
 
@@ -605,10 +618,83 @@ document.addEventListener('keydown', e => {
   }
 });
 
-function setApiStatus(ok) {
-  const dot=document.getElementById('apiDot');
-  if(dot) dot.style.background=ok?'#22c55e':'#ef4444';
+// ── Connection Monitor ────────────────────────────────────────────────────────
+let _connState = 'ok';   // 'ok' | 'degraded' | 'offline'
+let _connRetries = 0;
+let _connTimer = null;
+
+function setApiStatus(ok, label) {
+  const dot  = document.getElementById('apiDot');
+  const lbl  = document.getElementById('apiStatusLabel');
+  if(dot) dot.style.background = ok ? '#22c55e' : (_connState === 'degraded' ? '#f59e0b' : '#ef4444');
+  if(lbl) lbl.textContent = label || (ok ? 'API متصل' : 'غير متصل');
 }
+
+async function _checkConn() {
+  try {
+    const r = await fetch(`${API}/health`, {signal: AbortSignal.timeout(8000)});
+    const data = await r.json().catch(()=>({}));
+    const dbOk = data.db === 'connected';
+
+    if(_connState !== 'ok') {
+      // Was offline — restored
+      _connState = 'ok';
+      _connRetries = 0;
+      setApiStatus(true, 'API متصل');
+      toast('✅ تم استعادة الاتصال بالخادم');
+      // Refresh current page silently
+      const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
+      if(pages[currentPage]) try{ pages[currentPage](); }catch(e){}
+    }
+
+    if(!dbOk && _connState !== 'degraded') {
+      _connState = 'degraded';
+      setApiStatus(false, 'قاعدة البيانات غير متصلة');
+    } else if(dbOk && _connState !== 'offline') {
+      _connState = 'ok';
+      setApiStatus(true, 'API متصل');
+    }
+  } catch(e) {
+    if(_connState === 'ok') {
+      _connState = 'offline';
+      _connRetries = 0;
+      setApiStatus(false, 'غير متصل...');
+      toast('⚠️ انقطع الاتصال بالخادم. جارٍ إعادة المحاولة...', 'error');
+    }
+    _connRetries++;
+    setApiStatus(false, `غير متصل (محاولة ${_connRetries})`);
+  }
+}
+
+function _startConnMonitor() {
+  _checkConn();
+  // Check every 30 seconds
+  setInterval(_checkConn, 30000);
+  // Also react to browser online/offline events
+  window.addEventListener('online',  () => { if(_connState !== 'ok') _checkConn(); });
+  window.addEventListener('offline', () => {
+    _connState = 'offline';
+    setApiStatus(false, 'لا يوجد اتصال بالإنترنت');
+    toast('❌ لا يوجد اتصال بالإنترنت', 'error');
+  });
+}
+
+// ── Global JS Error Catcher ───────────────────────────────────────────────────
+window.onerror = function(msg, src, line, col, err) {
+  console.error('[GlobalError]', msg, src, line, err);
+  // Only show toast for non-trivial errors
+  if(msg && !String(msg).includes('ResizeObserver') && !String(msg).includes('Script error')) {
+    // Don't show raw error to user — just log silently
+  }
+  return false; // don't suppress default console error
+};
+
+window.addEventListener('unhandledrejection', function(e) {
+  const msg = e?.reason?.message || String(e?.reason || '');
+  if(msg && !msg.includes('AbortError') && !msg.includes('NetworkError')) {
+    console.error('[UnhandledPromise]', msg);
+  }
+});
 
 function navigate(page) {
   currentPage = page;

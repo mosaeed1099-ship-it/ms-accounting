@@ -1,8 +1,10 @@
 import os
 import asyncio
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from app.database import create_tables
 from app.config import settings
@@ -17,6 +19,55 @@ from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
 
+logger = logging.getLogger(__name__)
+
+# ── Keep-alive self-ping (prevents Railway from sleeping) ────────────────────
+_SELF_URL = os.environ.get(
+    "RAILWAY_PUBLIC_DOMAIN",
+    "ms-accounting-api-production.up.railway.app",
+)
+
+
+def _keep_alive_job():
+    """Ping own /health every 8 min → keeps Railway container warm."""
+    try:
+        import requests as _req
+        url = f"https://{_SELF_URL}/health"
+        r = _req.get(url, timeout=10)
+        logger.info(f"[keep-alive] ping {url} → {r.status_code}")
+    except Exception as exc:
+        logger.warning(f"[keep-alive] ping failed: {exc}")
+
+
+def _db_health_job():
+    """Test DB connectivity every 5 min; reconnect if stale."""
+    try:
+        from app.database import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("[db-health] OK")
+    except Exception as exc:
+        logger.warning(f"[db-health] failed: {exc} — pool will auto-reconnect via pool_pre_ping")
+
+
+def _start_scheduler():
+    """Start APScheduler background jobs."""
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.interval import IntervalTrigger
+        sched = BackgroundScheduler(timezone="Africa/Cairo", daemon=True)
+        sched.add_job(_keep_alive_job,  IntervalTrigger(minutes=8),  id="keep_alive",  replace_existing=True)
+        sched.add_job(_db_health_job,   IntervalTrigger(minutes=5),  id="db_health",   replace_existing=True)
+        sched.start()
+        logger.info("✅ Scheduler started (keep-alive every 8 min, db-health every 5 min)")
+        return sched
+    except Exception as exc:
+        logger.warning(f"⚠️  Scheduler not started: {exc}")
+        return None
+
+
+# ── DB init ──────────────────────────────────────────────────────────────────
 
 def seed_admin():
     db = SessionLocal()
@@ -54,15 +105,25 @@ def _init_db_sync():
                 print(f"⚠️  DB init failed after 12 attempts: {exc} — app running without DB")
 
 
+# ── Lifespan ─────────────────────────────────────────────────────────────────
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.BACKUP_DIR, exist_ok=True)
-    # Run DB init in background thread — /health stays available immediately
+
+    # DB init in background thread so /health answers immediately on cold start
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _init_db_sync)
-    yield
 
+    # Start background scheduler
+    _start_scheduler()
+
+    yield
+    # Nothing to clean up — scheduler is daemon=True, dies with process
+
+
+# ── App ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="MS Accounting System",
@@ -79,6 +140,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Global exception handler (prevents unhandled 500s) ───────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"خطأ داخلي في الخادم: {type(exc).__name__}"},
+    )
+
+
+# ── Routers ───────────────────────────────────────────────────────────────────
 
 app.include_router(auth.router)
 app.include_router(users.router)
@@ -102,6 +177,8 @@ if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
+# ── Core endpoints ────────────────────────────────────────────────────────────
+
 @app.get("/")
 async def root():
     return {"message": "MS Accounting API", "version": settings.APP_VERSION, "status": "running"}
@@ -109,7 +186,23 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    """Health check — also tests DB connectivity."""
+    from app.database import engine
+    from sqlalchemy import text
+    db_ok = False
+    db_error = None
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as exc:
+        db_error = str(exc)
+
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "db": "connected" if db_ok else f"error: {db_error}",
+        "version": settings.APP_VERSION,
+    }
 
 
 @app.post("/api/admin/fix-category-column")
