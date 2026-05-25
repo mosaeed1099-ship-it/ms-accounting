@@ -96,14 +96,18 @@ async def get_email_settings(
     current_user: User = Depends(get_current_user),
 ):
     """Return current email config (masked password)."""
+    import os
     from app.services.email_service import get_config
     cfg = get_config()
+    resend_key = os.environ.get('RESEND_API_KEY', '')
     return {
         "configured": cfg.enabled,
         "smtp_host": cfg.smtp_host,
         "smtp_port": cfg.smtp_port,
         "smtp_user": cfg.smtp_user,
         "from_name": cfg.from_name,
+        "resend_configured": bool(resend_key),
+        "method": "resend" if resend_key else ("smtp" if (cfg.smtp_user and cfg.smtp_pass) else "none"),
     }
 
 

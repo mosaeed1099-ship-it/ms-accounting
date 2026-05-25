@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # ── Email Config (loaded from .env) ────────────────────────────────────────
 class EmailConfig:
     def __init__(self):
+        import os
         from app.config import settings
         self.smtp_host = getattr(settings, 'SMTP_HOST', 'smtp.gmail.com')
         self.smtp_port = int(getattr(settings, 'SMTP_PORT', 587))
@@ -23,7 +24,9 @@ class EmailConfig:
         self.smtp_pass = getattr(settings, 'SMTP_PASS', '')
         self.from_name = getattr(settings, 'EMAIL_FROM_NAME', 'MS Accounting')
         self.from_email = getattr(settings, 'EMAIL_FROM', self.smtp_user)
-        self.enabled = bool(self.smtp_user and self.smtp_pass)
+        self.resend_key = os.environ.get('RESEND_API_KEY', '')
+        # enabled = either Resend OR SMTP is configured
+        self.enabled = bool(self.resend_key or (self.smtp_user and self.smtp_pass))
 
 
 _config = None
@@ -366,69 +369,91 @@ def test_email_template(sent_to: str) -> tuple[str, str]:
 
 
 # ── Core Sender ─────────────────────────────────────────────────────────────
-def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
-    """Send email synchronously. Returns True on success."""
-    cfg = get_config()
-    if not cfg.enabled:
-        logger.warning("Email not configured — skipping send")
-        return False
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = f"{cfg.from_name} <{cfg.from_email}>"
-        msg['To'] = to_email
-        msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+def _send_via_resend(to_email: str, subject: str, html_body: str, cfg: EmailConfig) -> bool:
+    """Send via Resend HTTP API (works on all cloud platforms, no SMTP port needed)."""
+    import os, requests as req
+    api_key = os.environ.get('RESEND_API_KEY', '')
+    if not api_key:
+        raise Exception("RESEND_API_KEY not set")
+    from_addr = f"{cfg.from_name} <{cfg.smtp_user}>" if cfg.smtp_user else f"MS Accounting <onboarding@resend.dev>"
+    resp = req.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"from": from_addr, "to": [to_email], "subject": subject, "html": html_body},
+        timeout=20,
+    )
+    if resp.status_code not in (200, 201):
+        raise Exception(f"Resend API error {resp.status_code}: {resp.text}")
+    logger.info(f"Email sent via Resend to {to_email}: {subject}")
+    return True
 
+
+def _send_via_smtp(to_email: str, subject: str, html_body: str, cfg: EmailConfig) -> bool:
+    """Send via SMTP (Gmail App Password). Fallback when Resend is not configured."""
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = f"{cfg.from_name} <{cfg.from_email}>"
+    msg['To'] = to_email
+    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+
+    # Try STARTTLS on port 587 first, then SSL on port 465
+    last_err = None
+    for port, use_ssl in [(cfg.smtp_port, False), (465, True), (587, False)]:
         try:
-            import certifi
-            context = ssl.create_default_context(cafile=certifi.where())
-        except ImportError:
-            context = ssl.create_default_context()
-        with smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=15) as server:
-            server.ehlo()
-            server.starttls(context=context)
-            server.login(cfg.smtp_user, cfg.smtp_pass)
-            server.sendmail(cfg.from_email, to_email, msg.as_string())
-        logger.info(f"Email sent to {to_email}: {subject}")
-        return True
-    except Exception as e:
-        logger.error(f"Email send failed to {to_email}: {e}")
-        raise
+            if use_ssl:
+                with smtplib.SMTP_SSL(cfg.smtp_host, port, context=context, timeout=15) as server:
+                    server.login(cfg.smtp_user, cfg.smtp_pass)
+                    server.sendmail(cfg.from_email, to_email, msg.as_string())
+            else:
+                with smtplib.SMTP(cfg.smtp_host, port, timeout=15) as server:
+                    server.ehlo()
+                    server.starttls(context=context)
+                    server.login(cfg.smtp_user, cfg.smtp_pass)
+                    server.sendmail(cfg.from_email, to_email, msg.as_string())
+            logger.info(f"Email sent via SMTP to {to_email} on port {port}: {subject}")
+            return True
+        except Exception as e:
+            last_err = e
+            logger.warning(f"SMTP port {port} failed: {e}")
+            continue
+    raise Exception(f"SMTP failed on all ports: {last_err}")
+
+
+def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
+    """
+    Send email synchronously.
+    Priority: Resend API → SMTP
+    Resend works on all cloud platforms (uses HTTPS port 443).
+    """
+    cfg = get_config()
+    import os
+    resend_key = os.environ.get('RESEND_API_KEY', '')
+
+    # 1. Try Resend first (works everywhere, no port blocking)
+    if resend_key:
+        try:
+            return _send_via_resend(to_email, subject, html_body, cfg)
+        except Exception as e:
+            logger.warning(f"Resend failed, trying SMTP: {e}")
+
+    # 2. Fall back to SMTP if configured
+    if cfg.enabled:
+        return _send_via_smtp(to_email, subject, html_body, cfg)
+
+    raise Exception("لم يتم تكوين البريد الإلكتروني. أضف RESEND_API_KEY أو بيانات SMTP في الإعدادات.")
 
 
 async def send_email_async(to_email: str, subject: str, html_body: str) -> bool:
-    """Send email asynchronously using aiosmtplib."""
-    cfg = get_config()
-    if not cfg.enabled:
-        return False
-    try:
-        import aiosmtplib
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = f"{cfg.from_name} <{cfg.from_email}>"
-        msg['To'] = to_email
-        msg.attach(MIMEText(html_body, 'html', 'utf-8'))
-
-        try:
-            import certifi
-            tls_context = ssl.create_default_context(cafile=certifi.where())
-        except ImportError:
-            tls_context = ssl.create_default_context()
-        await aiosmtplib.send(
-            msg,
-            hostname=cfg.smtp_host,
-            port=cfg.smtp_port,
-            start_tls=True,
-            tls_context=tls_context,
-            username=cfg.smtp_user,
-            password=cfg.smtp_pass,
-            timeout=15,
-        )
-        logger.info(f"Async email sent to {to_email}: {subject}")
-        return True
-    except Exception as e:
-        logger.error(f"Async email failed to {to_email}: {e}")
-        raise
+    """Async wrapper — delegates to sync sender (runs in thread pool)."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, send_email_sync, to_email, subject, html_body)
 
 
 # ── Notification Helpers ─────────────────────────────────────────────────────
