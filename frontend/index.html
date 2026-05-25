@@ -719,175 +719,274 @@ async function loadDashboard() {
     if (!stats) return;
     const main = document.getElementById('main');
     main.className = 'page';
+
+    // helpers
+    const hr = new Date().getHours();
+    const greeting = hr < 12 ? 'صباح الخير' : hr < 17 ? 'مساء الخير' : 'مساء النور';
+    const months = Array.isArray(chart) ? chart : (chart?.months||[]);
+    const collected = stats.financial.total_collected || 0;
+    const invoiced  = stats.financial.total_invoiced  || 1;
+    const collPct   = Math.min(100, Math.round(collected / invoiced * 100));
+    const invData   = chart?.invoice_status || {};
+    const upcoming  = Array.isArray(oblUpcoming) ? oblUpcoming : [];
+    const overdueObl = upcoming.filter(o => o.days_remaining < 0).length;
+    const urgentObl  = upcoming.filter(o => o.days_remaining >= 0 && o.days_remaining <= 3).length;
+
+    // KPI card builder
+    const kpiCard = ({gradient, iconBg, icon, label, value, sub, subColor, badge, badgeColor, page}) => `
+      <div onclick="navigate('${page}')" style="
+        background:${gradient};border-radius:18px;padding:22px 20px;cursor:pointer;
+        box-shadow:0 2px 12px rgba(0,0,0,.06);transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden;
+      " onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.12)'"
+         onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.06)'">
+        <div style="position:absolute;top:-20px;left:-20px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.06)"></div>
+        <div style="position:absolute;bottom:-30px;right:-10px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.04)"></div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;position:relative">
+          <div style="width:46px;height:46px;border-radius:14px;background:${iconBg};display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 8px rgba(0,0,0,.1)">${icon}</div>
+          ${badge!==undefined?`<span style="background:${badgeColor||'rgba(255,255,255,.25)'};color:white;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;font-family:inherit">${badge}</span>`:''}
+        </div>
+        <div style="position:relative">
+          <div style="font-size:26px;font-weight:800;color:white;line-height:1;letter-spacing:-.5px">${value}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:5px;font-weight:500">${label}</div>
+          ${sub?`<div style="font-size:11px;margin-top:8px;font-weight:600;color:${subColor||'rgba(255,255,255,.6)'}">${sub}</div>`:''}
+        </div>
+      </div>`;
+
     main.innerHTML = `
-    <!-- KPI Cards Row 1 -->
-    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px">
-      <div class="stat-card stat-blue" style="cursor:pointer" onclick="navigate('clients')">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="width:42px;height:42px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:20px">👥</div>
-          <span class="badge badge-blue">${stats.clients.new_this_month} جديد</span>
-        </div>
-        <div style="font-size:28px;font-weight:800;color:#1e293b;line-height:1">${stats.clients.total}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي العملاء</div>
-        <div style="font-size:11px;color:#22c55e;margin-top:5px;font-weight:600">✓ ${stats.clients.active} نشط</div>
-      </div>
-      <div class="stat-card stat-green" style="cursor:pointer" onclick="navigate('collections')">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="width:42px;height:42px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:20px">💰</div>
-          <span class="badge badge-green">محصّل</span>
-        </div>
-        <div style="font-size:20px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_collected)}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي المحصّل</div>
-        <div style="font-size:11px;color:#64748b;margin-top:5px">من ${money(stats.financial.total_invoiced)}</div>
-      </div>
-      <div class="stat-card stat-red" style="cursor:pointer" onclick="navigate('invoices')">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="width:42px;height:42px;border-radius:12px;background:#fff1f2;display:flex;align-items:center;justify-content:center;font-size:20px">⏰</div>
-          <span class="badge badge-red">متأخر</span>
-        </div>
-        <div style="font-size:20px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_overdue)}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">المتأخرات</div>
-        <div style="font-size:11px;color:#f97316;margin-top:5px;font-weight:600">⚠ ${money(stats.financial.total_outstanding)} مستحق</div>
-      </div>
-      <div class="stat-card" style="cursor:pointer;border-right:4px solid #d97706" onclick="navigate('tasks')">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="width:42px;height:42px;border-radius:12px;background:#faf5ff;display:flex;align-items:center;justify-content:center;font-size:20px">📋</div>
-          <span class="badge badge-purple">${stats.tasks.urgent} عاجل</span>
-        </div>
-        <div style="font-size:28px;font-weight:800;color:#1e293b;line-height:1">${stats.tasks.pending}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">مهام معلقة</div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:5px">${stats.tasks.overdue} متأخرة</div>
-      </div>
-      ${oblStats?`
-      <div class="stat-card" style="cursor:pointer;border-right:4px solid #dc2626" onclick="navigate('obligations')">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="width:42px;height:42px;border-radius:12px;background:#fff5f5;display:flex;align-items:center;justify-content:center;font-size:20px">🔔</div>
-          <span class="badge badge-red">${oblStats.overdue} متأخر</span>
-        </div>
-        <div style="font-size:28px;font-weight:800;color:#1e293b;line-height:1">${oblStats.due_this_week}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">التزامات هذا الأسبوع</div>
-        <div style="font-size:11px;color:#64748b;margin-top:5px">${oblStats.upcoming_30_days} خلال 30 يوم</div>
-      </div>`:''}
-    </div>
+    <style>
+      @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+      .dash-fadein{animation:fadeUp .4s ease both}
+    </style>
 
-    <!-- Charts Row -->
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:20px">
-      <div class="card" style="padding:20px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <h3 class="section-title" style="font-size:15px;margin:0">الإيرادات الشهرية</h3>
-          <span class="badge badge-blue">آخر 6 أشهر</span>
-        </div>
-        <canvas id="revenueChart" style="max-height:200px"></canvas>
+    <!-- ── Greeting Banner ── -->
+    <div class="dash-fadein" style="
+      background:linear-gradient(135deg,#0f172a 0%,#1a2472 50%,#1e3a8a 100%);
+      border-radius:20px;padding:28px 32px;margin-bottom:24px;
+      display:flex;align-items:center;justify-content:space-between;
+      box-shadow:0 4px 24px rgba(26,36,114,.3);overflow:hidden;position:relative">
+      <div style="position:absolute;top:-60px;right:-60px;width:250px;height:250px;border-radius:50%;background:rgba(255,255,255,.03)"></div>
+      <div style="position:absolute;bottom:-80px;left:40px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.03)"></div>
+      <div style="position:relative">
+        <div style="font-size:13px;color:rgba(255,255,255,.6);font-weight:500;margin-bottom:4px">${greeting}،</div>
+        <div style="font-size:22px;font-weight:800;color:white;margin-bottom:6px">${escH(currentUser?.name||'')}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.5)">${new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
       </div>
-      <div class="card" style="padding:20px">
-        <div style="margin-bottom:16px">
-          <h3 class="section-title" style="font-size:15px;margin:0">حالة الفواتير</h3>
+      <div style="display:flex;gap:20px;position:relative">
+        ${overdueObl>0?`<div style="text-align:center;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);padding:12px 18px;border-radius:14px">
+          <div style="font-size:24px;font-weight:800;color:#fca5a5">${overdueObl}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">التزام متأخر</div>
+        </div>`:''}
+        ${urgentObl>0?`<div style="text-align:center;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.3);padding:12px 18px;border-radius:14px">
+          <div style="font-size:24px;font-weight:800;color:#fde68a">${urgentObl}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">خلال 3 أيام</div>
+        </div>`:''}
+        <div style="text-align:center;background:rgba(255,255,255,.08);padding:12px 18px;border-radius:14px">
+          <div style="font-size:24px;font-weight:800;color:white">${stats.clients.active}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">عميل نشط</div>
         </div>
-        <canvas id="invoiceChart" style="max-height:180px"></canvas>
-        <div id="invoiceLegend" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"></div>
       </div>
     </div>
 
-    <!-- Bottom Row: Activity + Obligations -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card" style="padding:20px">
-        <h3 class="section-title" style="font-size:14px">🕐 آخر النشاطات</h3>
+    <!-- ── KPI Cards ── -->
+    <div class="dash-fadein" style="animation-delay:.05s;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;margin-bottom:24px">
+      ${kpiCard({
+        gradient:'linear-gradient(135deg,#1a2472,#2d4eb0)',
+        iconBg:'rgba(255,255,255,.15)',icon:'👥',
+        label:'إجمالي العملاء',value:stats.clients.total,
+        sub:`✦ ${stats.clients.new_this_month} عميل جديد هذا الشهر`,
+        badge:stats.clients.active+' نشط',badgeColor:'rgba(34,197,94,.35)',page:'clients'
+      })}
+      ${kpiCard({
+        gradient:'linear-gradient(135deg,#059669,#10b981)',
+        iconBg:'rgba(255,255,255,.15)',icon:'💰',
+        label:'إجمالي المحصّل',value:money(collected),
+        sub:`من أصل ${money(invoiced)} فواتير`,page:'collections'
+      })}
+      ${kpiCard({
+        gradient:'linear-gradient(135deg,#b45309,#f59e0b)',
+        iconBg:'rgba(255,255,255,.15)',icon:'⏳',
+        label:'المستحق',value:money(stats.financial.total_outstanding),
+        sub:stats.financial.total_overdue>0?`⚠ ${money(stats.financial.total_overdue)} متأخر`:'لا متأخرات ✓',
+        subColor:stats.financial.total_overdue>0?'#fde68a':'rgba(255,255,255,.7)',page:'invoices'
+      })}
+      ${kpiCard({
+        gradient:'linear-gradient(135deg,#6d28d9,#8b5cf6)',
+        iconBg:'rgba(255,255,255,.15)',icon:'✅',
+        label:'مهام معلقة',value:stats.tasks.pending,
+        sub:stats.tasks.urgent>0?`🔥 ${stats.tasks.urgent} عاجلة`:`${stats.tasks.overdue} متأخرة`,
+        subColor:stats.tasks.urgent>0?'#fde68a':null,page:'tasks'
+      })}
+      ${oblStats?kpiCard({
+        gradient:'linear-gradient(135deg,#be123c,#f43f5e)',
+        iconBg:'rgba(255,255,255,.15)',icon:'🔔',
+        label:'التزامات خلال 30 يوم',value:oblStats.upcoming_30_days||0,
+        sub:oblStats.overdue>0?`🔴 ${oblStats.overdue} متأخر`:`${oblStats.due_this_week||0} هذا الأسبوع`,
+        subColor:oblStats.overdue>0?'#fda4af':null,page:'obligations'
+      }):''}
+    </div>
+
+    <!-- ── Collection Progress ── -->
+    <div class="dash-fadein" style="animation-delay:.1s;background:white;border-radius:18px;padding:20px 24px;margin-bottom:24px;box-shadow:0 2px 12px rgba(0,0,0,.05);border:1px solid #f1f5f9">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1e293b">معدل التحصيل</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px">نسبة المحصّل من إجمالي الفواتير</div>
+        </div>
+        <div style="font-size:28px;font-weight:800;color:${collPct>=80?'#059669':collPct>=50?'#d97706':'#dc2626'}">${collPct}%</div>
+      </div>
+      <div style="background:#f1f5f9;border-radius:99px;height:10px;overflow:hidden">
+        <div style="height:100%;width:${collPct}%;background:${collPct>=80?'linear-gradient(90deg,#059669,#10b981)':collPct>=50?'linear-gradient(90deg,#b45309,#f59e0b)':'linear-gradient(90deg,#be123c,#f43f5e)'};border-radius:99px;transition:width 1s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:#94a3b8">
+        <span>٠</span><span>${money(invoiced)}</span>
+      </div>
+    </div>
+
+    <!-- ── Charts Row ── -->
+    <div class="dash-fadein" style="animation-delay:.15s;display:grid;grid-template-columns:3fr 2fr;gap:18px;margin-bottom:24px">
+      <!-- Revenue Chart -->
+      <div style="background:white;border-radius:18px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.05);border:1px solid #f1f5f9">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <div>
+            <div style="font-size:15px;font-weight:800;color:#1e293b">الأداء المالي</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:2px">فواتير ومحصّل — آخر 6 أشهر</div>
+          </div>
+          <div style="display:flex;gap:14px;font-size:11px;font-weight:600">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:3px;border-radius:99px;background:#1a2472;display:inline-block"></span>فواتير</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:3px;border-radius:99px;background:#10b981;display:inline-block"></span>محصّل</span>
+          </div>
+        </div>
+        <canvas id="revenueChart" style="max-height:220px"></canvas>
+      </div>
+      <!-- Donut Chart -->
+      <div style="background:white;border-radius:18px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.05);border:1px solid #f1f5f9">
+        <div style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:4px">حالة الفواتير</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:16px">توزيع حالات الفواتير</div>
+        <div style="position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+          <canvas id="invoiceChart" style="max-height:160px;max-width:160px"></canvas>
+          <div style="position:absolute;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#1e293b">${Object.values(invData).reduce((a,b)=>a+b,0)}</div>
+            <div style="font-size:10px;color:#94a3b8">فاتورة</div>
+          </div>
+        </div>
+        <div id="invoiceLegend" style="display:flex;flex-direction:column;gap:7px"></div>
+      </div>
+    </div>
+
+    <!-- ── Bottom Row ── -->
+    <div class="dash-fadein" style="animation-delay:.2s;display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <!-- Activity Feed -->
+      <div style="background:white;border-radius:18px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.05);border:1px solid #f1f5f9">
+        <div style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:4px">آخر النشاطات</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:18px">الأحداث الأخيرة في النظام</div>
         <div id="activityList"></div>
       </div>
-      <div class="card" style="padding:20px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <h3 class="section-title" style="font-size:14px;margin:0">🔔 الالتزامات القادمة</h3>
-          <button onclick="navigate('obligations')" style="background:none;border:none;font-size:12px;color:#1a2472;cursor:pointer;font-weight:600;font-family:inherit">عرض الكل ←</button>
+      <!-- Upcoming Obligations -->
+      <div style="background:white;border-radius:18px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.05);border:1px solid #f1f5f9">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:15px;font-weight:800;color:#1e293b">الالتزامات القادمة</div>
+          <button onclick="navigate('obligations')" style="background:#eef1fb;border:none;color:#1a2472;font-size:11px;font-weight:700;padding:5px 12px;border-radius:8px;cursor:pointer;font-family:inherit">عرض الكل</button>
         </div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:18px">خلال الـ 14 يوم القادمة</div>
         <div id="oblUpcomingList"></div>
       </div>
     </div>`;
 
-    // Revenue Chart
+    // ── Revenue Chart (area)
     const revCtx = document.getElementById('revenueChart').getContext('2d');
-    const months = Array.isArray(chart) ? chart : (chart?.months||[]);
+    const gradBlue = revCtx.createLinearGradient(0,0,0,200);
+    gradBlue.addColorStop(0,'rgba(26,36,114,.2)'); gradBlue.addColorStop(1,'rgba(26,36,114,.01)');
+    const gradGreen = revCtx.createLinearGradient(0,0,0,200);
+    gradGreen.addColorStop(0,'rgba(16,185,129,.25)'); gradGreen.addColorStop(1,'rgba(16,185,129,.01)');
     chartInstances.revenue = new Chart(revCtx, {
-      type:'bar',
+      type:'line',
       data:{
         labels:months.map(m=>m.month),
         datasets:[
-          {label:'إجمالي الفواتير',data:months.map(m=>m.invoiced||0),backgroundColor:'rgba(37,99,235,.15)',borderColor:'#1a2472',borderWidth:2,borderRadius:6},
-          {label:'المحصّل',data:months.map(m=>m.revenue||m.collected||0),backgroundColor:'rgba(34,197,94,.2)',borderColor:'#16a34a',borderWidth:2,borderRadius:6}
+          {label:'فواتير',data:months.map(m=>m.invoiced||0),borderColor:'#1a2472',backgroundColor:gradBlue,borderWidth:2.5,fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#1a2472',pointBorderColor:'white',pointBorderWidth:2},
+          {label:'محصّل',data:months.map(m=>m.revenue||m.collected||0),borderColor:'#10b981',backgroundColor:gradGreen,borderWidth:2.5,fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#10b981',pointBorderColor:'white',pointBorderWidth:2}
         ]
       },
       options:{
         responsive:true,maintainAspectRatio:true,
-        plugins:{legend:{position:'bottom',labels:{font:{family:'Cairo',size:11},boxWidth:12}}},
-        scales:{x:{grid:{display:false},ticks:{font:{family:'Cairo',size:11}}},y:{grid:{color:'#f1f5f9'},ticks:{font:{family:'Cairo',size:10},callback:v=>(v/1000)+'k'}}}
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e293b',padding:10,titleFont:{family:'Cairo',size:12},bodyFont:{family:'Cairo',size:11},callbacks:{label:ctx=>' '+ctx.dataset.label+': '+money(ctx.raw)}}},
+        scales:{
+          x:{grid:{display:false},ticks:{font:{family:'Cairo',size:11},color:'#94a3b8'},border:{display:false}},
+          y:{grid:{color:'#f8fafc',drawBorder:false},ticks:{font:{family:'Cairo',size:10},color:'#94a3b8',callback:v=>v>=1000?(v/1000).toFixed(0)+'k':v},border:{display:false}}
+        }
       }
     });
 
-    // Invoice status chart
+    // ── Invoice Donut
     const invCtx = document.getElementById('invoiceChart').getContext('2d');
-    const invData = chart?.invoice_status||{};
     const statusLabels={'paid':'مسددة','sent':'مرسلة','partial':'جزئي','overdue':'متأخرة','draft':'مسودة'};
-    const statusColors={'paid':'#16a34a','sent':'#1a2472','partial':'#d97706','overdue':'#dc2626','draft':'#6b7280'};
+    const statusColors={'paid':'#10b981','sent':'#1a2472','partial':'#f59e0b','overdue':'#f43f5e','draft':'#cbd5e1'};
     const keys = Object.keys(invData).filter(k=>invData[k]>0);
     chartInstances.invoice = new Chart(invCtx, {
       type:'doughnut',
-      data:{
-        labels:keys.map(k=>statusLabels[k]||k),
-        datasets:[{data:keys.map(k=>invData[k]),backgroundColor:keys.map(k=>statusColors[k]||'#94a3b8'),borderWidth:0,hoverOffset:4}]
-      },
-      options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},cutout:'65%'}
+      data:{labels:keys.map(k=>statusLabels[k]||k),datasets:[{data:keys.map(k=>invData[k]),backgroundColor:keys.map(k=>statusColors[k]||'#94a3b8'),borderWidth:0,hoverOffset:6}]},
+      options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw}`}}},cutout:'68%'}
     });
     const legend = document.getElementById('invoiceLegend');
     keys.forEach(k=>{
+      const total = keys.reduce((s,k2)=>s+invData[k2],0);
+      const pct = total>0?Math.round(invData[k]/total*100):0;
       const d=document.createElement('div');
-      d.style='display:flex;align-items:center;justify-content:space-between;font-size:12px';
-      d.innerHTML=`<span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:${statusColors[k]||'#94a3b8'};display:inline-block"></span>${statusLabels[k]||k}</span><span style="font-weight:700;color:#374151">${invData[k]}</span>`;
+      d.style='display:flex;align-items:center;gap:8px';
+      d.innerHTML=`
+        <span style="width:10px;height:10px;border-radius:3px;background:${statusColors[k]||'#94a3b8'};display:inline-block;flex-shrink:0"></span>
+        <span style="font-size:12px;color:#64748b;flex:1">${statusLabels[k]||k}</span>
+        <span style="font-size:12px;font-weight:700;color:#1e293b">${invData[k]}</span>
+        <span style="font-size:10px;color:#94a3b8;min-width:28px;text-align:left">${pct}%</span>`;
       legend.append(d);
     });
 
-    // Activity
+    // ── Activity Feed
     const actEl = document.getElementById('activityList');
-    if(activity?.length) {
-      const actionIcon={'create_client':'👤','update_client':'✏️','create_invoice':'📄','update_invoice':'📝','create_task':'✅','create_lead':'🎯'};
-      activity.slice(0,6).forEach(a=>{
-        const d=document.createElement('div');
-        d.style='display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9';
-        const icon=actionIcon[a.action]||'📝';
-        d.innerHTML=`<div style="width:30px;height:30px;border-radius:8px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${icon}</div>
+    const actionMeta={
+      'create_client':{icon:'👤',color:'#eef1fb',text:'عميل جديد'},
+      'update_client':{icon:'✏️',color:'#f0fdf4',text:'تحديث عميل'},
+      'create_invoice':{icon:'💳',color:'#eff6ff',text:'فاتورة جديدة'},
+      'update_invoice':{icon:'📝',color:'#fefce8',text:'تحديث فاتورة'},
+      'create_task':{icon:'✅',color:'#f0fdf4',text:'مهمة جديدة'},
+      'create_lead':{icon:'🎯',color:'#fdf4ff',text:'عميل محتمل'},
+    };
+    if(activity?.length){
+      actEl.innerHTML = activity.slice(0,6).map(a=>{
+        const m=actionMeta[a.action]||{icon:'📌',color:'#f8fafc'};
+        return `<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f8fafc">
+          <div style="width:34px;height:34px;border-radius:10px;background:${m.color};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${m.icon}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:12px;color:#374151;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(a.description||'نشاط')}</div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:2px;display:flex;gap:6px">
-              <span>${a.user||''}</span>${a.client?`<span>• ${escH(a.client)}</span>`:''}
-              <span>• ${dateAr(a.created_at)}</span>
-            </div>
-          </div>`;
-        actEl.append(d);
-      });
-    } else actEl.innerHTML='<p style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">لا توجد نشاطات</p>';
-
-    // Obligations Upcoming
-    const oblEl = document.getElementById('oblUpcomingList');
-    const upcoming = Array.isArray(oblUpcoming) ? oblUpcoming : [];
-    if(upcoming.length) {
-      upcoming.slice(0,8).forEach(inst=>{
-        const over = inst.days_remaining < 0;
-        const close = inst.days_remaining >= 0 && inst.days_remaining <= 7;
-        const dayColor = over ? '#dc2626' : close ? '#d97706' : '#16a34a';
-        const dayText = over ? `متأخر ${Math.abs(inst.days_remaining)}ي` : inst.days_remaining===0 ? 'اليوم' : `${inst.days_remaining} يوم`;
-        const el=document.createElement('div');
-        el.style=`display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f8fafc;cursor:pointer;background:${over?'#fff5f5':close?'#fffbeb':''}`;
-        el.onclick=()=>navigate('obligations');
-        el.innerHTML=`
-          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-            <span style="font-size:14px">${OBL_ICON[inst.obligation_type]||'📋'}</span>
-            <div style="min-width:0">
-              <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(inst.client_name||'—')}</div>
-              <div style="font-size:10px;color:#94a3b8">${OBL_NAME_AR[inst.obligation_type]||inst.obligation_type||''}</div>
-            </div>
+            <div style="font-size:12.5px;color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(a.description||'نشاط')}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:3px">${a.user||''}${a.client?' • '+escH(a.client):''} • ${dateAr(a.created_at)}</div>
           </div>
-          <span style="font-size:11px;font-weight:700;color:${dayColor};white-space:nowrap;flex-shrink:0;margin-right:8px">${dayText}</span>`;
-        oblEl.append(el);
-      });
-    } else oblEl.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🎉</div><div style="font-size:13px">لا التزامات خلال 14 يوم</div></div>';
+        </div>`;
+      }).join('');
+    } else actEl.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">📭</div><div style="font-size:13px">لا توجد نشاطات بعد</div></div>';
+
+    // ── Obligations List
+    const oblEl = document.getElementById('oblUpcomingList');
+    if(upcoming.length){
+      oblEl.innerHTML = upcoming.slice(0,7).map(inst=>{
+        const over  = inst.days_remaining < 0;
+        const today = inst.days_remaining === 0;
+        const close = inst.days_remaining > 0 && inst.days_remaining <= 3;
+        const bg    = over?'#fff5f5':today?'#fffbeb':close?'#fffbeb':'transparent';
+        const pillBg= over?'#fee2e2':today?'#fef9c3':close?'#fef3c7':'#f0fdf4';
+        const pillC = over?'#dc2626':today?'#92400e':close?'#b45309':'#059669';
+        const dayTx = over?`-${Math.abs(inst.days_remaining)}ي`:today?'اليوم':`${inst.days_remaining}ي`;
+        return `<div onclick="navigate('obligations')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;margin-bottom:4px;cursor:pointer;background:${bg};transition:background .15s"
+          onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='${bg}'">
+          <span style="font-size:16px;flex-shrink:0">${OBL_ICON[inst.obligation_type]||'📋'}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(inst.client_name||'—')}</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:1px">${OBL_NAME_AR[inst.obligation_type]||''}</div>
+          </div>
+          <span style="font-size:11px;font-weight:700;background:${pillBg};color:${pillC};padding:3px 8px;border-radius:8px;white-space:nowrap">${dayTx}</span>
+        </div>`;
+      }).join('');
+    } else oblEl.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8"><div style="font-size:36px;margin-bottom:8px">🎉</div><div style="font-size:13px;font-weight:600;color:#374151">رائع! لا التزامات قادمة</div><div style="font-size:12px;margin-top:4px">خلال الـ 14 يوم القادمة</div></div>';
 
   } catch(e) { toast(e.message,'error'); }
 }
