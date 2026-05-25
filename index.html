@@ -334,6 +334,13 @@ function renderApp() {
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <span class="topbar-date" style="font-size:12px;color:#94a3b8">${new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</span>
+          <!-- Global Search -->
+          <div id="globalSearchWrap" style="position:relative">
+            <div style="display:flex;align-items:center;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;padding:0 12px;gap:8px;height:38px;cursor:text" onclick="openGlobalSearch()" title="بحث عالمي (Ctrl+K)">
+              <span style="font-size:14px;color:#94a3b8">🔍</span>
+              <span id="searchPlaceholder" style="font-size:12px;color:#94a3b8;white-space:nowrap">بحث... (Ctrl+K)</span>
+            </div>
+          </div>
           <!-- Notification Bell -->
           <div id="notifBellWrap" style="position:relative">
             <button id="notifBellBtn" onclick="toggleNotifDropdown()" title="الإشعارات" style="position:relative;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
@@ -472,6 +479,127 @@ async function markAllNotifsRead() {
     if (badge) badge.style.display = 'none';
   } catch(e) {}
 }
+
+// ── Global Search ─────────────────────────────────
+let searchOverlay = null;
+
+function openGlobalSearch() {
+  if (searchOverlay) return;
+  searchOverlay = document.createElement('div');
+  searchOverlay.style='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;backdrop-filter:blur(4px)';
+  searchOverlay.innerHTML=`
+    <div style="width:100%;max-width:620px;background:white;border-radius:16px;box-shadow:0 25px 60px rgba(0,0,0,.25);overflow:hidden">
+      <div style="display:flex;align-items:center;padding:16px 18px;border-bottom:1px solid #f1f5f9;gap:12px">
+        <span style="font-size:18px">🔍</span>
+        <input id="globalSearchInput" class="input" style="border:none;padding:0;font-size:15px;font-weight:500;flex:1;outline:none" placeholder="ابحث في العملاء، الملفات، المهام، الالتزامات..." autofocus/>
+        <button onclick="closeGlobalSearch()" style="background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:4px">✕</button>
+      </div>
+      <div id="globalSearchResults" style="max-height:420px;overflow-y:auto;padding:8px">
+        <div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">اكتب للبحث في النظام كله...</div>
+      </div>
+      <div style="padding:10px 18px;border-top:1px solid #f1f5f9;display:flex;gap:16px;font-size:11px;color:#94a3b8">
+        <span>↵ فتح</span><span>Esc إغلاق</span><span>🔍 بحث في: العملاء · الملفات · المهام · الالتزامات · الإقرارات</span>
+      </div>
+    </div>`;
+  document.body.append(searchOverlay);
+  searchOverlay.addEventListener('click', e => { if(e.target===searchOverlay) closeGlobalSearch(); });
+
+  const input = document.getElementById('globalSearchInput');
+  let searchTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = input.value.trim();
+    if (q.length < 2) {
+      document.getElementById('globalSearchResults').innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">اكتب كلمتين على الأقل...</div>';
+      return;
+    }
+    document.getElementById('globalSearchResults').innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">⏳ جاري البحث...</div>';
+    searchTimer = setTimeout(() => runGlobalSearch(q), 300);
+  });
+  input.addEventListener('keydown', e => { if(e.key==='Escape') closeGlobalSearch(); });
+}
+
+function closeGlobalSearch() {
+  if (searchOverlay) { searchOverlay.remove(); searchOverlay = null; }
+}
+
+async function runGlobalSearch(q) {
+  const el = document.getElementById('globalSearchResults');
+  if (!el) return;
+  try {
+    // Run all searches in parallel
+    const [clients, docs, tasks] = await Promise.all([
+      api('GET', `/api/clients?q=${encodeURIComponent(q)}&page_size=5`).catch(()=>null),
+      api('GET', `/api/documents?q=${encodeURIComponent(q)}&page_size=5`).catch(()=>null),
+      api('GET', `/api/tasks?q=${encodeURIComponent(q)}&page_size=5`).catch(()=>null),
+    ]);
+
+    const sections = [];
+
+    // Clients results
+    const cItems = clients?.items || [];
+    if (cItems.length) {
+      sections.push(`<div style="padding:8px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">👥 العملاء</div>`);
+      cItems.forEach(c => {
+        sections.push(`<div onclick="closeGlobalSearch();navigate('clients');setTimeout(()=>showClientDetail(${c.id}),400)" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:2px" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+          <div style="width:32px;height:32px;border-radius:8px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">👤</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(c.name)}</div>
+            <div style="font-size:11px;color:#94a3b8">${c.tax_number?'#'+c.tax_number:''} ${c.phone||''} ${c.activity||''}</div>
+          </div>
+          <span style="font-size:11px;color:#1a2472;font-weight:600;flex-shrink:0">${c.code||''}</span>
+        </div>`);
+      });
+    }
+
+    // Documents results
+    const dItems = docs?.items || [];
+    if (dItems.length) {
+      sections.push(`<div style="padding:8px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-top:6px">📁 الملفات</div>`);
+      dItems.forEach(d => {
+        sections.push(`<div onclick="closeGlobalSearch();navigate('documents')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:2px" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+          <div style="width:32px;height:32px;border-radius:8px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📄</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(d.original_name||d.name||'')}</div>
+            <div style="font-size:11px;color:#94a3b8">${escH(d.client_name||'—')} • ${d.category||''}</div>
+          </div>
+        </div>`);
+      });
+    }
+
+    // Tasks results
+    const tItems = tasks?.items || [];
+    if (tItems.length) {
+      sections.push(`<div style="padding:8px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-top:6px">✅ المهام</div>`);
+      tItems.forEach(t => {
+        sections.push(`<div onclick="closeGlobalSearch();navigate('tasks')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:2px" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+          <div style="width:32px;height:32px;border-radius:8px;background:#faf5ff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📋</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(t.title||'')}</div>
+            <div style="font-size:11px;color:#94a3b8">${escH(t.client_name||'—')} • ${t.status||''}</div>
+          </div>
+        </div>`);
+      });
+    }
+
+    if (!sections.length) {
+      el.innerHTML = `<div style="text-align:center;padding:30px;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🔍</div><div style="font-size:13px">لا نتائج لـ "${escH(q)}"</div></div>`;
+    } else {
+      el.innerHTML = sections.join('');
+    }
+  } catch(err) {
+    if(el) el.innerHTML = `<div style="color:#dc2626;padding:20px;text-align:center;font-size:13px">${err.message}</div>`;
+  }
+}
+
+// Ctrl+K shortcut
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    if (searchOverlay) closeGlobalSearch();
+    else openGlobalSearch();
+  }
+});
 
 function setApiStatus(ok) {
   const dot=document.getElementById('apiDot');
@@ -3975,6 +4103,8 @@ window.toggleNotifDropdown=toggleNotifDropdown;
 window.markNotifRead=markNotifRead;
 window.markAllNotifsRead=markAllNotifsRead;
 window.navigate=navigate;
+window.openGlobalSearch=openGlobalSearch;
+window.closeGlobalSearch=closeGlobalSearch;
 // collections
 window.showCollectionModal=showCollectionModal;
 window.showCollectionPaymentModal=showCollectionPaymentModal;
