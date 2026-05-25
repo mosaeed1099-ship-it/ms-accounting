@@ -127,6 +127,30 @@ def _run_migrations_pg():
                ALTER TABLE documents ALTER COLUMN file_path DROP NOT NULL;
              END IF;
            END $$""",
+        # quotations — new columns for Smart Quotation System
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS quote_number VARCHAR(30)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_name VARCHAR(200)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_phone VARCHAR(30)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_email VARCHAR(150)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS legal_entity VARCHAR(100)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS activity VARCHAR(300)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS activity_location VARCHAR(100)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS capital FLOAT DEFAULT 0",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS deliverables JSON",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS requirements JSON",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS extra_services JSON",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS expenses_total FLOAT DEFAULT 0",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS government_fees FLOAT DEFAULT 0",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS office_fees FLOAT DEFAULT 0",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS greeting VARCHAR(100) DEFAULT 'مساء الخير'",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS advisor_name VARCHAR(100)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS last_contact_at TIMESTAMP",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_notes TEXT",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS valid_until DATE",
+        # quotation_templates table — created by create_all, but ensure columns exist if table is old
+        # (create_all handles new tables automatically)
     ]
     with engine.connect() as conn:
         for sql in migrations:

@@ -12,6 +12,7 @@ from app.routers import import_data
 from app.routers import notifications
 from app.routers import collection
 from app.routers import gdrive
+from app.routers import quotations
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -95,6 +96,7 @@ app.include_router(import_data.router)
 app.include_router(notifications.router)
 app.include_router(collection.router)
 app.include_router(gdrive.router)
+app.include_router(quotations.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

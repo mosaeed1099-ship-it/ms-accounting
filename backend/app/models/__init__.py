@@ -9,7 +9,7 @@ from app.models.activity import ActivityLog
 
 # CRM/ERP Models
 from app.models.lead import Lead, LeadActivity, Meeting, FollowUp, LeadStatus, LeadSource
-from app.models.quotation import Quotation
+from app.models.quotation import Quotation, QuotationTemplate
 from app.models.establishment import CompanyEstablishment, CompanyType, EstablishmentStatus
 from app.models.obligation import TaxObligation, ObligationInstance, ObligationStatus, ObligationType, Notification
 from app.models.collection import CollectionContract, CollectionPayment, MonthlyDue, CollectionType, PaymentStatus
@@ -24,7 +24,7 @@ __all__ = [
     "TaxReturn", "TaxReturnType", "TaxReturnStatus",
     "ActivityLog",
     "Lead", "LeadActivity", "Meeting", "FollowUp", "LeadStatus", "LeadSource",
-    "Quotation",
+    "Quotation", "QuotationTemplate",
     "CompanyEstablishment", "CompanyType", "EstablishmentStatus",
     "TaxObligation", "ObligationInstance", "ObligationStatus", "ObligationType", "Notification",
     "CollectionContract", "CollectionPayment", "MonthlyDue", "CollectionType", "PaymentStatus",
