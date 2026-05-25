@@ -494,58 +494,69 @@ function navigate(page) {
 // ── DASHBOARD ──────────────────────────────────────
 async function loadDashboard() {
   try {
-    const [stats, chart, activity, deadlines] = await Promise.all([
+    const [stats, chart, activity, oblStats, oblUpcoming] = await Promise.all([
       api('GET','/api/dashboard/stats'),
       api('GET','/api/dashboard/revenue-chart'),
       api('GET','/api/dashboard/recent-activity'),
-      api('GET','/api/dashboard/upcoming-deadlines'),
+      api('GET','/api/obligations/stats').catch(()=>null),
+      api('GET','/api/obligations/upcoming?days=14').catch(()=>[]),
     ]);
     if (!stats) return;
     const main = document.getElementById('main');
     main.className = 'page';
     main.innerHTML = `
-    <!-- KPI Cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:24px">
-      <div class="stat-card stat-blue">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="width:44px;height:44px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:22px">👥</div>
+    <!-- KPI Cards Row 1 -->
+    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px">
+      <div class="stat-card stat-blue" style="cursor:pointer" onclick="navigate('clients')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="width:42px;height:42px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:20px">👥</div>
           <span class="badge badge-blue">${stats.clients.new_this_month} جديد</span>
         </div>
-        <div style="font-size:30px;font-weight:800;color:#1e293b;line-height:1">${stats.clients.total}</div>
-        <div style="font-size:13px;color:#64748b;margin-top:4px">إجمالي العملاء</div>
-        <div style="font-size:12px;color:#22c55e;margin-top:6px;font-weight:600">✓ ${stats.clients.active} نشط</div>
+        <div style="font-size:28px;font-weight:800;color:#1e293b;line-height:1">${stats.clients.total}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي العملاء</div>
+        <div style="font-size:11px;color:#22c55e;margin-top:5px;font-weight:600">✓ ${stats.clients.active} نشط</div>
       </div>
-      <div class="stat-card stat-green">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="width:44px;height:44px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:22px">💰</div>
+      <div class="stat-card stat-green" style="cursor:pointer" onclick="navigate('collections')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="width:42px;height:42px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:20px">💰</div>
           <span class="badge badge-green">محصّل</span>
         </div>
-        <div style="font-size:22px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_collected)}</div>
-        <div style="font-size:13px;color:#64748b;margin-top:4px">إجمالي المحصّل</div>
-        <div style="font-size:12px;color:#64748b;margin-top:6px">من ${money(stats.financial.total_invoiced)} إجمالي</div>
+        <div style="font-size:20px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_collected)}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي المحصّل</div>
+        <div style="font-size:11px;color:#64748b;margin-top:5px">من ${money(stats.financial.total_invoiced)}</div>
       </div>
-      <div class="stat-card stat-red">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="width:44px;height:44px;border-radius:12px;background:#fff1f2;display:flex;align-items:center;justify-content:center;font-size:22px">⏰</div>
+      <div class="stat-card stat-red" style="cursor:pointer" onclick="navigate('invoices')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="width:42px;height:42px;border-radius:12px;background:#fff1f2;display:flex;align-items:center;justify-content:center;font-size:20px">⏰</div>
           <span class="badge badge-red">متأخر</span>
         </div>
-        <div style="font-size:22px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_overdue)}</div>
-        <div style="font-size:13px;color:#64748b;margin-top:4px">المتأخرات</div>
-        <div style="font-size:12px;color:#f97316;margin-top:6px;font-weight:600">⚠ ${money(stats.financial.total_outstanding)} مستحق</div>
+        <div style="font-size:20px;font-weight:800;color:#1e293b;line-height:1">${money(stats.financial.total_overdue)}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">المتأخرات</div>
+        <div style="font-size:11px;color:#f97316;margin-top:5px;font-weight:600">⚠ ${money(stats.financial.total_outstanding)} مستحق</div>
       </div>
-      <div class="stat-card stat-purple">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="width:44px;height:44px;border-radius:12px;background:#faf5ff;display:flex;align-items:center;justify-content:center;font-size:22px">📋</div>
+      <div class="stat-card" style="cursor:pointer;border-right:4px solid #d97706" onclick="navigate('tasks')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="width:42px;height:42px;border-radius:12px;background:#faf5ff;display:flex;align-items:center;justify-content:center;font-size:20px">📋</div>
           <span class="badge badge-purple">${stats.tasks.urgent} عاجل</span>
         </div>
-        <div style="font-size:30px;font-weight:800;color:#1e293b;line-height:1">${stats.tasks.pending}</div>
-        <div style="font-size:13px;color:#64748b;margin-top:4px">مهام معلقة</div>
-        <div style="font-size:12px;color:#64748b;margin-top:6px">${stats.tax.pending} إقرار ضريبي قادم</div>
+        <div style="font-size:28px;font-weight:800;color:#1e293b;line-height:1">${stats.tasks.pending}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">مهام معلقة</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:5px">${stats.tasks.overdue} متأخرة</div>
       </div>
+      ${oblStats?`
+      <div class="stat-card" style="cursor:pointer;border-right:4px solid #dc2626" onclick="navigate('obligations')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="width:42px;height:42px;border-radius:12px;background:#fff5f5;display:flex;align-items:center;justify-content:center;font-size:20px">🔔</div>
+          <span class="badge badge-red">${oblStats.overdue} متأخر</span>
+        </div>
+        <div style="font-size:28px;font-weight:800;color:#1e293b;line-height:1">${oblStats.due_this_week}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">التزامات هذا الأسبوع</div>
+        <div style="font-size:11px;color:#64748b;margin-top:5px">${oblStats.upcoming_30_days} خلال 30 يوم</div>
+      </div>`:''}
     </div>
 
     <!-- Charts Row -->
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:20px">
       <div class="card" style="padding:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
           <h3 class="section-title" style="font-size:15px;margin:0">الإيرادات الشهرية</h3>
@@ -562,15 +573,18 @@ async function loadDashboard() {
       </div>
     </div>
 
-    <!-- Bottom Row -->
+    <!-- Bottom Row: Activity + Obligations -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="card" style="padding:20px">
-        <h3 class="section-title" style="font-size:15px">🕐 آخر النشاطات</h3>
+        <h3 class="section-title" style="font-size:14px">🕐 آخر النشاطات</h3>
         <div id="activityList"></div>
       </div>
       <div class="card" style="padding:20px">
-        <h3 class="section-title" style="font-size:15px">📅 المواعيد القادمة</h3>
-        <div id="deadlineList"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <h3 class="section-title" style="font-size:14px;margin:0">🔔 الالتزامات القادمة</h3>
+          <button onclick="navigate('obligations')" style="background:none;border:none;font-size:12px;color:#1a2472;cursor:pointer;font-weight:600;font-family:inherit">عرض الكل ←</button>
+        </div>
+        <div id="oblUpcomingList"></div>
       </div>
     </div>`;
 
@@ -618,26 +632,47 @@ async function loadDashboard() {
     // Activity
     const actEl = document.getElementById('activityList');
     if(activity?.length) {
+      const actionIcon={'create_client':'👤','update_client':'✏️','create_invoice':'📄','update_invoice':'📝','create_task':'✅','create_lead':'🎯'};
       activity.slice(0,6).forEach(a=>{
         const d=document.createElement('div');
-        d.style='display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9';
-        d.innerHTML=`<div style="width:28px;height:28px;border-radius:8px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📝</div><div><div style="font-size:12.5px;color:#374151;font-weight:500">${a.description}</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">${dateAr(a.created_at)}</div></div>`;
+        d.style='display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9';
+        const icon=actionIcon[a.action]||'📝';
+        d.innerHTML=`<div style="width:30px;height:30px;border-radius:8px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${icon}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;color:#374151;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(a.description||'نشاط')}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px;display:flex;gap:6px">
+              <span>${a.user||''}</span>${a.client?`<span>• ${escH(a.client)}</span>`:''}
+              <span>• ${dateAr(a.created_at)}</span>
+            </div>
+          </div>`;
         actEl.append(d);
       });
     } else actEl.innerHTML='<p style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">لا توجد نشاطات</p>';
 
-    // Deadlines
-    const dlEl = document.getElementById('deadlineList');
-    if(deadlines?.length) {
-      deadlines.slice(0,6).forEach(d=>{
-        const days=daysUntil(d.due_date);
-        const urgentColor=days<=3?'#dc2626':days<=7?'#d97706':'#16a34a';
+    // Obligations Upcoming
+    const oblEl = document.getElementById('oblUpcomingList');
+    const upcoming = Array.isArray(oblUpcoming) ? oblUpcoming : [];
+    if(upcoming.length) {
+      upcoming.slice(0,8).forEach(inst=>{
+        const over = inst.days_remaining < 0;
+        const close = inst.days_remaining >= 0 && inst.days_remaining <= 7;
+        const dayColor = over ? '#dc2626' : close ? '#d97706' : '#16a34a';
+        const dayText = over ? `متأخر ${Math.abs(inst.days_remaining)}ي` : inst.days_remaining===0 ? 'اليوم' : `${inst.days_remaining} يوم`;
         const el=document.createElement('div');
-        el.style='display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9';
-        el.innerHTML=`<div><div style="font-size:12.5px;color:#374151;font-weight:500">${d.title||d.description||'موعد'}</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">${d.client_name||''}</div></div><span style="font-size:11px;font-weight:700;color:${urgentColor};white-space:nowrap">${days<=0?'منتهي':days===1?'غداً':days+' يوم'}</span>`;
-        dlEl.append(el);
+        el.style=`display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f8fafc;cursor:pointer;background:${over?'#fff5f5':close?'#fffbeb':''}`;
+        el.onclick=()=>navigate('obligations');
+        el.innerHTML=`
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <span style="font-size:14px">${OBL_ICON[inst.obligation_type]||'📋'}</span>
+            <div style="min-width:0">
+              <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(inst.client_name||'—')}</div>
+              <div style="font-size:10px;color:#94a3b8">${OBL_NAME_AR[inst.obligation_type]||inst.obligation_type||''}</div>
+            </div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${dayColor};white-space:nowrap;flex-shrink:0;margin-right:8px">${dayText}</span>`;
+        oblEl.append(el);
       });
-    } else dlEl.innerHTML='<p style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">لا مواعيد قادمة</p>';
+    } else oblEl.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🎉</div><div style="font-size:13px">لا التزامات خلال 14 يوم</div></div>';
 
   } catch(e) { toast(e.message,'error'); }
 }
