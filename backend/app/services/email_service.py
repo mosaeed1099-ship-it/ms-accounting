@@ -375,7 +375,16 @@ def _send_via_resend(to_email: str, subject: str, html_body: str, cfg: EmailConf
     api_key = os.environ.get('RESEND_API_KEY', '')
     if not api_key:
         raise Exception("RESEND_API_KEY not set")
-    from_addr = f"{cfg.from_name} <{cfg.smtp_user}>" if cfg.smtp_user else f"MS Accounting <onboarding@resend.dev>"
+
+    # Use RESEND_FROM if set (custom verified domain), otherwise use Resend's default sender.
+    # Gmail/Yahoo addresses are NOT accepted as Resend senders — only verified domains.
+    resend_from = os.environ.get('RESEND_FROM', '')
+    if resend_from:
+        from_addr = resend_from
+    else:
+        # Default Resend test sender — works immediately, no domain verification needed
+        from_addr = f"{cfg.from_name} <onboarding@resend.dev>"
+
     resp = req.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
