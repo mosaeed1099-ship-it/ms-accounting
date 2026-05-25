@@ -276,6 +276,7 @@ const navItems = [
   {id:'tasks',         icon:'✅', label:'المهام'},
   {id:'mail',          icon:'📧', label:'البريد الإلكتروني'},
   {id:'obligations',   icon:'🔔', label:'الالتزامات الضريبية'},
+  {id:'quotations',    icon:'💼', label:'عروض الأسعار'},
   {id:'establishment', icon:'🏢', label:'تأسيس الشركات'},
   {id:'documents',     icon:'📁', label:'الأرشيف'},
   {id:'tax',           icon:'🧾', label:'الإقرارات'},
@@ -612,13 +613,13 @@ function setApiStatus(ok) {
 function navigate(page) {
   currentPage = page;
   $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',employees:'الموظفين',reports:'التقارير',import:'استيراد البيانات',settings:'الإعدادات'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',employees:'الموظفين',reports:'التقارير',import:'استيراد البيانات',settings:'الإعدادات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
   if(pages[page]) pages[page]();
 }
 
@@ -4112,6 +4113,792 @@ window.mailFocusCompose = mailFocusCompose;
 window.mailQuickReminder = mailQuickReminder;
 window.mailQuickInvoice = mailQuickInvoice;
 window.mailOnClientChange = mailOnClientChange;
+
+// ── QUOTATIONS — عروض أسعار التأسيس ───────────────
+// Status labels & colors
+const QUO_STATUS = {
+  draft:       {label:'مسودة',       color:'#6b7280', bg:'#f3f4f6', icon:'📝'},
+  sent:        {label:'مُرسَل',       color:'#1a2472', bg:'#eef1fb', icon:'📨'},
+  opened:      {label:'تم الفتح',    color:'#7c3aed', bg:'#ede9fe', icon:'👁'},
+  replied:     {label:'ردَّ العميل',  color:'#0369a1', bg:'#e0f2fe', icon:'💬'},
+  accepted:    {label:'مقبول ✓',    color:'#15803d', bg:'#dcfce7', icon:'✅'},
+  rejected:    {label:'مرفوض',      color:'#dc2626', bg:'#fee2e2', icon:'❌'},
+  negotiation: {label:'تفاوض',      color:'#d97706', bg:'#fef9c3', icon:'🤝'},
+  expired:     {label:'منتهي',      color:'#94a3b8', bg:'#f8fafc', icon:'⏰'},
+};
+
+// Built-in templates cache
+let quoTemplates = {builtin:[], custom:[]};
+let quoCurrentData = null; // currently editing/viewing
+
+async function loadQuotations() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+
+  // Load stats and templates in parallel
+  let stats = {total:0, by_status:{}, total_value:0, accepted_value:0, conversion_rate:0};
+  let data  = {total:0, items:[]};
+  try {
+    [stats, data, quoTemplates] = await Promise.all([
+      api('GET', '/api/quotations/stats').catch(()=>({total:0,by_status:{},total_value:0,accepted_value:0,conversion_rate:0})),
+      api('GET', '/api/quotations?page_size=50').catch(()=>({total:0,items:[]})),
+      api('GET', '/api/quotations/templates').catch(()=>({builtin:[],custom:[]})),
+    ]);
+  } catch(e) {}
+
+  const items = data.items || [];
+
+  main.innerHTML = `
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+    ${[
+      {k:'total',       label:'إجمالي العروض',    icon:'💼', val:stats.total||0,       color:'#1a2472'},
+      {k:'sent',        label:'مُرسَلة',           icon:'📨', val:stats.by_status?.sent||0,     color:'#1a2472'},
+      {k:'negotiation', label:'تفاوض',             icon:'🤝', val:stats.by_status?.negotiation||0, color:'#d97706'},
+      {k:'accepted',    label:'مقبولة',            icon:'✅', val:stats.by_status?.accepted||0,  color:'#15803d'},
+      {k:'total_val',   label:'قيمة العروض',       icon:'💰', val:money(stats.total_value||0),   color:'#0369a1'},
+      {k:'conv',        label:'نسبة التحويل',      icon:'📈', val:(stats.conversion_rate||0)+'%', color:'#7c3aed'},
+    ].map(s=>`
+      <div class="stat-card" style="padding:16px;border-right:3px solid ${s.color}">
+        <div style="font-size:20px;margin-bottom:6px">${s.icon}</div>
+        <div style="font-size:22px;font-weight:800;color:#1e293b;line-height:1">${s.val}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px">${s.label}</div>
+      </div>`).join('')}
+  </div>
+
+  <!-- Actions bar -->
+  <div class="card" style="padding:16px 20px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary" onclick="showQuotationForm()" style="gap:8px">
+      <span style="font-size:16px">✏️</span> إنشاء عرض سعر جديد
+    </button>
+    <input id="quoSearch" class="input" style="max-width:280px" placeholder="بحث باسم العميل أو رقم العرض..." oninput="quoSearchDebounce(this.value)"/>
+    <select id="quoStatusFilter" class="input" style="max-width:160px" onchange="loadQuotations()">
+      <option value="">كل الحالات</option>
+      ${Object.entries(QUO_STATUS).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
+    </select>
+  </div>
+
+  <!-- Quotations table -->
+  <div class="card" style="overflow:hidden">
+    <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>رقم العرض</th>
+          <th>العميل</th>
+          <th>الكيان القانوني</th>
+          <th>النشاط</th>
+          <th>الإجمالي</th>
+          <th>الحالة</th>
+          <th>التاريخ</th>
+          <th>الإجراءات</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.length === 0 ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">
+          <div style="font-size:40px;margin-bottom:10px">💼</div>
+          <div>لا توجد عروض أسعار بعد</div>
+          <button class="btn btn-primary" style="margin-top:14px" onclick="showQuotationForm()">✏️ أنشئ أول عرض</button>
+        </td></tr>` : items.map(q => {
+          const st = QUO_STATUS[q.status] || QUO_STATUS.draft;
+          return `<tr style="cursor:pointer" onclick="showQuotationDetail(${q.id})">
+            <td style="font-weight:700;color:#1a2472">${escH(q.quote_number||'')}</td>
+            <td>
+              <div style="font-weight:600">${escH(q.client_name||'')}</div>
+              ${q.client_phone?`<div style="font-size:11px;color:#94a3b8">${escH(q.client_phone)}</div>`:''}
+            </td>
+            <td><span style="font-size:12px;background:#eef1fb;color:#1a2472;padding:3px 8px;border-radius:6px">${escH(q.legal_entity||'—')}</span></td>
+            <td style="font-size:12px;color:#64748b;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(q.activity||'—')}</td>
+            <td style="font-weight:700;color:#15803d">${q.expenses_total?money(q.expenses_total):'—'}</td>
+            <td onclick="event.stopPropagation()">
+              <select onchange="quickStatusUpdate(${q.id},this.value)" style="font-size:12px;border:1.5px solid ${st.color};border-radius:8px;padding:3px 8px;background:${st.bg};color:${st.color};font-family:inherit;cursor:pointer;outline:none">
+                ${Object.entries(QUO_STATUS).map(([k,v])=>`<option value="${k}" ${q.status===k?'selected':''}>${v.icon} ${v.label}</option>`).join('')}
+              </select>
+            </td>
+            <td style="font-size:12px;color:#94a3b8">${q.created_at?new Date(q.created_at).toLocaleDateString('ar-EG'):'—'}</td>
+            <td onclick="event.stopPropagation()">
+              <div style="display:flex;gap:5px">
+                <button class="btn btn-secondary btn-sm" onclick="showQuotationDetail(${q.id})" title="عرض التفاصيل">👁</button>
+                <button class="btn btn-secondary btn-sm" onclick="showQuotationPreview(${q.id})" title="معاينة وطباعة PDF">🖨️</button>
+                <button class="btn btn-secondary btn-sm" onclick="duplicateQuotation(${q.id})" title="نسخ العرض">📋</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+
+  // Set up search
+  window._quoSearchTimeout = null;
+}
+
+window.quoSearchDebounce = function(val) {
+  clearTimeout(window._quoSearchTimeout);
+  window._quoSearchTimeout = setTimeout(async ()=>{
+    const status = document.getElementById('quoStatusFilter')?.value || '';
+    let url = `/api/quotations?page_size=50`;
+    if(val) url += `&q=${encodeURIComponent(val)}`;
+    if(status) url += `&status=${status}`;
+    try {
+      const data = await api('GET', url);
+      const tbody = document.querySelector('#main table tbody');
+      if(!tbody) return;
+      const items = data.items || [];
+      if(!items.length) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8">لا توجد نتائج</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = items.map(q => {
+        const st = QUO_STATUS[q.status] || QUO_STATUS.draft;
+        return `<tr style="cursor:pointer" onclick="showQuotationDetail(${q.id})">
+          <td style="font-weight:700;color:#1a2472">${escH(q.quote_number||'')}</td>
+          <td><div style="font-weight:600">${escH(q.client_name||'')}</div>${q.client_phone?`<div style="font-size:11px;color:#94a3b8">${escH(q.client_phone)}</div>`:''}</td>
+          <td><span style="font-size:12px;background:#eef1fb;color:#1a2472;padding:3px 8px;border-radius:6px">${escH(q.legal_entity||'—')}</span></td>
+          <td style="font-size:12px;color:#64748b">${escH(q.activity||'—')}</td>
+          <td style="font-weight:700;color:#15803d">${q.expenses_total?money(q.expenses_total):'—'}</td>
+          <td><select onchange="quickStatusUpdate(${q.id},this.value)" style="font-size:12px;border:1.5px solid ${st.color};border-radius:8px;padding:3px 8px;background:${st.bg};color:${st.color};font-family:inherit;cursor:pointer;outline:none">
+            ${Object.entries(QUO_STATUS).map(([k,v])=>`<option value="${k}" ${q.status===k?'selected':''}>${v.icon} ${v.label}</option>`).join('')}
+          </select></td>
+          <td style="font-size:12px;color:#94a3b8">${q.created_at?new Date(q.created_at).toLocaleDateString('ar-EG'):'—'}</td>
+          <td><div style="display:flex;gap:5px">
+            <button class="btn btn-secondary btn-sm" onclick="showQuotationDetail(${q.id})">👁</button>
+            <button class="btn btn-secondary btn-sm" onclick="showQuotationPreview(${q.id})">🖨️</button>
+            <button class="btn btn-secondary btn-sm" onclick="duplicateQuotation(${q.id})">📋</button>
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {}
+  }, 300);
+};
+
+async function quickStatusUpdate(qid, status) {
+  try {
+    await api('PATCH', `/api/quotations/${qid}/status`, {status});
+    toast(`تم تحديث حالة العرض إلى: ${QUO_STATUS[status]?.label||status}`);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ── Create / Edit Quotation Form ──────────────────────────────────────────
+async function showQuotationForm(existingId = null) {
+  // Load templates if not loaded
+  if(!quoTemplates.builtin?.length) {
+    try { quoTemplates = await api('GET', '/api/quotations/templates'); } catch(e) {}
+  }
+
+  let existing = null;
+  if(existingId) {
+    try { existing = await api('GET', `/api/quotations/${existingId}`); } catch(e) {}
+  }
+
+  const allTemplates = [...(quoTemplates.builtin||[]), ...(quoTemplates.custom||[])];
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" style="max-width:700px;max-height:95vh">
+    <div style="padding:18px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#1a2472,#152060);border-radius:18px 18px 0 0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:24px">💼</div>
+        <div>
+          <h2 style="font-size:15px;font-weight:700;color:white;margin:0">${existingId?'تعديل عرض السعر':'إنشاء عرض سعر جديد'}</h2>
+          <div style="font-size:11px;color:#b3c4e8">عروض أسعار تأسيس الشركات — Smart Quotation System</div>
+        </div>
+      </div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.15);border:none;width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;color:white">✕</button>
+    </div>
+    <div style="padding:20px 24px;overflow-y:auto;max-height:calc(95vh - 80px)">
+
+      <!-- Template picker -->
+      <div style="margin-bottom:18px;padding:14px 16px;background:#f0f4ff;border-radius:10px;border:1.5px dashed #b3c4e8">
+        <div style="font-size:11px;font-weight:700;color:#1a2472;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⚡ قوالب سريعة — اختر نوع الشركة</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${allTemplates.map(t=>`
+            <button onclick="applyQuoTemplate('${t.id}')" style="padding:6px 12px;border-radius:8px;font-size:12px;font-family:inherit;cursor:pointer;border:1.5px solid #d1d5db;background:white;color:#374151;transition:all .15s" onmouseover="this.style.background='#1a2472';this.style.color='white';this.style.borderColor='#1a2472'" onmouseout="this.style.background='white';this.style.color='#374151';this.style.borderColor='#d1d5db'">${t.name}</button>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Client info -->
+      <div style="margin-bottom:16px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e8edf3">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">بيانات العميل</div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">اسم العميل *</label>
+            <input id="qClientName" class="input" value="${escH(existing?.client_name||'')}" placeholder="مثال: أحمد محمد علي"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رقم الهاتف</label>
+            <input id="qClientPhone" class="input" type="tel" value="${escH(existing?.client_phone||'')}" placeholder="01xxxxxxxxx"/>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">البريد الإلكتروني</label>
+          <input id="qClientEmail" class="input" type="email" value="${escH(existing?.client_email||'')}" placeholder="client@example.com"/>
+        </div>
+      </div>
+
+      <!-- Company details -->
+      <div style="margin-bottom:16px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e8edf3">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">بيانات الشركة</div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الكيان القانوني</label>
+            <select id="qLegalEntity" class="input">
+              <option value="">— اختر —</option>
+              ${['شركة شخص واحد','شركة ذات مسؤولية محدودة','منشأة فردية','شركة مساهمة','شركة توصية بالأسهم','شركة تضامن','فرع شركة أجنبية','شركة قابضة'].map(e=>`<option value="${e}" ${existing?.legal_entity===e?'selected':''}>${e}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">مقر النشاط</label>
+            <select id="qActivityLocation" class="input">
+              <option value="">— اختر —</option>
+              ${['افتراضي','مكتب خاص','وحدة سكنية','محل تجاري','مصنع / مستودع','مركز أعمال'].map(l=>`<option value="${l}" ${existing?.activity_location===l?'selected':''}>${l}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">النشاط التجاري</label>
+          <input id="qActivity" class="input" value="${escH(existing?.activity||'')}" placeholder="مثال: توريدات عمومية / كيماويات / تصدير"/>
+        </div>
+        <div style="margin-top:10px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رأس المال (جنيه)</label>
+          <input id="qCapital" class="input" type="number" value="${existing?.capital||''}" placeholder="150000"/>
+        </div>
+      </div>
+
+      <!-- Deliverables -->
+      <div style="margin-bottom:16px;padding:14px 16px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px">📦 ما يستلمه العميل منا</div>
+          <button onclick="addQuoItem('qDeliverables')" style="background:#16a34a;color:white;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit">+ إضافة</button>
+        </div>
+        <div id="qDeliverables">
+          ${(existing?.deliverables||[]).map((d,i)=>quoItemRow('qDeliverables',d,i)).join('')}
+        </div>
+      </div>
+
+      <!-- Requirements -->
+      <div style="margin-bottom:16px;padding:14px 16px;background:#fffbeb;border-radius:10px;border:1px solid #fde68a">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">📌 المطلوب من العميل</div>
+          <button onclick="addQuoItem('qRequirements')" style="background:#d97706;color:white;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit">+ إضافة</button>
+        </div>
+        <div id="qRequirements">
+          ${(existing?.requirements||[]).map((r,i)=>quoItemRow('qRequirements',r,i)).join('')}
+        </div>
+      </div>
+
+      <!-- Pricing -->
+      <div style="margin-bottom:16px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e8edf3">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">💰 التسعير والأتعاب</div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رسوم حكومية</label>
+            <input id="qGovFees" class="input" type="number" value="${existing?.government_fees||0}" oninput="calcQuoTotal()"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">أتعاب المكتب</label>
+            <input id="qOfficeFees" class="input" type="number" value="${existing?.office_fees||0}" oninput="calcQuoTotal()"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">إجمالي المصاريف والأتعاب *</label>
+            <input id="qTotal" class="input" type="number" value="${existing?.expenses_total||0}" style="font-weight:700;font-size:15px;border-color:#1a2472"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Greeting + Advisor + Notes -->
+      <div style="margin-bottom:16px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e8edf3">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">التوقيع والملاحظات</div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">التحية</label>
+            <select id="qGreeting" class="input">
+              ${['مساء الخير','صباح الخير','السادة المحترمون','مرحباً بكم'].map(g=>`<option value="${g}" ${(existing?.greeting||'مساء الخير')===g?'selected':''}>${g}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">اسم المستشار</label>
+            <input id="qAdvisor" class="input" value="${escH(existing?.advisor_name||currentUser?.name||'')}" placeholder="المستشار / عمرو شعبان"/>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات إضافية</label>
+          <textarea id="qNotes" class="input" rows="2" placeholder="أي ملاحظات أو شروط إضافية...">${escH(existing?.notes||'')}</textarea>
+        </div>
+      </div>
+
+      <div id="quoFormResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        ${existingId?`<button class="btn btn-secondary" onclick="saveQuotationForm(${existingId}, true)">💾 حفظ وإغلاق</button>`:''}
+        <button class="btn btn-primary" onclick="saveQuotationForm(${existingId||'null'})" style="min-width:160px">
+          ${existingId?'💾 حفظ التعديلات':'📋 إنشاء عرض السعر'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+
+  // Store template data globally for apply function
+  window._quoTemplateData = allTemplates;
+}
+
+function quoItemRow(containerId, text='', idx=0) {
+  return `<div style="display:flex;gap:6px;margin-bottom:6px" id="${containerId}_item_${idx}">
+    <input class="input" style="flex:1;font-size:13px" value="${escH(text)}" placeholder="أضف بنداً..."/>
+    <button onclick="this.parentElement.remove()" style="background:#fee2e2;border:none;border-radius:6px;width:30px;cursor:pointer;font-size:14px;color:#dc2626">×</button>
+  </div>`;
+}
+
+function addQuoItem(containerId) {
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  const idx = container.children.length;
+  container.insertAdjacentHTML('beforeend', quoItemRow(containerId, '', idx));
+}
+
+function calcQuoTotal() {
+  const gov = parseFloat(document.getElementById('qGovFees')?.value||0);
+  const off = parseFloat(document.getElementById('qOfficeFees')?.value||0);
+  const total = document.getElementById('qTotal');
+  if(total && (gov+off > 0)) total.value = gov + off;
+}
+
+function getQuoItems(containerId) {
+  const container = document.getElementById(containerId);
+  if(!container) return [];
+  return Array.from(container.querySelectorAll('input')).map(i=>i.value.trim()).filter(Boolean);
+}
+
+function applyQuoTemplate(templateId) {
+  const all = window._quoTemplateData || [];
+  const t = all.find(x => x.id === templateId || x.id === String(templateId));
+  if(!t) return;
+
+  // Fill legal entity
+  const le = document.getElementById('qLegalEntity');
+  if(le && t.legal_entity) le.value = t.legal_entity;
+
+  // Fill greeting
+  const gr = document.getElementById('qGreeting');
+  if(gr && t.greeting) gr.value = t.greeting;
+
+  // Fill total
+  const tot = document.getElementById('qTotal');
+  if(tot && t.default_expenses) tot.value = t.default_expenses;
+
+  // Fill deliverables
+  const deliv = document.getElementById('qDeliverables');
+  if(deliv && t.deliverables?.length) {
+    deliv.innerHTML = t.deliverables.map((d,i)=>quoItemRow('qDeliverables',d,i)).join('');
+  }
+
+  // Fill requirements
+  const reqs = document.getElementById('qRequirements');
+  if(reqs && t.requirements?.length) {
+    reqs.innerHTML = t.requirements.map((r,i)=>quoItemRow('qRequirements',r,i)).join('');
+  }
+
+  toast(`تم تطبيق قالب: ${t.name}`);
+}
+
+async function saveQuotationForm(existingId, closeAfter = false) {
+  const resultDiv = document.getElementById('quoFormResult');
+  const btn = event?.target;
+  const clientName = document.getElementById('qClientName')?.value?.trim();
+  if(!clientName) {
+    resultDiv.innerHTML = `<div style="color:#dc2626;padding:8px 12px;background:#fef2f2;border-radius:6px">⚠️ اسم العميل مطلوب</div>`;
+    return;
+  }
+
+  const payload = {
+    client_name: clientName,
+    client_phone: document.getElementById('qClientPhone')?.value?.trim()||null,
+    client_email: document.getElementById('qClientEmail')?.value?.trim()||null,
+    legal_entity: document.getElementById('qLegalEntity')?.value||null,
+    activity: document.getElementById('qActivity')?.value?.trim()||null,
+    activity_location: document.getElementById('qActivityLocation')?.value||null,
+    capital: parseFloat(document.getElementById('qCapital')?.value||0),
+    deliverables: getQuoItems('qDeliverables'),
+    requirements: getQuoItems('qRequirements'),
+    expenses_total: parseFloat(document.getElementById('qTotal')?.value||0),
+    government_fees: parseFloat(document.getElementById('qGovFees')?.value||0),
+    office_fees: parseFloat(document.getElementById('qOfficeFees')?.value||0),
+    notes: document.getElementById('qNotes')?.value?.trim()||null,
+    greeting: document.getElementById('qGreeting')?.value||'مساء الخير',
+    advisor_name: document.getElementById('qAdvisor')?.value?.trim()||null,
+  };
+
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ جارٍ الحفظ...'; }
+  resultDiv.innerHTML = '';
+
+  try {
+    let result;
+    if(existingId) {
+      result = await api('PUT', `/api/quotations/${existingId}`, payload);
+      toast('تم تحديث عرض السعر بنجاح ✅');
+    } else {
+      result = await api('POST', '/api/quotations', payload);
+      toast('تم إنشاء عرض السعر بنجاح ✅');
+    }
+
+    const overlay = document.querySelector('.modal-overlay');
+    if(overlay) overlay.remove();
+
+    // Show the detail/preview
+    if(!closeAfter) showQuotationDetail(result.id);
+    else loadQuotations();
+  } catch(e) {
+    resultDiv.innerHTML = `<div style="color:#dc2626;padding:8px 12px;background:#fef2f2;border-radius:6px">❌ ${escH(e.message)}</div>`;
+    if(btn) { btn.disabled = false; btn.textContent = existingId ? '💾 حفظ التعديلات' : '📋 إنشاء عرض السعر'; }
+  }
+}
+
+// ── Quotation Detail Modal ────────────────────────────────────────────────
+async function showQuotationDetail(id) {
+  let q;
+  try { q = await api('GET', `/api/quotations/${id}`); } catch(e) { toast(e.message,'error'); return; }
+
+  const st = QUO_STATUS[q.status] || QUO_STATUS.draft;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" style="max-width:640px;max-height:92vh">
+    <div style="padding:18px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#1a2472,#152060);border-radius:18px 18px 0 0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:22px">💼</div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:white">${escH(q.quote_number||'')} — الإصدار ${q.version||1}</div>
+          <div style="font-size:11px;color:#b3c4e8">${escH(q.client_name)}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="background:${st.bg};color:${st.color};font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px">${st.icon} ${st.label}</span>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.15);border:none;width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;color:white">✕</button>
+      </div>
+    </div>
+    <div style="padding:20px 24px;overflow-y:auto;max-height:calc(92vh - 80px)">
+
+      <!-- Quick info -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div style="background:#f8fafc;border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">العميل</div>
+          <div style="font-weight:700;color:#1e293b">${escH(q.client_name)}</div>
+          ${q.client_phone?`<div style="font-size:12px;color:#64748b">📞 ${escH(q.client_phone)}</div>`:''}
+          ${q.client_email?`<div style="font-size:12px;color:#64748b">📧 ${escH(q.client_email)}</div>`:''}
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">تفاصيل الشركة</div>
+          ${q.legal_entity?`<div style="font-size:12px;color:#1e293b;font-weight:600">${escH(q.legal_entity)}</div>`:''}
+          ${q.activity?`<div style="font-size:12px;color:#64748b">${escH(q.activity)}</div>`:''}
+          ${q.activity_location?`<div style="font-size:12px;color:#64748b">📍 ${escH(q.activity_location)}</div>`:''}
+          ${q.capital?`<div style="font-size:12px;color:#64748b">💰 رأس المال: ${money(q.capital)}</div>`:''}
+        </div>
+      </div>
+
+      <!-- Pricing highlight -->
+      <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1.5px solid #86efac;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:11px;color:#15803d;font-weight:700">إجمالي المصاريف والأتعاب</div>
+          <div style="font-size:28px;font-weight:800;color:#15803d">${money(q.expenses_total||0)}</div>
+          ${(q.government_fees||q.office_fees)?`<div style="font-size:11px;color:#6b7280">رسوم حكومية: ${money(q.government_fees||0)} | أتعاب المكتب: ${money(q.office_fees||0)}</div>`:''}
+        </div>
+        <div style="font-size:40px">💰</div>
+      </div>
+
+      <!-- Deliverables + Requirements -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        ${q.deliverables?.length?`<div style="background:#f0fdf4;border-right:3px solid #16a34a;border-radius:8px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:8px">📦 ما يستلمه العميل</div>
+          <ul style="margin:0;padding-right:16px;font-size:12px;color:#374151;line-height:1.9">
+            ${q.deliverables.map(d=>`<li>${escH(d)}</li>`).join('')}
+          </ul>
+        </div>`:''}
+        ${q.requirements?.length?`<div style="background:#fffbeb;border-right:3px solid #d97706;border-radius:8px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:8px">📌 المطلوب من العميل</div>
+          <ul style="margin:0;padding-right:16px;font-size:12px;color:#374151;line-height:1.9">
+            ${q.requirements.map(r=>`<li>${escH(r)}</li>`).join('')}
+          </ul>
+        </div>`:''}
+      </div>
+
+      ${q.notes?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#374151"><strong>ملاحظات:</strong> ${escH(q.notes)}</div>`:''}
+
+      <!-- Tracking / status -->
+      <div style="background:#f8fafc;border-radius:8px;padding:12px 14px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">متابعة الحالة</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          ${Object.entries(QUO_STATUS).map(([k,v])=>`
+            <button onclick="quoUpdateStatus(${q.id},'${k}')" style="padding:4px 10px;border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer;border:1.5px solid ${q.status===k?v.color:'#d1d5db'};background:${q.status===k?v.bg:'white'};color:${q.status===k?v.color:'#374151'};font-weight:${q.status===k?'700':'400'}">
+              ${v.icon} ${v.label}
+            </button>`).join('')}
+        </div>
+        ${q.sent_at?`<div style="font-size:11px;color:#94a3b8">📨 أُرسل في: ${new Date(q.sent_at).toLocaleDateString('ar-EG')}</div>`:''}
+        ${q.opened_at?`<div style="font-size:11px;color:#94a3b8">👁 فُتح في: ${new Date(q.opened_at).toLocaleDateString('ar-EG')}</div>`:''}
+        ${q.last_contact_at?`<div style="font-size:11px;color:#94a3b8">💬 آخر تواصل: ${new Date(q.last_contact_at).toLocaleDateString('ar-EG')}</div>`:''}
+      </div>
+
+      ${q.client_notes?`<div style="background:#eef1fb;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#374151"><strong>ملاحظات العميل:</strong> ${escH(q.client_notes)}</div>`:''}
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;border-top:1px solid #f1f5f9;padding-top:16px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove();showQuotationPreview(${q.id})" style="gap:6px">🖨️ معاينة وطباعة PDF</button>
+          <button class="btn btn-secondary" onclick="sendQuotationEmail(${q.id},'${escH(q.client_email||'')}')">📧 إرسال بإيميل</button>
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove();showQuotationForm(${q.id})">✏️ تعديل</button>
+          <button class="btn btn-secondary" onclick="duplicateQuotation(${q.id})">📋 نسخ</button>
+        </div>
+        ${q.status==='accepted'&&!q.client_id?`<button class="btn btn-success" onclick="convertQuotationToClient(${q.id})" style="gap:6px">🚀 تحويل إلى عميل</button>`:
+          q.client_id?`<span style="font-size:12px;color:#16a34a;font-weight:600">✅ تم التحويل إلى عميل</span>`:''}
+      </div>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+}
+
+async function quoUpdateStatus(id, status) {
+  try {
+    await api('PATCH', `/api/quotations/${id}/status`, {status});
+    toast(`${QUO_STATUS[status]?.icon||''} تم تحديث الحالة: ${QUO_STATUS[status]?.label||status}`);
+    // Refresh detail modal
+    document.querySelector('.modal-overlay')?.remove();
+    showQuotationDetail(id);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function sendQuotationEmail(id, currentEmail) {
+  const email = prompt('إيميل المستلم:', currentEmail || '');
+  if(!email) return;
+  try {
+    const r = await api('POST', `/api/quotations/${id}/send`, {to_email: email});
+    toast(r.message || '✅ تم الإرسال بنجاح');
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function duplicateQuotation(id) {
+  try {
+    const r = await api('POST', `/api/quotations/${id}/duplicate`);
+    toast('تم نسخ عرض السعر ✅');
+    document.querySelector('.modal-overlay')?.remove();
+    showQuotationDetail(r.id);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function convertQuotationToClient(id) {
+  if(!confirm('هل تريد تحويل عرض السعر إلى عميل جديد؟ سيتم إنشاء ملف العميل وبدء workflow التأسيس تلقائياً.')) return;
+  try {
+    const r = await api('POST', `/api/quotations/${id}/convert`);
+    toast(r.message);
+    document.querySelector('.modal-overlay')?.remove();
+    if(r.client_id) setTimeout(()=>{ navigate('clients'); setTimeout(()=>showClientDetail(r.client_id),500); }, 300);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ── PDF Preview (HTML print template) ───────────────────────────────────────
+async function showQuotationPreview(id) {
+  let q;
+  try { q = await api('GET', `/api/quotations/${id}`); } catch(e) { toast(e.message,'error'); return; }
+
+  const capFmt = q.capital ? q.capital.toLocaleString('ar-EG') + ' جنيه' : '—';
+  const totalFmt = q.expenses_total ? q.expenses_total.toLocaleString('ar-EG') + ' جنيه' : '—';
+  const today = new Date().toLocaleDateString('ar-EG', {year:'numeric',month:'long',day:'numeric'});
+
+  const delivHtml = (q.deliverables||[]).map(d=>`<li>${d}</li>`).join('');
+  const reqHtml   = (q.requirements||[]).map(r=>`<li>${r}</li>`).join('');
+  const extraHtml = (q.extra_services||[]).map(s=>`<li>${s}</li>`).join('');
+
+  const printHtml = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<title>عرض سعر — ${q.quote_number}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+  * { font-family: 'Cairo', sans-serif; box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #fff; color: #1e293b; direction: rtl; font-size: 14px; line-height: 1.6; }
+  .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 0; background: white; position: relative; }
+
+  /* Header */
+  .header { background: linear-gradient(135deg, #1a2472 0%, #152060 60%, #0f1848 100%); color: white; padding: 32px 40px 24px; }
+  .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .company-name { font-size: 26px; font-weight: 800; letter-spacing: 1px; }
+  .company-sub  { font-size: 12px; color: #b3c4e8; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+  .quote-meta { text-align: left; }
+  .quote-number { font-size: 20px; font-weight: 800; color: #fbbf24; }
+  .quote-date   { font-size: 12px; color: #b3c4e8; margin-top: 4px; }
+  .header-divider { border-top: 1px solid rgba(255,255,255,.2); margin: 16px 0; }
+  .quote-title  { font-size: 16px; font-weight: 600; color: #b3c4e8; text-align: center; }
+
+  /* Body */
+  .body { padding: 32px 40px; }
+  .greeting { font-size: 17px; font-weight: 600; color: #1a2472; margin-bottom: 4px; }
+  .greeting-sub { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+
+  /* Info block */
+  .info-block { background: linear-gradient(135deg, #eef1fb, #f0f4ff); border: 1.5px solid #c7d2fe; border-radius: 10px; padding: 20px 24px; margin-bottom: 24px; }
+  .info-title  { font-size: 13px; font-weight: 700; color: #1a2472; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 14px; border-bottom: 1px solid #c7d2fe; padding-bottom: 8px; }
+  .info-row    { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 13.5px; }
+  .info-label  { color: #64748b; min-width: 120px; }
+  .info-value  { font-weight: 700; color: #1e293b; flex: 1; }
+
+  /* Total */
+  .total-block { background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 2px solid #86efac; border-radius: 10px; padding: 18px 24px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; }
+  .total-label { font-size: 13px; color: #15803d; font-weight: 600; }
+  .total-amount { font-size: 30px; font-weight: 800; color: #15803d; }
+  .total-breakdown { font-size: 11px; color: #6b7280; margin-top: 4px; }
+
+  /* Lists */
+  .section-title { font-size: 13px; font-weight: 700; color: #1a2472; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .list-block  { margin-bottom: 22px; }
+  .list-box    { background: #f8fafc; border-radius: 8px; padding: 14px 18px; border-right: 4px solid #1a2472; }
+  .list-box.green { border-right-color: #16a34a; background: #f0fdf4; }
+  .list-box.orange { border-right-color: #d97706; background: #fffbeb; }
+  .list-box ul { margin: 0; padding-right: 20px; }
+  .list-box li { font-size: 13px; color: #374151; margin-bottom: 5px; }
+
+  /* Notes */
+  .notes-block { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin-bottom: 22px; font-size: 13px; color: #92400e; }
+
+  /* Signature */
+  .signature-block { border-top: 2px solid #e8edf3; padding-top: 20px; margin-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .sig-side { text-align: center; }
+  .sig-line { border-top: 1px solid #94a3b8; width: 180px; margin: 0 auto 6px; padding-top: 8px; font-size: 12px; color: #64748b; }
+  .sig-name { font-weight: 700; font-size: 13px; color: #1e293b; }
+
+  /* Footer */
+  .footer { background: #1a2472; color: white; padding: 14px 40px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #b3c4e8; }
+
+  @media print {
+    .no-print { display: none !important; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="company-name">🏛️ MS Accounting</div>
+        <div class="company-sub">Corporate Accounting & Business Setup</div>
+      </div>
+      <div class="quote-meta">
+        <div class="quote-number">${q.quote_number}</div>
+        <div class="quote-date">📅 ${today}</div>
+        ${q.valid_until?`<div class="quote-date">صالح حتى: ${q.valid_until}</div>`:''}
+      </div>
+    </div>
+    <div class="header-divider"></div>
+    <div class="quote-title">عرض سعر — تأسيس شركة</div>
+  </div>
+
+  <div class="body">
+    <!-- Greeting -->
+    <div class="greeting">${q.greeting||'مساء الخير'}</div>
+    <div class="greeting-sub">مع حضرتك / ${q.client_name}</div>
+
+    <!-- Company info -->
+    <div class="info-block">
+      <div class="info-title">📋 تفاصيل عرض السعر</div>
+      ${q.legal_entity?`<div class="info-row"><span class="info-label">الكيان القانوني:</span><span class="info-value">${q.legal_entity}</span></div>`:''}
+      ${q.activity?`<div class="info-row"><span class="info-label">النشاط:</span><span class="info-value">${q.activity}</span></div>`:''}
+      ${q.activity_location?`<div class="info-row"><span class="info-label">مقر النشاط:</span><span class="info-value">${q.activity_location}</span></div>`:''}
+      ${q.capital?`<div class="info-row"><span class="info-label">رأس المال:</span><span class="info-value">${capFmt}</span></div>`:''}
+      <div class="info-row"><span class="info-label">اسم العميل:</span><span class="info-value">${q.client_name}</span></div>
+      ${q.client_phone?`<div class="info-row"><span class="info-label">رقم الهاتف:</span><span class="info-value">${q.client_phone}</span></div>`:''}
+    </div>
+
+    <!-- Total -->
+    <div class="total-block">
+      <div>
+        <div class="total-label">إجمالي المصاريف والأتعاب</div>
+        <div class="total-amount">${totalFmt}</div>
+        ${(q.government_fees||q.office_fees)?`<div class="total-breakdown">رسوم حكومية: ${(q.government_fees||0).toLocaleString('ar-EG')} جنيه — أتعاب المكتب: ${(q.office_fees||0).toLocaleString('ar-EG')} جنيه</div>`:''}
+      </div>
+      <div style="font-size:40px">💰</div>
+    </div>
+
+    <!-- Deliverables -->
+    ${delivHtml?`<div class="list-block">
+      <div class="section-title">✅ حضرتك هتستلم مننا</div>
+      <div class="list-box green"><ul>${delivHtml}</ul></div>
+    </div>`:''}
+
+    <!-- Extra services -->
+    ${extraHtml?`<div class="list-block">
+      <div class="section-title">⭐ خدمات إضافية</div>
+      <div class="list-box"><ul>${extraHtml}</ul></div>
+    </div>`:''}
+
+    <!-- Requirements -->
+    ${reqHtml?`<div class="list-block">
+      <div class="section-title">📌 المطلوب من حضرتكم</div>
+      <div class="list-box orange"><ul>${reqHtml}</ul></div>
+    </div>`:''}
+
+    <!-- Notes -->
+    ${q.notes?`<div class="notes-block"><strong>ملاحظات:</strong> ${q.notes}</div>`:''}
+
+    <!-- Signature -->
+    <div class="signature-block">
+      <div class="sig-side">
+        <div class="sig-line">العميل</div>
+        <div class="sig-name">${q.client_name}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:3px">التوقيع والتاريخ</div>
+      </div>
+      <div style="text-align:center;color:#64748b;font-size:12px">
+        <div style="font-size:24px;margin-bottom:6px">🏛️</div>
+        <div style="font-weight:700;color:#1a2472">MS Accounting</div>
+        <div style="font-size:11px">مكتب محاسبة متخصص</div>
+      </div>
+      <div class="sig-side">
+        <div class="sig-line">المستشار</div>
+        <div class="sig-name">${q.advisor_name||'المستشار'}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:3px">التوقيع والتاريخ</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div>MS Accounting — نظام إدارة مكتب المحاسبة</div>
+    <div>${q.quote_number} | ${today}</div>
+    <div>هذا العرض سري وخاص بالعميل المُشار إليه</div>
+  </div>
+</div>
+
+<!-- Print button (hidden on print) -->
+<div class="no-print" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:10px;background:white;padding:12px 20px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.2)">
+  <button onclick="window.print()" style="background:linear-gradient(135deg,#1a2472,#152060);color:white;border:none;border-radius:9px;padding:10px 24px;font-size:14px;font-family:'Cairo',sans-serif;cursor:pointer;font-weight:700">🖨️ طباعة / حفظ PDF</button>
+  <button onclick="window.close()" style="background:#f1f5f9;color:#374151;border:1.5px solid #d1d5db;border-radius:9px;padding:10px 24px;font-size:14px;font-family:'Cairo',sans-serif;cursor:pointer">إغلاق</button>
+</div>
+</body></html>`;
+
+  const w = window.open('', '_blank', 'width=900,height=1000,scrollbars=yes');
+  if(!w) { toast('يرجى السماح بفتح نوافذ منبثقة في المتصفح','error'); return; }
+  w.document.write(printHtml);
+  w.document.close();
+}
+
+// expose globals
+window.loadQuotations    = loadQuotations;
+window.showQuotationForm = showQuotationForm;
+window.showQuotationDetail = showQuotationDetail;
+window.showQuotationPreview = showQuotationPreview;
+window.saveQuotationForm = saveQuotationForm;
+window.applyQuoTemplate  = applyQuoTemplate;
+window.addQuoItem        = addQuoItem;
+window.calcQuoTotal      = calcQuoTotal;
+window.quickStatusUpdate = quickStatusUpdate;
+window.quoUpdateStatus   = quoUpdateStatus;
+window.sendQuotationEmail = sendQuotationEmail;
+window.duplicateQuotation = duplicateQuotation;
+window.convertQuotationToClient = convertQuotationToClient;
 
 // ── SETTINGS ───────────────────────────────────────
 async function loadSettings() {
