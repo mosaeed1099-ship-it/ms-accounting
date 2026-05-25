@@ -274,6 +274,7 @@ const navItems = [
   {id:'invoices',      icon:'📄', label:'أتعاب الحسابات'},
   {id:'collections',   icon:'💰', label:'التحصيلات'},
   {id:'tasks',         icon:'✅', label:'المهام'},
+  {id:'mail',          icon:'📧', label:'البريد الإلكتروني'},
   {id:'obligations',   icon:'🔔', label:'الالتزامات الضريبية'},
   {id:'establishment', icon:'🏢', label:'تأسيس الشركات'},
   {id:'documents',     icon:'📁', label:'الأرشيف'},
@@ -341,6 +342,8 @@ function renderApp() {
               <span id="searchPlaceholder" style="font-size:12px;color:#94a3b8;white-space:nowrap">بحث... (Ctrl+K)</span>
             </div>
           </div>
+          <!-- Quick compose email button -->
+          <button onclick="navigate('mail')" title="إرسال بريد إلكتروني" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">📧</button>
           <!-- Notification Bell -->
           <div id="notifBellWrap" style="position:relative">
             <button id="notifBellBtn" onclick="toggleNotifDropdown()" title="الإشعارات" style="position:relative;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
@@ -609,13 +612,13 @@ function setApiStatus(ok) {
 function navigate(page) {
   currentPage = page;
   $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',obligations:'الالتزامات الضريبية',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',employees:'الموظفين',reports:'التقارير',import:'استيراد البيانات',settings:'الإعدادات'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',employees:'الموظفين',reports:'التقارير',import:'استيراد البيانات',settings:'الإعدادات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,obligations:loadObligations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,employees:loadEmployees,reports:loadReports,import:loadImport,settings:loadSettings};
   if(pages[page]) pages[page]();
 }
 
@@ -883,6 +886,7 @@ function renderClients() {
                 <button class="btn btn-secondary btn-sm" onclick="showClientModal(${c.id})">✏️</button>
                 <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')">📄</button>
                 <button class="btn btn-secondary btn-sm" title="رفع ملف لهذا العميل" onclick="showUploadModal(${c.id})">📎</button>
+                <button class="btn btn-secondary btn-sm" title="إرسال بريد إلكتروني" onclick="showClientEmailModal(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.email||''}')">📧</button>
               </div>
             </td>
           </tr>`).join('')}
@@ -945,6 +949,7 @@ async function showClientDetail(id) {
       <button class="btn btn-primary btn-sm" onclick="this.closest('.modal-overlay').remove();showClientModal(${c.id})">✏️ تعديل</button>
       <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove();addInvoiceForClient(${c.id},'${escH(c.name)}')">📄 فاتورة</button>
       <button class="btn btn-secondary btn-sm" onclick="showUploadModal(${c.id})">📎 رفع ملف</button>
+      <button class="btn btn-secondary btn-sm" onclick="showClientEmailModal(${c.id},'${escH(c.name)}','${escH(c.email||'')}')">📧 بريد</button>
       <button class="btn btn-secondary btn-sm" onclick="showObligationModal(${c.id})">🔔 التزام</button>
       <button class="btn btn-secondary btn-sm" onclick="showClientTimeline(${c.id},'${escH(c.name)}')">🕐 Timeline</button>
       ${c.tax_obligations&&c.tax_obligations.length?`<button class="btn btn-sm" style="background:#eef1fb;color:#1a2472;border:1.5px solid #b3c4e8" onclick="autoGenClientObligations(${c.id})">⚙️ Auto-Generate</button>`:''}
@@ -3823,6 +3828,291 @@ function renderImportResult(result) {
   </div>`;
 }
 
+// ── MAIL — Email Composer ──────────────────────────
+let mailClients = [];
+let mailSelectedClient = null;
+
+async function loadMail() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+
+  // Load clients list for picker
+  try {
+    const d = await api('GET', '/api/clients?page_size=200');
+    mailClients = d?.items || [];
+  } catch(e) { mailClients = []; }
+
+  const clientOptions = mailClients.map(c =>
+    `<option value="${c.id}" data-email="${escH(c.email||'')}" data-name="${escH(c.name)}">${escH(c.name)}${c.email?' — '+escH(c.email):' ⚠️ لا يوجد إيميل'}</option>`
+  ).join('');
+
+  main.innerHTML = `
+  <div style="display:grid;grid-template-columns:240px 1fr;gap:20px;align-items:start">
+
+    <!-- Left panel: compose button + quick tips -->
+    <div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <button onclick="mailFocusCompose()" class="btn btn-primary" style="width:100%;border-radius:0;padding:14px;font-size:14px;justify-content:center;gap:8px">
+          <span style="font-size:18px">✏️</span> رسالة جديدة
+        </button>
+        <div style="padding:16px">
+          <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">البريد الصادر</div>
+          <div id="mailSentList" style="font-size:13px;color:#64748b;text-align:center;padding:20px 0">
+            📭 لا توجد رسائل مُرسَلة محفوظة
+          </div>
+        </div>
+        <div style="padding:16px;border-top:1px solid #f1f5f9">
+          <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">إجراءات سريعة</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button onclick="mailFocusCompose()" style="background:#f8fafc;border:1px solid #e8edf3;border-radius:8px;padding:8px 12px;font-size:12.5px;font-family:inherit;cursor:pointer;text-align:right;color:#374151;display:flex;align-items:center;gap:8px">
+              <span>📧</span> بريد عادي
+            </button>
+            <button onclick="mailQuickReminder()" style="background:#f8fafc;border:1px solid #e8edf3;border-radius:8px;padding:8px 12px;font-size:12.5px;font-family:inherit;cursor:pointer;text-align:right;color:#374151;display:flex;align-items:center;gap:8px">
+              <span>🔔</span> تذكير ضريبي
+            </button>
+            <button onclick="mailQuickInvoice()" style="background:#f8fafc;border:1px solid #e8edf3;border-radius:8px;padding:8px 12px;font-size:12.5px;font-family:inherit;cursor:pointer;text-align:right;color:#374151;display:flex;align-items:center;gap:8px">
+              <span>💰</span> تذكير فاتورة
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Email tips -->
+      <div class="card" style="padding:16px;margin-top:14px">
+        <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">💡 تلميحات</div>
+        <div style="font-size:12px;color:#64748b;line-height:1.8">
+          • اختر عميلاً من القائمة لتعبئة الإيميل تلقائياً<br>
+          • يمكنك إرفاق الالتزامات والفواتير مع الرسالة<br>
+          • الرسائل ترسل بصيغة HTML احترافية<br>
+          • تأكد من ضبط SMTP في <a onclick="navigate('settings')" style="color:#1a2472;cursor:pointer;font-weight:600">الإعدادات</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: Compose area -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <!-- Compose header -->
+      <div style="padding:16px 24px;background:linear-gradient(135deg,#eef1fb,#f8fafc);border-bottom:1px solid #e8edf3;display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#1a2472,#5b8ec4);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px">📧</div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1e293b">إنشاء رسالة جديدة</div>
+          <div style="font-size:11px;color:#64748b">أرسل بريداً إلكترونياً لأي عميل من هنا</div>
+        </div>
+      </div>
+
+      <!-- Fields -->
+      <div style="padding:20px 24px">
+        <!-- Client picker -->
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">العميل (اختياري)</label>
+          <select id="mailClientPicker" class="input" onchange="mailOnClientChange(this)" style="font-size:13.5px">
+            <option value="">— اختر عميلاً أو اكتب الإيميل يدوياً —</option>
+            ${clientOptions}
+          </select>
+        </div>
+
+        <!-- To field -->
+        <div style="margin-bottom:14px;display:flex;align-items:center;gap:0;border:1.5px solid #d1d5db;border-radius:10px;overflow:hidden;background:white;transition:border .15s" onfocusin="this.style.borderColor='#1a2472'" onfocusout="this.style.borderColor='#d1d5db'">
+          <div style="padding:10px 14px;background:#f8fafc;border-left:1.5px solid #e8edf3;font-size:12px;font-weight:700;color:#6b7280;min-width:70px;text-align:center">إلى</div>
+          <input id="mailTo" type="email" placeholder="email@example.com"
+            style="flex:1;padding:10px 14px;border:none;font-size:13.5px;font-family:inherit;outline:none;color:#1e293b"/>
+        </div>
+
+        <!-- Subject field -->
+        <div style="margin-bottom:14px;display:flex;align-items:center;gap:0;border:1.5px solid #d1d5db;border-radius:10px;overflow:hidden;background:white;transition:border .15s" onfocusin="this.style.borderColor='#1a2472'" onfocusout="this.style.borderColor='#d1d5db'">
+          <div style="padding:10px 14px;background:#f8fafc;border-left:1.5px solid #e8edf3;font-size:12px;font-weight:700;color:#6b7280;min-width:70px;text-align:center">موضوع</div>
+          <input id="mailSubject" type="text" placeholder="موضوع الرسالة..."
+            style="flex:1;padding:10px 14px;border:none;font-size:13.5px;font-family:inherit;outline:none;color:#1e293b"/>
+        </div>
+
+        <!-- Body -->
+        <div style="margin-bottom:16px">
+          <textarea id="mailBody" rows="12"
+            placeholder="اكتب رسالتك هنا...
+
+مثال:
+السادة المحترمون،
+
+نود التذكير بموعد تقديم الإقرار الضريبي القادم...
+
+مع تحيات،
+مكتب MS Accounting"
+            style="width:100%;padding:14px 16px;border:1.5px solid #d1d5db;border-radius:10px;font-size:13.5px;font-family:inherit;line-height:1.9;resize:vertical;min-height:200px;direction:rtl;box-sizing:border-box;outline:none;transition:border .15s"
+            onfocus="this.style.borderColor='#1a2472';this.style.boxShadow='0 0 0 3px rgba(37,99,235,.1)'"
+            onfocusout="this.style.borderColor='#d1d5db';this.style.boxShadow='none'"></textarea>
+        </div>
+
+        <!-- Attach options -->
+        <div style="margin-bottom:18px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1.5px dashed #d1d5db">
+          <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">إرفاق بيانات من النظام</div>
+          <div style="display:flex;gap:24px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;color:#374151">
+              <input type="checkbox" id="mailInclObl" style="width:16px;height:16px;accent-color:#1a2472"/>
+              🔔 الالتزامات الضريبية القادمة
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;color:#374151">
+              <input type="checkbox" id="mailInclInv" style="width:16px;height:16px;accent-color:#1a2472"/>
+              📄 الفواتير المعلقة
+            </label>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:8px">* البيانات ستُضاف تلقائياً في نهاية الرسالة بتنسيق احترافي</div>
+        </div>
+
+        <!-- Result -->
+        <div id="mailResult" style="margin-bottom:12px"></div>
+
+        <!-- Actions -->
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+          <div style="display:flex;gap:8px">
+            <button onclick="mailClear()" class="btn btn-secondary">
+              🗑️ مسح
+            </button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="mailSend()" id="mailSendBtn" class="btn btn-primary" style="min-width:160px;justify-content:center">
+              📨 إرسال الرسالة
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function mailOnClientChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const email = opt.dataset.email || '';
+  const name = opt.dataset.name || '';
+  if(email) document.getElementById('mailTo').value = email;
+  if(name) {
+    const sub = document.getElementById('mailSubject');
+    if(!sub.value || sub.value === sub.dataset.auto) {
+      const auto = `تذكير من مكتب MS Accounting — ${name}`;
+      sub.value = auto;
+      sub.dataset.auto = auto;
+    }
+  }
+  mailSelectedClient = sel.value ? parseInt(sel.value) : null;
+}
+
+function mailFocusCompose() {
+  document.getElementById('mailBody')?.focus();
+}
+
+function mailQuickReminder() {
+  const body = document.getElementById('mailBody');
+  if(body && !body.value) {
+    body.value = `السادة المحترمون،
+
+نود التذكير بأن لديكم التزامات ضريبية قادمة تستوجب التقديم في المواعيد المحددة، لتجنب الغرامات والعقوبات المقررة قانوناً.
+
+نرجو التكرم بمراجعتنا في أقرب وقت للاستعداد لهذه الالتزامات.
+
+مع خالص التقدير،
+مكتب MS Accounting`;
+    document.getElementById('mailInclObl').checked = true;
+  }
+  body?.focus();
+}
+
+function mailQuickInvoice() {
+  const body = document.getElementById('mailBody');
+  if(body && !body.value) {
+    body.value = `السادة المحترمون،
+
+نود التذكير بوجود فواتير مستحقة السداد، ونأمل منكم التفضل بتسوية المستحقات في أقرب وقت ممكن.
+
+لأي استفسار، يرجى التواصل مع مكتبنا.
+
+مع خالص التقدير،
+مكتب MS Accounting`;
+    document.getElementById('mailInclInv').checked = true;
+  }
+  body?.focus();
+}
+
+function mailClear() {
+  document.getElementById('mailClientPicker').value = '';
+  document.getElementById('mailTo').value = '';
+  document.getElementById('mailSubject').value = '';
+  document.getElementById('mailBody').value = '';
+  document.getElementById('mailInclObl').checked = false;
+  document.getElementById('mailInclInv').checked = false;
+  document.getElementById('mailResult').innerHTML = '';
+  mailSelectedClient = null;
+}
+
+async function mailSend() {
+  const btn = document.getElementById('mailSendBtn');
+  const resultDiv = document.getElementById('mailResult');
+  const toEmail = document.getElementById('mailTo')?.value?.trim();
+  const subject = document.getElementById('mailSubject')?.value?.trim();
+  const body = document.getElementById('mailBody')?.value?.trim();
+  const inclObl = document.getElementById('mailInclObl')?.checked;
+  const inclInv = document.getElementById('mailInclInv')?.checked;
+
+  if(!toEmail) {
+    resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:10px 14px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">⚠️ يرجى إدخال البريد الإلكتروني للمستلم</div>`;
+    document.getElementById('mailTo')?.focus(); return;
+  }
+  if(!subject) {
+    resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:10px 14px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">⚠️ يرجى إدخال موضوع الرسالة</div>`;
+    document.getElementById('mailSubject')?.focus(); return;
+  }
+  if(!body) {
+    resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:10px 14px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">⚠️ يرجى كتابة نص الرسالة</div>`;
+    document.getElementById('mailBody')?.focus(); return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '⏳ جارٍ الإرسال...';
+  resultDiv.innerHTML = '';
+
+  try {
+    const r = await api('POST', '/api/notifications/compose', {
+      to_email: toEmail,
+      subject: subject,
+      body: body,
+      client_id: mailSelectedClient || null,
+      include_obligations: inclObl,
+      include_invoices: inclInv,
+    });
+    resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13.5px;padding:12px 16px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">✅</span>
+      <div><strong>تم الإرسال بنجاح!</strong><br><span style="font-size:12px;color:#15803d">${escH(r.message)}</span></div>
+    </div>`;
+    btn.innerHTML = '✅ تم الإرسال';
+    // Log to sent list visually
+    const sentList = document.getElementById('mailSentList');
+    if(sentList) {
+      const now = new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+      const item = document.createElement('div');
+      item.style.cssText = 'padding:8px 10px;border-radius:7px;background:#f0fdf4;border:1px solid #bbf7d0;margin-bottom:6px;font-size:12px;color:#374151';
+      item.innerHTML = `<div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(subject)}</div>
+        <div style="color:#16a34a;font-size:11px;margin-top:2px">📧 ${escH(toEmail)} · ${now}</div>`;
+      sentList.innerHTML = '';
+      sentList.prepend(item);
+    }
+    // Reset after 3s
+    setTimeout(()=>{
+      btn.disabled = false;
+      btn.innerHTML = '📨 إرسال الرسالة';
+    }, 3000);
+  } catch(e) {
+    resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:10px 14px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">
+      <strong>❌ فشل الإرسال</strong><br><span style="font-size:12px">${escH(e.message)}</span>
+    </div>`;
+    btn.disabled = false;
+    btn.innerHTML = '📨 إرسال الرسالة';
+  }
+}
+window.mailSend = mailSend;
+window.mailClear = mailClear;
+window.mailFocusCompose = mailFocusCompose;
+window.mailQuickReminder = mailQuickReminder;
+window.mailQuickInvoice = mailQuickInvoice;
+window.mailOnClientChange = mailOnClientChange;
+
 // ── SETTINGS ───────────────────────────────────────
 async function loadSettings() {
   const main=document.getElementById('main');
@@ -3909,69 +4199,107 @@ async function loadSettings() {
 async function showClientEmailModal(clientId, clientName, clientEmail) {
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
-  overlay.innerHTML=`<div class="modal" style="max-width:500px">
-    <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">📧 إرسال تذكير للعميل</h2>
-        <div style="font-size:12px;color:#64748b;margin-top:2px">${escH(clientName)}</div>
+  const noEmail = !clientEmail;
+  overlay.innerHTML=`<div class="modal" style="max-width:600px">
+    <div style="padding:18px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#eef1fb,#f8fafc);border-radius:18px 18px 0 0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:38px;height:38px;background:linear-gradient(135deg,#1a2472,#5b8ec4);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px">📧</div>
+        <div>
+          <h2 style="font-size:15px;font-weight:700;color:#1e293b;margin:0">رسالة إلكترونية جديدة</h2>
+          <div style="font-size:11px;color:#64748b;margin-top:1px">إلى: ${escH(clientName)}</div>
+        </div>
       </div>
-      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:8px;font-size:16px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center">✕</button>
     </div>
     <div style="padding:20px 24px">
+      <!-- To field -->
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px">
+        <span style="font-size:12px;font-weight:700;color:#6b7280;min-width:32px">إلى:</span>
+        <input id="composeToEmail" type="email" value="${escH(clientEmail)}" placeholder="client@example.com"
+          style="flex:1;border:none;background:transparent;font-size:13.5px;font-family:inherit;outline:none;color:#1e293b"/>
+        ${noEmail?'<span style="font-size:11px;color:#f59e0b;white-space:nowrap">⚠️ لا يوجد إيميل مسجَّل</span>':'<span style="font-size:11px;color:#16a34a">✓ مُسجَّل</span>'}
+      </div>
+      <!-- Subject field -->
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px">
+        <span style="font-size:12px;font-weight:700;color:#6b7280;min-width:32px">موضوع:</span>
+        <input id="composeSubject" type="text" placeholder="موضوع الرسالة..."
+          style="flex:1;border:none;background:transparent;font-size:13.5px;font-family:inherit;outline:none;color:#1e293b"/>
+      </div>
+      <!-- Body -->
       <div style="margin-bottom:14px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">📧 إرسال إلى</label>
-        <input id="reminderEmail" class="input" type="email" value="${escH(clientEmail)}" placeholder="client@example.com"/>
-        ${!clientEmail?'<div style="font-size:11px;color:#f59e0b;margin-top:3px">⚠️ لا يوجد إيميل مسجَّل للعميل — أدخله هنا أو حدّثه في بياناته</div>':''}
+        <textarea id="composeBody" class="input" rows="8"
+          placeholder="اكتب رسالتك هنا..."
+          style="resize:vertical;font-size:13.5px;line-height:1.8;direction:rtl"></textarea>
       </div>
-      <div style="margin-bottom:14px;display:flex;gap:16px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="inclObl" checked style="width:15px;height:15px"/> الالتزامات الضريبية
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="inclInv" checked style="width:15px;height:15px"/> الفواتير المعلقة
-        </label>
+      <!-- Attach options -->
+      <div style="margin-bottom:16px;padding:12px 14px;background:#f8fafc;border-radius:10px;border:1.5px dashed #d1d5db">
+        <div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">إرفاق بيانات من النظام</div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:#374151">
+            <input type="checkbox" id="composeInclObl" style="width:15px;height:15px;accent-color:#1a2472"/>
+            🔔 الالتزامات الضريبية القادمة
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:#374151">
+            <input type="checkbox" id="composeInclInv" style="width:15px;height:15px;accent-color:#1a2472"/>
+            📄 الفواتير المعلقة
+          </label>
+        </div>
       </div>
-      <div style="margin-bottom:20px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">💬 رسالة إضافية (اختياري)</label>
-        <textarea id="reminderMsg" class="input" rows="3" placeholder="مثال: نرجو سرعة تسوية الالتزامات لتجنب الغرامات..." style="resize:vertical"></textarea>
-      </div>
-      <div id="reminderResult" style="margin-bottom:10px"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
+      <div id="composeResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center">
         <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
-        <button id="sendReminderBtn" class="btn btn-primary" onclick="doSendClientReminder(${clientId})">📨 إرسال التذكير</button>
+        <button id="composeSendBtn" class="btn btn-primary" style="min-width:140px" onclick="doComposeEmail(${clientId})">
+          <span>📨</span> إرسال الرسالة
+        </button>
       </div>
     </div>
   </div>`;
   document.body.append(overlay);
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  // Auto-fill subject if client name is known
+  const subjectEl = document.getElementById('composeSubject');
+  if(subjectEl && clientName) subjectEl.value = `تذكير من مكتب MS Accounting — ${clientName}`;
+  setTimeout(()=>document.getElementById('composeBody')?.focus(), 100);
+}
+
+async function doComposeEmail(clientId) {
+  const btn=document.getElementById('composeSendBtn');
+  const resultDiv=document.getElementById('composeResult');
+  const toEmail=document.getElementById('composeToEmail')?.value?.trim();
+  const subject=document.getElementById('composeSubject')?.value?.trim();
+  const body=document.getElementById('composeBody')?.value?.trim();
+  const inclObl=document.getElementById('composeInclObl')?.checked;
+  const inclInv=document.getElementById('composeInclInv')?.checked;
+
+  if(!toEmail){resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px;padding:8px 12px;background:#fef2f2;border-radius:6px">⚠️ أدخل البريد الإلكتروني</div>`;return;}
+  if(!subject){resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px;padding:8px 12px;background:#fef2f2;border-radius:6px">⚠️ أدخل موضوع الرسالة</div>`;return;}
+  if(!body){resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px;padding:8px 12px;background:#fef2f2;border-radius:6px">⚠️ اكتب نص الرسالة</div>`;return;}
+
+  btn.disabled=true;
+  btn.innerHTML='<span>⏳</span> جارٍ الإرسال...';
+  resultDiv.innerHTML='';
+  try {
+    const r=await api('POST','/api/notifications/compose',{
+      to_email: toEmail,
+      subject: subject,
+      body: body,
+      client_id: clientId||null,
+      include_obligations: inclObl,
+      include_invoices: inclInv,
+    });
+    resultDiv.innerHTML=`<div style="color:#16a34a;font-size:13px;background:#f0fdf4;padding:10px 12px;border-radius:6px;display:flex;align-items:center;gap:6px"><span>✅</span> ${escH(r.message)}</div>`;
+    btn.innerHTML='<span>✅</span> تم الإرسال';
+    setTimeout(()=>{document.querySelector('.modal-overlay')?.remove();},2200);
+  } catch(e){
+    resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px;padding:8px 12px;background:#fef2f2;border-radius:6px">❌ ${escH(e.message)}</div>`;
+    btn.disabled=false;
+    btn.innerHTML='<span>📨</span> إرسال الرسالة';
+  }
 }
 
 async function doSendClientReminder(clientId) {
-  const btn=document.getElementById('sendReminderBtn');
-  const resultDiv=document.getElementById('reminderResult');
-  const email=document.getElementById('reminderEmail')?.value?.trim();
-  const inclObl=document.getElementById('inclObl')?.checked;
-  const inclInv=document.getElementById('inclInv')?.checked;
-  const msg=document.getElementById('reminderMsg')?.value?.trim();
-
-  if(!email){resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل البريد الإلكتروني</div>`;return;}
-  btn.disabled=true; btn.textContent='جارٍ الإرسال...';
-  resultDiv.innerHTML=`<div style="color:#64748b;font-size:13px">⏳ جارٍ إرسال التذكير...</div>`;
-  try {
-    const r=await api('POST','/api/notifications/send-client-reminder',{
-      client_id:clientId,
-      to_email:email,
-      include_obligations:inclObl,
-      include_invoices:inclInv,
-      custom_message:msg||null,
-    });
-    resultDiv.innerHTML=`<div style="color:#16a34a;font-size:13px;background:#f0fdf4;padding:10px;border-radius:6px">${escH(r.message)}</div>`;
-    btn.textContent='✅ تم الإرسال';
-    setTimeout(()=>{document.querySelector('.modal-overlay')?.remove();},2000);
-  } catch(e){
-    resultDiv.innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`;
-    btn.disabled=false; btn.textContent='📨 إرسال التذكير';
-  }
+  // Legacy — redirect to doComposeEmail
+  return doComposeEmail(clientId);
 }
 
 async function saveEmailSettings() {
@@ -4064,6 +4392,7 @@ window.savePassword=savePassword;
 window.saveEmailSettings=saveEmailSettings;
 window.testEmailNow=testEmailNow;
 window.showClientEmailModal=showClientEmailModal;
+window.doComposeEmail=doComposeEmail;
 window.doSendClientReminder=doSendClientReminder;
 window.items=[];
 // clients
