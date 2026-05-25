@@ -109,6 +109,101 @@ async def get_email_settings(
 
 # ── Client Reminder ─────────────────────────────────────────────────────────
 
+class ComposeEmailRequest(BaseModel):
+    to_email: str
+    subject: str
+    body: str
+    client_id: Optional[int] = None         # optional — used to pull obligations/invoices
+    include_obligations: bool = False
+    include_invoices: bool = False
+
+
+@router.post("/compose")
+async def compose_email(
+    req: ComposeEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send a free-form composed email to any address."""
+    from app.services.email_service import get_config, compose_email_template, send_email_sync
+    from app.models.client import Client
+    from app.models.invoice import Invoice, InvoiceStatus
+    from app.models.obligation import TaxObligation, ObligationInstance
+    from datetime import date as _date
+
+    cfg = get_config()
+    if not cfg.enabled:
+        raise HTTPException(400, detail="البريد الإلكتروني غير مُفعَّل. أضف بيانات SMTP في الإعدادات.")
+
+    client_name = None
+    obligations = []
+    invoices = []
+
+    if req.client_id:
+        client = db.query(Client).filter(Client.id == req.client_id).first()
+        if client:
+            client_name = client.name
+
+        if req.include_obligations and req.client_id:
+            today = _date.today()
+            instances = (
+                db.query(ObligationInstance)
+                .join(TaxObligation)
+                .filter(
+                    TaxObligation.client_id == req.client_id,
+                    ObligationInstance.status.in_(['pending', 'overdue', 'upcoming']),
+                )
+                .order_by(ObligationInstance.due_date)
+                .limit(20)
+                .all()
+            )
+            for inst in instances:
+                days_left = (inst.due_date - today).days if inst.due_date else 0
+                obligations.append({
+                    'obligation_type': inst.obligation.obligation_type if inst.obligation else '',
+                    'due_date': inst.due_date.strftime('%Y/%m/%d') if inst.due_date else '',
+                    'days_left': days_left,
+                })
+
+        if req.include_invoices and req.client_id:
+            unpaid = (
+                db.query(Invoice)
+                .filter(
+                    Invoice.client_id == req.client_id,
+                    Invoice.status.in_(['sent', 'partial', 'overdue']),
+                )
+                .order_by(Invoice.issue_date.desc())
+                .limit(10)
+                .all()
+            )
+            for inv in unpaid:
+                invoices.append({
+                    'invoice_number': inv.invoice_number,
+                    'issue_date': inv.issue_date.strftime('%Y/%m/%d') if inv.issue_date else '',
+                    'total': inv.total or 0,
+                    'remaining': inv.remaining or 0,
+                    'status': inv.status.value if hasattr(inv.status, 'value') else str(inv.status),
+                })
+
+    try:
+        subject, html = compose_email_template(
+            subject=req.subject,
+            body=req.body,
+            sender_name=current_user.name,
+            client_name=client_name,
+            obligations=obligations if obligations else None,
+            invoices=invoices if invoices else None,
+        )
+        send_email_sync(req.to_email, subject, html)
+        return {
+            "success": True,
+            "message": f"✅ تم إرسال الرسالة إلى {req.to_email}",
+            "to_email": req.to_email,
+        }
+    except Exception as e:
+        raise HTTPException(500, detail=f"فشل الإرسال: {str(e)}")
+
+
 class ClientReminderRequest(BaseModel):
     client_id: int
     to_email: Optional[str] = None          # override if different from client.email

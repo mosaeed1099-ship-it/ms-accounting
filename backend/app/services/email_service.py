@@ -256,6 +256,92 @@ def send_client_reminder(to_email: str, client_name: str, obligations: list,
     return send_email_sync(to_email, subject, html)
 
 
+def compose_email_template(subject: str, body: str, sender_name: str,
+                            client_name: Optional[str] = None,
+                            obligations: Optional[list] = None,
+                            invoices: Optional[list] = None) -> tuple[str, str]:
+    """Free-form email composer — wraps plain text body in branded HTML."""
+    # Convert newlines to <br> in body
+    body_html = body.replace('\n', '<br>')
+
+    obl_labels = {
+        'vat_monthly': 'ضريبة القيمة المضافة الشهرية',
+        'vat_quarterly': 'ضريبة القيمة المضافة الربعية',
+        'income_annual': 'ضريبة الدخل السنوية',
+        'payroll_monthly': 'مرتبات شهري',
+        'withholding_monthly': 'خصم وإضافة شهري',
+        'insurance_monthly': 'تأمينات اجتماعية',
+        'stamp_quarterly': 'دمغة ربعي',
+        'form_41': 'نموذج 41 — إقرار المرتبات السنوي',
+        'corporate_tax': 'ضريبة الأرباح التجارية السنوية',
+        'commercial_register_renewal': 'تجديد السجل التجاري',
+    }
+
+    greeting = f"<p style='color:#64748b;margin:0 0 20px'>مرحباً{'، <strong>'+client_name+'</strong>' if client_name else ''},</p>" if client_name else ""
+
+    # Build obligations section
+    obl_section = ""
+    if obligations:
+        obl_rows = ""
+        for o in obligations:
+            obl_type = obl_labels.get(o.get('obligation_type', ''), o.get('obligation_type', ''))
+            due = o.get('due_date', '')
+            days = o.get('days_left', 0)
+            if days < 0:
+                urgency = f'<span class="badge badge-red">متأخر {abs(days)} يوم</span>'
+            elif days <= 7:
+                urgency = f'<span class="badge badge-red">⚠️ {days} أيام</span>'
+            elif days <= 30:
+                urgency = f'<span class="badge badge-yellow">⏰ {days} يوم</span>'
+            else:
+                urgency = f'<span class="badge badge-blue">{days} يوم</span>'
+            obl_rows += f"<tr><td>{obl_type}</td><td>{due}</td><td>{urgency}</td></tr>"
+        obl_section = f"""
+      <h3 style="color:#1e293b;font-size:15px;margin:24px 0 10px">🔔 الالتزامات الضريبية القادمة</h3>
+      <div class="card">
+        <table>
+          <tr style="background:#f8fafc"><td><strong>نوع الالتزام</strong></td><td><strong>تاريخ الاستحقاق</strong></td><td><strong>المتبقي</strong></td></tr>
+          {obl_rows}
+        </table>
+      </div>"""
+
+    # Build invoices section
+    inv_section = ""
+    if invoices:
+        inv_rows = ""
+        total_remaining = 0
+        for inv in invoices:
+            remaining = inv.get('remaining', 0) or 0
+            total_remaining += remaining
+            status_map = {'sent': 'مُرسَلة', 'partial': 'مدفوعة جزئياً', 'draft': 'مسودة', 'overdue': 'متأخرة'}
+            status_label = status_map.get(inv.get('status', ''), inv.get('status', ''))
+            inv_rows += f"<tr><td>{inv.get('invoice_number','')}</td><td>{inv.get('issue_date','')}</td><td>{inv.get('total',0):,.0f} ج.م.</td><td>{remaining:,.0f} ج.م.</td><td>{status_label}</td></tr>"
+        inv_section = f"""
+      <h3 style="color:#1e293b;font-size:15px;margin:24px 0 10px">💳 الفواتير المعلقة</h3>
+      <div class="card">
+        <table>
+          <tr style="background:#f8fafc"><td><strong>رقم الفاتورة</strong></td><td><strong>التاريخ</strong></td><td><strong>الإجمالي</strong></td><td><strong>المتبقي</strong></td><td><strong>الحالة</strong></td></tr>
+          {inv_rows}
+        </table>
+        <div style="margin-top:10px;padding:10px;background:#fef2f2;border-radius:6px;text-align:left">
+          <strong style="color:#dc2626">إجمالي المستحق: {total_remaining:,.0f} ج.م.</strong>
+        </div>
+      </div>"""
+
+    content = f"""
+      {greeting}
+      <div style="font-size:14px;color:#1e293b;line-height:1.9;white-space:pre-wrap;background:#f8fafc;border-radius:8px;padding:18px 20px;border-right:4px solid #1a2472">
+        {body_html}
+      </div>
+      {obl_section}
+      {inv_section}
+      <p style="font-size:12px;color:#94a3b8;margin-top:24px;border-top:1px solid #f1f5f9;padding-top:12px">
+        تم الإرسال بواسطة: <strong>{sender_name}</strong> — مكتب MS Accounting
+      </p>
+    """
+    return subject, _base_template(content, subject)
+
+
 def test_email_template(sent_to: str) -> tuple[str, str]:
     subject = "✅ اختبار الإشعارات — MS Accounting"
     content = f"""
