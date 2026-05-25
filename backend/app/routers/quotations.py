@@ -569,10 +569,10 @@ async def convert_to_client(
 ):
     """
     Convert accepted quotation to full client record + establishment workflow.
-    Creates: Client + EstablishmentCase + Tasks for team.
+    Creates: Client + CompanyEstablishment + Tasks for team.
     """
     from app.models.client import Client, ClientType, ClientStatus, TaxType
-    from app.models.establishment import EstablishmentCase, EstablishmentStatus
+    from app.models.establishment import CompanyEstablishment, EstablishmentStatus
     from app.models.task import Task, TaskStatus, TaskPriority
     from app.models.activity import ActivityLog
     from sqlalchemy import func as sqlfunc
@@ -602,17 +602,16 @@ async def convert_to_client(
 
     # 2. Create establishment case
     try:
-        case_count = db.query(sqlfunc.count(EstablishmentCase.id)).scalar() or 0
-        case = EstablishmentCase(
-            case_number=f"EST-{datetime.now().year}-{str(case_count + 1).zfill(4)}",
+        case_count = db.query(sqlfunc.count(CompanyEstablishment.id)).scalar() or 0
+        case = CompanyEstablishment(
+            code=f"EST-{datetime.now().year}-{str(case_count + 1).zfill(4)}",
             client_id=client.id,
             company_name=q.client_name,
-            legal_type=q.legal_entity or "شركة شخص واحد",
+            company_type="llc",   # default — refine from legal_entity below
             activity=q.activity or "",
             capital=q.capital or 0,
-            status=EstablishmentStatus.PENDING if hasattr(EstablishmentStatus, 'PENDING') else "pending",
-            fees=q.expenses_total or 0,
-            notes=f"تم التحويل من عرض السعر {q.quote_number}",
+            status=EstablishmentStatus.IN_PROGRESS,
+            notes=f"تم التحويل من عرض السعر {q.quote_number} — الكيان: {q.legal_entity or 'غير محدد'} — الأتعاب: {q.expenses_total or 0:,.0f} جنيه",
             created_by=current_user.id,
         )
         db.add(case)

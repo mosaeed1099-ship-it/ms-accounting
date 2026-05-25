@@ -149,6 +149,11 @@ def _run_migrations_pg():
         "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS last_contact_at TIMESTAMP",
         "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_notes TEXT",
         "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS valid_until DATE",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+        "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS notes TEXT",
         # quotation_templates table — created by create_all, but ensure columns exist if table is old
         # (create_all handles new tables automatically)
     ]

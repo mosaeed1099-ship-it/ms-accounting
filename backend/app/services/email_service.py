@@ -120,7 +120,7 @@ def task_assigned_template(task_title: str, assigned_to: str, assigned_by: str,
         {f'<div style="margin-top:12px;padding:12px;background:#fff;border-radius:6px;font-size:13px;color:#374151"><strong>الوصف:</strong><br>{description}</div>' if description else ''}
       </div>
       <p style="font-size:13px;color:#64748b">يرجى الاطلاع على المهمة والبدء في التنفيذ في أقرب وقت.</p>
-      <a href="http://localhost:5173" class="btn">🚀 فتح النظام</a>
+      <a href="https://mosaeed1099-ship-it.github.io/ms-accounting/" class="btn">🚀 فتح النظام</a>
     """
     return subject, _base_template(content, subject)
 
@@ -141,7 +141,7 @@ def task_reminder_template(task_title: str, assigned_to: str, due_date: str,
           {'<tr><td>🏢 العميل</td><td>'+client_name+'</td></tr>' if client_name else ''}
         </table>
       </div>
-      <a href="http://localhost:5173" class="btn">📋 فتح المهام</a>
+      <a href="https://mosaeed1099-ship-it.github.io/ms-accounting/" class="btn">📋 فتح المهام</a>
     """
     return subject, _base_template(content, subject)
 
@@ -168,7 +168,7 @@ def obligation_reminder_template(client_name: str, obligation_type: str,
           <tr><td>⏳ المتبقي</td><td>{'<span class="badge badge-red">متأخر '+str(abs(days_left))+' يوم</span>' if days_left<0 else str(days_left)+' يوم'}</td></tr>
         </table>
       </div>
-      <a href="http://localhost:5173" class="btn">🔔 فتح الالتزامات</a>
+      <a href="https://mosaeed1099-ship-it.github.io/ms-accounting/" class="btn">🔔 فتح الالتزامات</a>
     """
     return subject, _base_template(content, subject)
 

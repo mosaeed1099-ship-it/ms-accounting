@@ -4125,6 +4125,7 @@ const QUO_STATUS = {
   rejected:    {label:'مرفوض',      color:'#dc2626', bg:'#fee2e2', icon:'❌'},
   negotiation: {label:'تفاوض',      color:'#d97706', bg:'#fef9c3', icon:'🤝'},
   expired:     {label:'منتهي',      color:'#94a3b8', bg:'#f8fafc', icon:'⏰'},
+  cancelled:   {label:'ملغي',       color:'#6b7280', bg:'#f3f4f6', icon:'🚫'},
 };
 
 // Built-in templates cache
@@ -4136,12 +4137,17 @@ async function loadQuotations() {
   main.className = 'page';
 
   // Load stats and templates in parallel
+  const activeStatus = document.getElementById('quoStatusFilter')?.value || '';
+  const activeSearch = document.getElementById('quoSearch')?.value?.trim() || '';
   let stats = {total:0, by_status:{}, total_value:0, accepted_value:0, conversion_rate:0};
   let data  = {total:0, items:[]};
   try {
+    let listUrl = '/api/quotations?page_size=50';
+    if(activeStatus) listUrl += `&status=${encodeURIComponent(activeStatus)}`;
+    if(activeSearch) listUrl += `&q=${encodeURIComponent(activeSearch)}`;
     [stats, data, quoTemplates] = await Promise.all([
       api('GET', '/api/quotations/stats').catch(()=>({total:0,by_status:{},total_value:0,accepted_value:0,conversion_rate:0})),
-      api('GET', '/api/quotations?page_size=50').catch(()=>({total:0,items:[]})),
+      api('GET', listUrl).catch(()=>({total:0,items:[]})),
       api('GET', '/api/quotations/templates').catch(()=>({builtin:[],custom:[]})),
     ]);
   } catch(e) {}
@@ -4977,7 +4983,7 @@ async function loadSettings() {
     <div class="card" style="padding:24px">
       <h3 style="font-size:16px;font-weight:700;color:#1a2472;margin:0 0 16px;padding-bottom:12px;border-bottom:2px solid #eef1fb;padding-right:12px;border-right:3px solid #1a2472">ℹ️ معلومات النظام</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${[['النظام','MS Accounting v2.0'],['الخادم','FastAPI + SQLAlchemy'],['قاعدة البيانات','SQLite'],['التاريخ',new Date().toLocaleDateString('ar-EG')]].map(([k,v])=>`<div style="padding:12px;background:#f8fafc;border-radius:8px"><div style="font-size:11px;color:#94a3b8;margin-bottom:2px">${k}</div><div style="font-size:13px;font-weight:600;color:#374151">${v}</div></div>`).join('')}
+        ${[['النظام','MS Accounting v2.0'],['الخادم','FastAPI + Railway'],['قاعدة البيانات','PostgreSQL'],['التاريخ',new Date().toLocaleDateString('ar-EG')]].map(([k,v])=>`<div style="padding:12px;background:#f8fafc;border-radius:8px"><div style="font-size:11px;color:#94a3b8;margin-bottom:2px">${k}</div><div style="font-size:13px;font-weight:600;color:#374151">${v}</div></div>`).join('')}
       </div>
     </div>
   </div>`;
