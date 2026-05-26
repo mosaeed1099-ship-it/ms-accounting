@@ -209,6 +209,10 @@ function dateAr(d) {
   return new Intl.DateTimeFormat('ar-EG',{year:'numeric',month:'short',day:'numeric'}).format(new Date(d));
 }
 const fmtDate = dateAr;
+
+function closeModal() {
+  document.getElementById('modal')?.remove();
+}
 function daysUntil(d) {
   if(!d) return null;
   const diff = Math.ceil((new Date(d)-new Date())/(1000*60*60*24));
