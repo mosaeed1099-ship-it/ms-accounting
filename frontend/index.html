@@ -133,6 +133,30 @@
       tbody td{font-size:12px;padding:8px}
     }
 
+    /* ─── Page & Section Titles ─── */
+
+    /* العناوين الرئيسية للصفحات (h2) — تدرج ناف/أزرق */
+    #main h2 {
+      background: linear-gradient(135deg, #1a2472 0%, #2563eb 100%) !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+    }
+
+    /* عناوين الأقسام الداخلية (h3 في المودالات وغيرها) */
+    #main h3 {
+      color: #1a2472 !important;
+    }
+
+    /* العنوان في الـ topbar — أكثر وضوحاً */
+    #pageTitle {
+      background: linear-gradient(135deg, #0f1848 0%, #1a2472 50%, #2563eb 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      border-right-color: #2563eb !important;
+    }
+
     /* ─── Print Styles ─── */
     .print-header { display:none }
 
