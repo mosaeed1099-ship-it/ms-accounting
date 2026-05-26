@@ -220,6 +220,79 @@ def add_settlement(
     }
 
 
+@router.get("/{settlement_id}")
+def get_settlement(
+    settlement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    s = db.query(EmployeeSettlement).filter(EmployeeSettlement.id == settlement_id).first()
+    if not s:
+        raise HTTPException(404, "التسوية غير موجودة")
+    return _s_dict(s)
+
+
+@router.put("/{settlement_id}")
+def update_settlement(
+    settlement_id: int,
+    payload: SettlementIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """تعديل تسوية موجودة مع تصحيح رصيد العهدة."""
+    s = db.query(EmployeeSettlement).filter(EmployeeSettlement.id == settlement_id).first()
+    if not s:
+        raise HTTPException(404, "التسوية غير موجودة")
+
+    try:
+        d = datetime.strptime(payload.date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "تاريخ غير صحيح")
+
+    custody = _get_or_create_custody(s.employee_name, db)
+
+    # 1) ارجع الأثر القديم على العهدة
+    custody.current_balance += s.total_spent
+    custody.current_balance -= (s.custody_added or 0)
+    custody.total_spent     -= (s.total_spent or 0)
+    custody.total_given     -= (s.custody_added or 0)
+
+    # 2) احسب القيم الجديدة
+    items       = [{"description": i.description, "amount": round(i.amount, 2)} for i in payload.expense_items]
+    total_spent = round(sum(i["amount"] for i in items), 2)
+    opening     = round(custody.current_balance, 2)
+    closing     = round(opening + payload.custody_added - total_spent, 2)
+
+    # 3) حدّث السجل
+    s.date            = d
+    s.month           = d.month
+    s.year            = d.year
+    s.reason          = payload.reason
+    s.expense_items   = json.dumps(items, ensure_ascii=False)
+    s.total_spent     = total_spent
+    s.opening_balance = opening
+    s.custody_added   = payload.custody_added
+    s.closing_balance = closing
+    s.notes           = payload.notes
+    s.updated_at      = datetime.utcnow()
+
+    # 4) طبّق الأثر الجديد على العهدة
+    custody.current_balance  = closing
+    custody.total_spent     += total_spent
+    custody.total_given     += payload.custody_added
+    custody.last_settlement_date = d
+    custody.updated_at       = datetime.utcnow()
+
+    db.commit()
+    db.refresh(s)
+    return {
+        "message":         "✅ تم تعديل التسوية",
+        "id":              s.id,
+        "total_spent":     s.total_spent,
+        "closing_balance": s.closing_balance,
+    }
+
+
 @router.delete("/{settlement_id}")
 def delete_settlement(
     settlement_id: int,
