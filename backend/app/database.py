@@ -154,8 +154,22 @@ def _run_migrations_pg():
         "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
         "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
         "ALTER TABLE quotations ADD COLUMN IF NOT EXISTS notes TEXT",
-        # quotation_templates table — created by create_all, but ensure columns exist if table is old
-        # (create_all handles new tables automatically)
+        # ── Accounting ERP Phase 1 ──────────────────────────────────────────
+        # AccAccount new columns
+        "ALTER TABLE acc_accounts ADD COLUMN IF NOT EXISTS name_en VARCHAR(200)",
+        "ALTER TABLE acc_accounts ADD COLUMN IF NOT EXISTS account_subtype VARCHAR(40)",
+        "ALTER TABLE acc_accounts ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1",
+        "ALTER TABLE acc_accounts ADD COLUMN IF NOT EXISTS is_group BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE acc_accounts ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'EGP'",
+        # AccJournalEntry new columns
+        "ALTER TABLE acc_journal_entries ADD COLUMN IF NOT EXISTS cost_center VARCHAR(100)",
+        # AccJournalLine new columns
+        "ALTER TABLE acc_journal_lines ADD COLUMN IF NOT EXISTS partner_name VARCHAR(200)",
+        "ALTER TABLE acc_journal_lines ADD COLUMN IF NOT EXISTS cost_center VARCHAR(100)",
+        # AccTransaction new column
+        "ALTER TABLE acc_transactions ADD COLUMN IF NOT EXISTS cost_center VARCHAR(100)",
+        # New tables created by SQLAlchemy create_all — just ensure FKs exist
+        # acc_treasury_txs, acc_checks, acc_advances are new tables
     ]
     with engine.connect() as conn:
         for sql in migrations:

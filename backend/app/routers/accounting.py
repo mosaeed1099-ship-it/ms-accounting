@@ -19,7 +19,9 @@ from datetime import datetime, date
 from app.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.models.accounting import AccAccount, AccJournalEntry, AccJournalLine, AccTransaction, AccTreasury
+from app.models.accounting import (AccAccount, AccJournalEntry, AccJournalLine,
+                                   AccTransaction, AccTreasury, AccTreasuryTx,
+                                   AccCheck, AccAdvance)
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 
@@ -932,4 +934,565 @@ async def import_excel(
         "message": f"✅ تم استيراد {total} معاملة ({imported['sales']} مبيعات، {imported['purchases']} مشتريات، {imported['expenses']} مصروفات)",
         "errors_count": len(imported["errors"]),
         "errors": imported["errors"][:10],
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ERP PHASE 1 — General Ledger, Treasury, Checks, Advances, AR/AP, JE Copy
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Pydantic schemas for new features ────────────────────────────────────────
+
+class TreasuryCreate(BaseModel):
+    name: str
+    treasury_type: str = "cash"
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    opening_balance: float = 0
+    notes: Optional[str] = None
+
+class TreasuryTxCreate(BaseModel):
+    treasury_id: int
+    date: str
+    tx_type: str           # deposit | withdrawal | transfer_out
+    amount: float
+    to_treasury_id: Optional[int] = None
+    description: Optional[str] = None
+    reference: Optional[str] = None
+
+class CheckCreate(BaseModel):
+    check_type: str        # incoming | outgoing
+    check_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    branch: Optional[str] = None
+    amount: float
+    issue_date: Optional[str] = None
+    due_date: Optional[str] = None
+    partner_name: Optional[str] = None
+    partner_phone: Optional[str] = None
+    treasury_id: Optional[int] = None
+    notes: Optional[str] = None
+
+class AdvanceCreate(BaseModel):
+    advance_type: str = "advance"   # advance | custody
+    employee_name: str
+    employee_id_ref: Optional[str] = None
+    amount: float
+    issue_date: str
+    due_date: Optional[str] = None
+    purpose: Optional[str] = None
+    notes: Optional[str] = None
+
+
+def _parse_date(d) -> date:
+    if isinstance(d, date): return d
+    return datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+
+
+# ── General Ledger (دفتر الأستاذ) ────────────────────────────────────────────
+
+@router.get("/{client_id}/ledger/{account_id}")
+async def general_ledger(
+    client_id: int,
+    account_id: int,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """كشف حساب لحساب معين مع رصيد متراكم"""
+    acc = db.query(AccAccount).filter_by(id=account_id, client_id=client_id).first()
+    if not acc:
+        raise HTTPException(404, detail="الحساب غير موجود")
+
+    q = (db.query(AccJournalLine, AccJournalEntry)
+         .join(AccJournalEntry, AccJournalLine.entry_id == AccJournalEntry.id)
+         .filter(AccJournalLine.account_id == account_id,
+                 AccJournalEntry.client_id == client_id,
+                 AccJournalEntry.status == "posted"))
+
+    if from_date:
+        q = q.filter(AccJournalEntry.date >= _parse_date(from_date))
+    if to_date:
+        q = q.filter(AccJournalEntry.date <= _parse_date(to_date))
+
+    rows = q.order_by(AccJournalEntry.date, AccJournalEntry.id).all()
+
+    # Calculate opening balance before from_date
+    opening = acc.opening_balance or 0
+    if acc.opening_type == "credit":
+        opening = -opening
+    if from_date:
+        prev = (db.query(
+                    func.sum(AccJournalLine.debit) - func.sum(AccJournalLine.credit)
+                )
+                .join(AccJournalEntry)
+                .filter(AccJournalLine.account_id == account_id,
+                        AccJournalEntry.client_id == client_id,
+                        AccJournalEntry.status == "posted",
+                        AccJournalEntry.date < _parse_date(from_date))
+                .scalar() or 0)
+        opening += prev
+
+    lines = []
+    running = opening
+    for line, entry in rows:
+        running += (line.debit or 0) - (line.credit or 0)
+        lines.append({
+            "id": line.id,
+            "date": str(entry.date),
+            "entry_number": entry.entry_number,
+            "description": line.description or entry.description or "",
+            "reference": entry.reference or "",
+            "debit": line.debit or 0,
+            "credit": line.credit or 0,
+            "balance": round(running, 2),
+            "partner_name": line.partner_name or "",
+            "entry_status": entry.status,
+        })
+
+    total_debit  = sum(l["debit"]  for l in lines)
+    total_credit = sum(l["credit"] for l in lines)
+    return {
+        "account": {"id": acc.id, "code": acc.code, "name": acc.name, "type": acc.account_type},
+        "opening_balance": round(opening, 2),
+        "lines": lines,
+        "total_debit": round(total_debit, 2),
+        "total_credit": round(total_credit, 2),
+        "closing_balance": round(opening + total_debit - total_credit, 2),
+    }
+
+
+# ── Journal Entry Copy ────────────────────────────────────────────────────────
+
+@router.post("/{client_id}/journal-entries/{je_id}/copy")
+async def copy_journal_entry(
+    client_id: int,
+    je_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """نسخ قيد — ينشئ قيد مسودة جديد بنفس السطور"""
+    orig = db.query(AccJournalEntry).filter_by(id=je_id, client_id=client_id).first()
+    if not orig:
+        raise HTTPException(404)
+    today = date.today()
+    new_je = AccJournalEntry(
+        client_id=client_id,
+        entry_number=_je_number(client_id, db),
+        date=today, month=today.month, year=today.year,
+        description=f"نسخة من: {orig.description or orig.entry_number}",
+        reference=orig.reference,
+        entry_type=orig.entry_type,
+        status="draft",
+        total_debit=orig.total_debit, total_credit=orig.total_credit,
+        is_balanced=orig.is_balanced,
+        created_by=current_user.id,
+    )
+    db.add(new_je); db.flush()
+    for l in orig.lines:
+        db.add(AccJournalLine(
+            entry_id=new_je.id, account_id=l.account_id,
+            account_code=l.account_code, account_name=l.account_name,
+            debit=l.debit, credit=l.credit,
+            description=l.description, sort_order=l.sort_order,
+        ))
+    db.commit()
+    return {"id": new_je.id, "entry_number": new_je.entry_number, "message": "✅ تم نسخ القيد"}
+
+
+# ── Treasury CRUD ─────────────────────────────────────────────────────────────
+
+@router.get("/{client_id}/treasuries")
+async def list_treasuries(
+    client_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = db.query(AccTreasury).filter_by(client_id=client_id, is_active=True).all()
+    result = []
+    for t in rows:
+        txs = db.query(AccTreasuryTx).filter_by(treasury_id=t.id).all()
+        balance = t.opening_balance or 0
+        for tx in txs:
+            if tx.tx_type in ("deposit", "transfer_in"):
+                balance += tx.amount
+            else:
+                balance -= tx.amount
+        result.append({
+            "id": t.id, "name": t.name, "treasury_type": t.treasury_type,
+            "bank_name": t.bank_name, "account_number": t.account_number,
+            "opening_balance": t.opening_balance, "current_balance": round(balance, 2),
+            "notes": t.notes,
+        })
+    return result
+
+
+@router.post("/{client_id}/treasuries")
+async def create_treasury(
+    client_id: int,
+    body: TreasuryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    t = AccTreasury(client_id=client_id, created_by=current_user.id, **body.dict())
+    db.add(t); db.commit(); db.refresh(t)
+    return {"id": t.id, "name": t.name, "message": "✅ تم إنشاء الخزينة"}
+
+
+@router.put("/{client_id}/treasuries/{t_id}")
+async def update_treasury(
+    client_id: int, t_id: int, body: TreasuryCreate,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    t = db.query(AccTreasury).filter_by(id=t_id, client_id=client_id).first()
+    if not t: raise HTTPException(404)
+    for k, v in body.dict(exclude_unset=True).items():
+        setattr(t, k, v)
+    db.commit()
+    return {"message": "✅ تم التحديث"}
+
+
+@router.delete("/{client_id}/treasuries/{t_id}")
+async def delete_treasury(
+    client_id: int, t_id: int,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    t = db.query(AccTreasury).filter_by(id=t_id, client_id=client_id).first()
+    if not t: raise HTTPException(404)
+    t.is_active = False
+    db.commit()
+    return {"message": "✅ تم الحذف"}
+
+
+@router.get("/{client_id}/treasuries/{t_id}/transactions")
+async def list_treasury_txs(
+    client_id: int, t_id: int,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    txs = (db.query(AccTreasuryTx)
+           .filter_by(treasury_id=t_id, client_id=client_id)
+           .order_by(AccTreasuryTx.date.desc())
+           .all())
+    return [{"id": t.id, "date": str(t.date), "tx_type": t.tx_type,
+             "amount": t.amount, "description": t.description,
+             "reference": t.reference, "to_treasury_id": t.to_treasury_id} for t in txs]
+
+
+@router.post("/{client_id}/treasuries/transactions")
+async def create_treasury_tx(
+    client_id: int,
+    body: TreasuryTxCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tx_date = _parse_date(body.date)
+    tx = AccTreasuryTx(
+        client_id=client_id,
+        treasury_id=body.treasury_id,
+        date=tx_date,
+        tx_type=body.tx_type,
+        amount=body.amount,
+        to_treasury_id=body.to_treasury_id,
+        description=body.description,
+        reference=body.reference,
+        created_by=current_user.id,
+    )
+    db.add(tx)
+    # If transfer, create the incoming side
+    if body.tx_type == "transfer_out" and body.to_treasury_id:
+        tx_in = AccTreasuryTx(
+            client_id=client_id,
+            treasury_id=body.to_treasury_id,
+            date=tx_date,
+            tx_type="transfer_in",
+            amount=body.amount,
+            to_treasury_id=body.treasury_id,
+            description=f"تحويل من: {body.description or ''}",
+            created_by=current_user.id,
+        )
+        db.add(tx_in)
+    db.commit()
+    return {"message": "✅ تم تسجيل الحركة"}
+
+
+@router.delete("/{client_id}/treasuries/transactions/{tx_id}")
+async def delete_treasury_tx(
+    client_id: int, tx_id: int,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    tx = db.query(AccTreasuryTx).filter_by(id=tx_id, client_id=client_id).first()
+    if not tx: raise HTTPException(404)
+    db.delete(tx); db.commit()
+    return {"message": "✅ تم الحذف"}
+
+
+# ── Checks ────────────────────────────────────────────────────────────────────
+
+@router.get("/{client_id}/checks")
+async def list_checks(
+    client_id: int,
+    check_type: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(AccCheck).filter_by(client_id=client_id)
+    if check_type: q = q.filter_by(check_type=check_type)
+    if status: q = q.filter_by(status=status)
+    rows = q.order_by(AccCheck.due_date).all()
+    today = date.today()
+    return [{
+        "id": c.id, "check_type": c.check_type, "check_number": c.check_number,
+        "bank_name": c.bank_name, "branch": c.branch,
+        "amount": c.amount, "issue_date": str(c.issue_date) if c.issue_date else None,
+        "due_date": str(c.due_date) if c.due_date else None,
+        "days_to_due": (c.due_date - today).days if c.due_date else None,
+        "partner_name": c.partner_name, "partner_phone": c.partner_phone,
+        "status": c.status, "notes": c.notes,
+        "treasury_id": c.treasury_id,
+    } for c in rows]
+
+
+@router.post("/{client_id}/checks")
+async def create_check(
+    client_id: int, body: CheckCreate,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    c = AccCheck(
+        client_id=client_id, created_by=current_user.id,
+        check_type=body.check_type, check_number=body.check_number,
+        bank_name=body.bank_name, branch=body.branch,
+        amount=body.amount,
+        issue_date=_parse_date(body.issue_date) if body.issue_date else None,
+        due_date=_parse_date(body.due_date) if body.due_date else None,
+        partner_name=body.partner_name, partner_phone=body.partner_phone,
+        treasury_id=body.treasury_id, notes=body.notes,
+    )
+    db.add(c); db.commit(); db.refresh(c)
+    return {"id": c.id, "message": "✅ تم تسجيل الشيك"}
+
+
+@router.patch("/{client_id}/checks/{check_id}/status")
+async def update_check_status(
+    client_id: int, check_id: int,
+    body: dict,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    c = db.query(AccCheck).filter_by(id=check_id, client_id=client_id).first()
+    if not c: raise HTTPException(404)
+    c.status = body.get("status", c.status)
+    c.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": "✅ تم تحديث حالة الشيك"}
+
+
+@router.delete("/{client_id}/checks/{check_id}")
+async def delete_check(
+    client_id: int, check_id: int,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    c = db.query(AccCheck).filter_by(id=check_id, client_id=client_id).first()
+    if not c: raise HTTPException(404)
+    db.delete(c); db.commit()
+    return {"message": "✅ تم الحذف"}
+
+
+@router.get("/{client_id}/checks/summary")
+async def checks_summary(
+    client_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    today = date.today()
+    rows = db.query(AccCheck).filter_by(client_id=client_id).all()
+    inc = [c for c in rows if c.check_type == "incoming"]
+    out = [c for c in rows if c.check_type == "outgoing"]
+    overdue = [c for c in rows if c.due_date and c.due_date < today and c.status == "pending"]
+    due_soon = [c for c in rows if c.due_date and 0 <= (c.due_date - today).days <= 7 and c.status == "pending"]
+    return {
+        "incoming_total": sum(c.amount for c in inc),
+        "outgoing_total": sum(c.amount for c in out),
+        "incoming_count": len(inc),
+        "outgoing_count": len(out),
+        "overdue_count": len(overdue),
+        "overdue_amount": sum(c.amount for c in overdue),
+        "due_soon_count": len(due_soon),
+        "due_soon_amount": sum(c.amount for c in due_soon),
+    }
+
+
+# ── Advances & Custody ────────────────────────────────────────────────────────
+
+@router.get("/{client_id}/advances")
+async def list_advances(
+    client_id: int,
+    advance_type: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(AccAdvance).filter_by(client_id=client_id)
+    if advance_type: q = q.filter_by(advance_type=advance_type)
+    if status: q = q.filter_by(status=status)
+    rows = q.order_by(AccAdvance.issue_date.desc()).all()
+    return [{
+        "id": a.id, "advance_type": a.advance_type,
+        "employee_name": a.employee_name, "employee_id_ref": a.employee_id_ref,
+        "amount": a.amount, "settled_amount": a.settled_amount,
+        "remaining": round(a.amount - (a.settled_amount or 0), 2),
+        "issue_date": str(a.issue_date),
+        "due_date": str(a.due_date) if a.due_date else None,
+        "purpose": a.purpose, "status": a.status, "notes": a.notes,
+    } for a in rows]
+
+
+@router.post("/{client_id}/advances")
+async def create_advance(
+    client_id: int, body: AdvanceCreate,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    a = AccAdvance(
+        client_id=client_id, created_by=current_user.id,
+        advance_type=body.advance_type,
+        employee_name=body.employee_name,
+        employee_id_ref=body.employee_id_ref,
+        amount=body.amount,
+        issue_date=_parse_date(body.issue_date),
+        due_date=_parse_date(body.due_date) if body.due_date else None,
+        purpose=body.purpose, notes=body.notes,
+    )
+    db.add(a); db.commit(); db.refresh(a)
+    return {"id": a.id, "message": "✅ تم تسجيل العهدة"}
+
+
+@router.patch("/{client_id}/advances/{adv_id}/settle")
+async def settle_advance(
+    client_id: int, adv_id: int,
+    body: dict,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    a = db.query(AccAdvance).filter_by(id=adv_id, client_id=client_id).first()
+    if not a: raise HTTPException(404)
+    amount = float(body.get("amount", 0))
+    a.settled_amount = (a.settled_amount or 0) + amount
+    if a.settled_amount >= a.amount:
+        a.status = "settled"
+    elif a.settled_amount > 0:
+        a.status = "partially_settled"
+    a.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": "✅ تم تسجيل التسوية", "remaining": round(a.amount - a.settled_amount, 2)}
+
+
+@router.delete("/{client_id}/advances/{adv_id}")
+async def delete_advance(
+    client_id: int, adv_id: int,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    a = db.query(AccAdvance).filter_by(id=adv_id, client_id=client_id).first()
+    if not a: raise HTTPException(404)
+    db.delete(a); db.commit()
+    return {"message": "✅ تم الحذف"}
+
+
+# ── AR/AP — Receivables & Payables with Aging ─────────────────────────────────
+
+@router.get("/{client_id}/ar-ap")
+async def ar_ap_summary(
+    client_id: int,
+    tx_type: Optional[str] = None,   # sale | purchase
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """ملخص العملاء والموردين مع أعمار الديون"""
+    today = date.today()
+    q = db.query(AccTransaction).filter_by(client_id=client_id)
+    if tx_type:
+        q = q.filter(AccTransaction.transaction_type == tx_type)
+    else:
+        q = q.filter(AccTransaction.transaction_type.in_(["sale", "purchase"]))
+
+    rows = q.order_by(AccTransaction.date).all()
+
+    partners: dict = {}
+    for tx in rows:
+        pname = tx.partner_name or "غير محدد"
+        if pname not in partners:
+            partners[pname] = {
+                "partner_name": pname,
+                "partner_tax_id": tx.partner_tax_id or "",
+                "tx_type": tx.transaction_type,
+                "total_amount": 0, "total_vat": 0, "total_net": 0,
+                "count": 0,
+                "buckets": {"0_30": 0, "31_60": 0, "61_90": 0, "over_90": 0},
+                "transactions": [],
+            }
+        p = partners[pname]
+        p["total_amount"]  += tx.amount or 0
+        p["total_vat"]     += tx.vat_amount or 0
+        p["total_net"]     += tx.net_amount or tx.total_amount or 0
+        p["count"]         += 1
+        days = (today - tx.date).days if tx.date else 0
+        if   days <= 30: p["buckets"]["0_30"]   += tx.net_amount or 0
+        elif days <= 60: p["buckets"]["31_60"]  += tx.net_amount or 0
+        elif days <= 90: p["buckets"]["61_90"]  += tx.net_amount or 0
+        else:            p["buckets"]["over_90"] += tx.net_amount or 0
+        p["transactions"].append({
+            "id": tx.id, "date": str(tx.date),
+            "doc_number": tx.doc_number or "",
+            "amount": tx.amount, "vat": tx.vat_amount,
+            "net": tx.net_amount or tx.total_amount, "days_old": days,
+        })
+
+    result = list(partners.values())
+    result.sort(key=lambda x: x["total_net"], reverse=True)
+    return {
+        "items": result,
+        "totals": {
+            "total_amount": round(sum(p["total_amount"] for p in result), 2),
+            "total_net": round(sum(p["total_net"] for p in result), 2),
+            "count": len(result),
+        }
+    }
+
+
+# ── Cash Flow Statement ────────────────────────────────────────────────────────
+
+@router.get("/{client_id}/reports/cash-flow")
+async def cash_flow(
+    client_id: int,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """التدفقات النقدية — مبسّط من معاملات المبيعات والمشتريات والمصروفات"""
+    if not year:
+        year = date.today().year
+    txs = db.query(AccTransaction).filter(
+        AccTransaction.client_id == client_id,
+        AccTransaction.year == year,
+    ).all()
+
+    monthly: dict = {}
+    for tx in txs:
+        m = tx.month or 1
+        if m not in monthly:
+            monthly[m] = {"month": m, "inflow": 0, "outflow": 0, "net": 0}
+        if tx.transaction_type in ("sale", "receipt"):
+            monthly[m]["inflow"] += tx.net_amount or tx.total_amount or 0
+        elif tx.transaction_type in ("purchase", "expense", "payment"):
+            monthly[m]["outflow"] += tx.net_amount or tx.total_amount or 0
+
+    for m in monthly.values():
+        m["net"] = round(m["inflow"] - m["outflow"], 2)
+        m["inflow"] = round(m["inflow"], 2)
+        m["outflow"] = round(m["outflow"], 2)
+
+    months_list = [monthly.get(i, {"month": i, "inflow": 0, "outflow": 0, "net": 0}) for i in range(1, 13)]
+    return {
+        "year": year,
+        "months": months_list,
+        "total_inflow":  round(sum(m["inflow"]  for m in months_list), 2),
+        "total_outflow": round(sum(m["outflow"] for m in months_list), 2),
+        "net_cash_flow": round(sum(m["net"]     for m in months_list), 2),
     }
