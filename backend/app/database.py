@@ -169,7 +169,10 @@ def _run_migrations_pg():
         # AccTransaction new column
         "ALTER TABLE acc_transactions ADD COLUMN IF NOT EXISTS cost_center VARCHAR(100)",
         # New tables created by SQLAlchemy create_all — just ensure FKs exist
-        # acc_treasury_txs, acc_checks, acc_advances are new tables
+        # acc_treasury_txs, acc_checks, acc_advances, eta_credentials, eta_documents are new tables
+        # Safety: add any possibly-missing ETA columns
+        "ALTER TABLE eta_credentials ADD COLUMN IF NOT EXISTS company_name_eta VARCHAR(300)",
+        "ALTER TABLE eta_credentials ADD COLUMN IF NOT EXISTS last_sync_message TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

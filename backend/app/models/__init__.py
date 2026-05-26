@@ -16,6 +16,7 @@ from app.models.collection import CollectionContract, CollectionPayment, Monthly
 from app.models.accounting import (AccAccount, AccJournalEntry, AccJournalLine,
                                    AccTransaction, AccTreasury, AccTreasuryTx,
                                    AccCheck, AccAdvance)
+from app.models.eta import ETACredential, ETADocument
 
 __all__ = [
     "User", "UserRole",

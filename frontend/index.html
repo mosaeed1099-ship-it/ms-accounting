@@ -5626,6 +5626,7 @@ async function openClientAccounting(clientId, clientName) {
         ['balance','🏛️','الميزانية'],
         ['vat','🧾','ض ق م'],
         ['accounts','📚','دليل الحسابات'],
+        ['eta','🇪🇬','المنظومة الإلكترونية'],
         ['ledger','📖','دفتر الأستاذ'],
         ['treasury','🏦','الخزينة والبنوك'],
         ['checks','🔖','الشيكات'],
@@ -5678,6 +5679,7 @@ async function accRender() {
       case 'balance':    content.innerHTML = await accBalanceSheet(); break;
       case 'vat':        content.innerHTML = await accVatSummary(); break;
       case 'accounts':   content.innerHTML = await accChartOfAccounts(); break;
+      case 'eta':        content.innerHTML = await accETA(); break;
       case 'ledger':     await accGeneralLedger(); break;
       case 'treasury':   content.innerHTML = await accTreasury(); break;
       case 'checks':     content.innerHTML = await accChecks(); break;
@@ -6363,6 +6365,513 @@ async function accImportExcel(file) {
     if(data.errors_count > 0) toast(`⚠️ ${data.errors_count} أخطاء — تحقق من البيانات`, 'warning');
     accRender();
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🇪🇬 ETA E-INVOICING MODULE — منظومة الفاتورة الإلكترونية المصرية
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ETA_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const ETA_DOC_TYPES = {I:'فاتورة بيع/شراء',C:'إشعار دائن',D:'إشعار مدين'};
+const ETA_STATUS_COLORS = {Valid:'#15803d',Submitted:'#1a2472',Invalid:'#dc2626',Rejected:'#dc2626',Cancelled:'#94a3b8'};
+const ETA_STATUS_LABELS = {Valid:'صالحة',Submitted:'مُقدَّمة',Invalid:'غير صالحة',Rejected:'مرفوضة',Cancelled:'ملغاة'};
+
+let _etaSubTab = 'dashboard';  // dashboard / documents / vat-return / settings
+
+// ── Main ETA tab ───────────────────────────────────────────────────────────
+async function accETA() {
+  const cred = await api('GET', `/api/eta/${_accClientId}/credential`).catch(()=>({configured:false}));
+
+  if(!cred.configured) {
+    return _etaSetupScreen();
+  }
+
+  const badgeColor = cred.last_sync_status==='success'?'#15803d':cred.last_sync_status==='failed'?'#dc2626':'#94a3b8';
+  const year = _accYear;
+
+  return `
+  <!-- ETA Header Banner -->
+  <div style="background:linear-gradient(135deg,#006233,#c8102e);border-radius:14px;padding:16px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:32px">🇪🇬</div>
+      <div>
+        <div style="color:white;font-size:15px;font-weight:800">منظومة الفاتورة الإلكترونية المصرية</div>
+        <div style="color:rgba(255,255,255,.8);font-size:12px">Egyptian Tax Authority — ETA E-Invoicing</div>
+        ${cred.company_tin?`<div style="color:#fbbf24;font-size:11px;margin-top:2px">الرقم الضريبي: ${escH(cred.company_tin)}</div>`:''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:11px;padding:4px 10px;border-radius:20px;background:${badgeColor+'33'};color:white;border:1px solid ${badgeColor};font-weight:700">
+        ${cred.last_sync_status==='success'?'✅ متزامن':cred.last_sync_status==='failed'?'❌ فشل المزامنة':'⏳ لم تتم المزامنة بعد'}
+      </span>
+      <span style="font-size:11px;color:rgba(255,255,255,.7)">${cred.total_docs_synced||0} فاتورة مزامَنة</span>
+      <button onclick="etaSync()" style="background:white;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;color:#006233">🔄 مزامنة الآن</button>
+      <button onclick="etaOpenSettings()" style="background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:7px 12px;cursor:pointer;color:white;font-size:12px">⚙️</button>
+    </div>
+  </div>
+
+  <!-- Sub-Tabs -->
+  <div style="display:flex;gap:2px;background:#f8fafc;border-radius:10px;padding:4px;margin-bottom:16px;overflow-x:auto">
+    ${[
+      ['dashboard','📊','لوحة التحكم'],
+      ['vat-return','📋','إقرار ض ق م'],
+      ['documents','📄','الفواتير'],
+      ['settings','⚙️','الإعدادات'],
+    ].map(([id,icon,label])=>`
+      <button id="etaSub_${id}" onclick="switchEtaTab('${id}')"
+        style="padding:8px 16px;border:none;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer;white-space:nowrap;font-weight:600;transition:all .15s;${_etaSubTab===id?'background:#1a2472;color:white':'background:transparent;color:#64748b'}">
+        ${icon} ${label}
+      </button>`).join('')}
+  </div>
+
+  <!-- Sub-content -->
+  <div id="etaSubContent">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+  <script>
+    (async ()=>{
+      await _loadEtaSubTab();
+    })();
+  </scr` + `ipt>`;
+}
+
+async function switchEtaTab(tab) {
+  _etaSubTab = tab;
+  document.querySelectorAll('[id^="etaSub_"]').forEach(b=>{
+    const tid = b.id.replace('etaSub_','');
+    if(tid===tab){ b.style.background='#1a2472'; b.style.color='white'; }
+    else { b.style.background='transparent'; b.style.color='#64748b'; }
+  });
+  await _loadEtaSubTab();
+}
+
+async function _loadEtaSubTab() {
+  const el = document.getElementById('etaSubContent');
+  if(!el) return;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  try {
+    switch(_etaSubTab) {
+      case 'dashboard':  el.innerHTML = await _etaDashboard(); break;
+      case 'vat-return': el.innerHTML = await _etaVatReturn(); break;
+      case 'documents':  el.innerHTML = await _etaDocuments(); break;
+      case 'settings':   el.innerHTML = _etaSettingsHtml(); break;
+    }
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:20px;background:white;border-radius:10px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+// ── Setup Screen (no credentials yet) ─────────────────────────────────────
+function _etaSetupScreen() {
+  return `
+  <div style="max-width:560px;margin:0 auto">
+    <div style="text-align:center;padding:30px 20px 20px">
+      <div style="font-size:60px;margin-bottom:12px">🇪🇬</div>
+      <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0 0 8px">ربط منظومة الفاتورة الإلكترونية</h2>
+      <p style="color:#64748b;font-size:13px;margin:0 0 24px">أدخل بيانات API الخاصة بالشركة من بوابة ETA لبدء المزامنة التلقائية</p>
+    </div>
+
+    <div style="background:white;border-radius:14px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.07)">
+      <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:#92400e">
+        <strong>📍 كيف تحصل على Client ID و Client Secret؟</strong><br>
+        ادخل بوابة ETA ← الإعدادات ← تكامل الأنظمة (System Integration) ← إنشاء بيانات API
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Client ID *</label>
+        <input id="etaClientId" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:monospace;font-size:13px"/>
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Client Secret *</label>
+        <input id="etaClientSecret" type="password" class="input" placeholder="••••••••••••••••••••" style="font-family:monospace"/>
+      </div>
+
+      <div id="etaSetupResult" style="margin-bottom:12px"></div>
+      <button onclick="etaSaveCredential()" class="btn btn-primary" style="width:100%;font-size:14px;padding:12px">
+        🔗 ربط الشركة بالمنظومة الإلكترونية
+      </button>
+    </div>
+  </div>`;
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+async function _etaDashboard() {
+  const d = await api('GET', `/api/eta/${_accClientId}/dashboard?year=${_accYear}`);
+  const months = d.months || [];
+
+  const maxSales = Math.max(...months.map(m=>m.sales_vat||0), 1);
+  const maxPurch = Math.max(...months.map(m=>m.purch_vat||0), 1);
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+    ${[
+      {label:'إجمالي المبيعات (صافي)',      val:money(d.total_sales_net),  icon:'📈', color:'#15803d', bg:'#f0fdf4'},
+      {label:'ض ق م مبيعات (ضريبة ناتجة)',  val:money(d.total_sales_vat),  icon:'➕', color:'#15803d', bg:'#dcfce7'},
+      {label:'إجمالي المشتريات (صافي)',      val:money(d.total_purch_net),  icon:'📦', color:'#1a2472', bg:'#eef1fb'},
+      {label:'ض ق م مشتريات (ضريبة مدخلات)',val:money(d.total_purch_vat),  icon:'➖', color:'#1a2472', bg:'#dbeafe'},
+      {label:'إجمالي الإشعارات الدائنة',    val:money(d.total_credit_vat), icon:'📝', color:'#d97706', bg:'#fef9c3'},
+      {label:'صافي الضريبة المستحقة',        val:money(d.net_vat_annual),   icon:'🏛️', color:d.net_vat_annual>=0?'#dc2626':'#15803d', bg:d.net_vat_annual>=0?'#fef2f2':'#f0fdf4'},
+    ].map(k=>`
+      <div style="background:${k.bg};border-radius:12px;padding:16px;border-right:3px solid ${k.color}">
+        <div style="font-size:24px;margin-bottom:6px">${k.icon}</div>
+        <div style="font-size:19px;font-weight:900;color:${k.color}">${k.val}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">${k.label}</div>
+      </div>`).join('')}
+  </div>
+
+  <!-- Monthly ض ق م Chart -->
+  <div style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:16px">
+    <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:16px">📊 مقارنة ض ق م الشهرية — ${_accYear}</div>
+    <div style="display:flex;gap:4px;align-items:flex-end;height:130px">
+      ${months.map((m,i)=>{
+        const maxV = Math.max(...months.map(x=>Math.max(x.sales_vat||0, x.purch_vat||0)), 1);
+        const sH = Math.round(((m.sales_vat||0)/maxV)*120);
+        const pH = Math.round(((m.purch_vat||0)/maxV)*120);
+        const netVat = (m.net_vat||0);
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px" title="${ETA_MONTHS[m.month]}: ناتج ${money(m.sales_vat||0)} | مدخلات ${money(m.purch_vat||0)} | صافي ${money(netVat)}">
+          <div style="width:100%;display:flex;align-items:flex-end;justify-content:center;gap:1px;height:120px">
+            <div style="flex:1;background:#22c55e;border-radius:2px 2px 0 0;height:${sH}px;min-height:${(m.sales_vat||0)>0?2:0}px;transition:height .3s"></div>
+            <div style="flex:1;background:#1a2472;border-radius:2px 2px 0 0;height:${pH}px;min-height:${(m.purch_vat||0)>0?2:0}px;transition:height .3s"></div>
+          </div>
+          <div style="font-size:8px;color:#94a3b8;text-align:center">${ETA_MONTHS[m.month]?.slice(0,3)}</div>
+          <div style="font-size:8px;font-weight:700;color:${netVat>=0?'#dc2626':'#15803d'}">${netVat>0?'+':''}${netVat!==0?money(Math.abs(netVat)):''}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:11px;color:#64748b">
+      <span><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;margin-left:4px"></span>ض ق م مبيعات</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#1a2472;border-radius:2px;margin-left:4px"></span>ض ق م مشتريات</span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <!-- Top Customers -->
+    <div style="background:white;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">📈 أكبر العملاء (مبيعات)</div>
+      ${(d.top_customers||[]).slice(0,5).map((c,i)=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9">
+          <div style="font-size:12px;color:#374151;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(c.name)}</div>
+          <div style="font-size:12px;font-weight:700;color:#15803d">${money(c.net||0)}</div>
+        </div>`).join('') || '<div style="text-align:center;color:#94a3b8;padding:20px;font-size:12px">لا توجد بيانات</div>'}
+    </div>
+    <!-- Top Suppliers -->
+    <div style="background:white;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">📦 أكبر الموردين (مشتريات)</div>
+      ${(d.top_suppliers||[]).slice(0,5).map((s,i)=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9">
+          <div style="font-size:12px;color:#374151;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(s.name)}</div>
+          <div style="font-size:12px;font-weight:700;color:#1a2472">${money(s.net||0)}</div>
+        </div>`).join('') || '<div style="text-align:center;color:#94a3b8;padding:20px;font-size:12px">لا توجد بيانات</div>'}
+    </div>
+  </div>`;
+}
+
+// ── VAT Return ─────────────────────────────────────────────────────────────
+async function _etaVatReturn() {
+  const today = new Date();
+  const month = today.getMonth() + 1;
+  const year  = today.getFullYear();
+  return _etaVatReturnForPeriod(month, year);
+}
+
+async function _etaVatReturnForPeriod(month, year) {
+  const d = await api('GET', `/api/eta/${_accClientId}/vat-return?month=${month}&year=${year}`);
+  const netPositive = d.net_vat >= 0;
+
+  const section = (title, rows, highlight=null) => `
+    <div style="margin-bottom:16px">
+      <div style="background:#f8fafc;border-radius:8px 8px 0 0;padding:10px 16px;font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border:1px solid #e8edf3;border-bottom:none">${title}</div>
+      <div style="background:white;border-radius:0 0 8px 8px;overflow:hidden;border:1px solid #e8edf3">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          ${rows.map(([label,val,bold=false,indent=false,color='#1e293b'])=>`<tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:9px 16px${indent?';padding-right:28px':''};color:#374151;font-weight:${bold?'700':'400'}">${label}</td>
+            <td style="padding:9px 16px;text-align:left;font-weight:${bold?'800':'600'};color:${color}">${val}</td>
+          </tr>`).join('')}
+        </table>
+      </div>
+    </div>`;
+
+  const sales = d.sales || {};
+  const purch = d.purchases || {};
+
+  return `
+  <!-- Period selector -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">📋 إقرار ض ق م — ${d.period_label||''}</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="vatMonth" onchange="etaLoadVatReturn()" style="font-family:inherit;font-size:13px;border:1.5px solid #e8edf3;border-radius:8px;padding:6px 10px">
+        ${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===month?'selected':''}>${ETA_MONTHS[i+1]}</option>`).join('')}
+      </select>
+      <select id="vatYear" onchange="etaLoadVatReturn()" style="font-family:inherit;font-size:13px;border:1.5px solid #e8edf3;border-radius:8px;padding:6px 10px">
+        ${[2023,2024,2025,2026].map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}
+      </select>
+      <button onclick="etaSyncPeriod(+document.getElementById('vatMonth').value,+document.getElementById('vatYear').value)" class="btn btn-primary" style="font-size:12px">🔄 تحديث من ETA</button>
+    </div>
+  </div>
+
+  ${d.is_zero ? `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:20px;text-align:center;margin-bottom:16px">
+    <div style="font-size:40px;margin-bottom:8px">✅</div>
+    <div style="font-size:16px;font-weight:800;color:#15803d">إقرار صفري</div>
+    <div style="font-size:13px;color:#64748b;margin-top:4px">لا توجد فواتير خلال ${d.period_label}</div>
+  </div>` : ''}
+
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+    ${[
+      {l:'فواتير صادرة',  v:d.outgoing_invoices, c:'#15803d', bg:'#f0fdf4'},
+      {l:'فواتير واردة',  v:d.incoming_invoices, c:'#1a2472', bg:'#eef1fb'},
+      {l:'إشعارات دائنة', v:d.credit_notes,      c:'#d97706', bg:'#fef9c3'},
+      {l:'إشعارات مدينة', v:d.debit_notes,       c:'#7c3aed', bg:'#ede9fe'},
+      {l:'ملغية',         v:d.cancelled_docs,    c:'#94a3b8', bg:'#f8fafc'},
+      {l:'إجمالي',        v:d.total_docs,        c:'#374151', bg:'white'},
+    ].map(k=>`<div style="background:${k.bg};border-radius:8px;padding:10px 12px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:${k.c}">${k.v||0}</div>
+      <div style="font-size:10px;color:#64748b">${k.l}</div>
+    </div>`).join('')}
+  </div>
+
+  <div style="max-width:640px">
+    ${section('القسم الأول — المبيعات (الضريبة الناتجة)',[
+      ['فواتير البيع — صافي القيمة',             money(sales.invoices_net||0)],
+      ['فواتير البيع — ض ق م',                  money(sales.invoices_vat||0),   false, true, '#15803d'],
+      ['إشعارات دائنة صادرة — صافي',             `(${money(sales.credit_notes_net||0)})`, false, true, '#d97706'],
+      ['إشعارات دائنة صادرة — ض ق م',            `(${money(sales.credit_notes_vat||0)})`, false, true, '#d97706'],
+      ['صافي المبيعات الخاضعة',                   money(sales.net_sales||0),    true],
+      ['إجمالي الضريبة الناتجة (Output Tax)',      money(sales.output_vat||0),   true, false, '#15803d'],
+    ])}
+
+    ${section('القسم الثاني — المشتريات (ضريبة المدخلات)',[
+      ['فواتير الشراء — صافي القيمة',             money(purch.invoices_net||0)],
+      ['فواتير الشراء — ض ق م',                  money(purch.invoices_vat||0),   false, true, '#1a2472'],
+      ['إشعارات دائنة واردة — صافي',              `(${money(purch.credit_notes_net||0)})`, false, true, '#d97706'],
+      ['إشعارات دائنة واردة — ض ق م',             `(${money(purch.credit_notes_vat||0)})`, false, true, '#d97706'],
+      ['صافي المشتريات الخاضعة',                  money(purch.net_purchases||0), true],
+      ['إجمالي ضريبة المدخلات (Input Tax)',        money(purch.input_vat||0),    true, false, '#1a2472'],
+    ])}
+
+    <!-- Net VAT -->
+    <div style="background:${netPositive?'#fef2f2':'#f0fdf4'};border:2px solid ${netPositive?'#fca5a5':'#86efac'};border-radius:12px;padding:20px;text-align:center">
+      <div style="font-size:13px;color:#64748b;margin-bottom:8px">صافي الضريبة المستحقة (Output Tax − Input Tax)</div>
+      <div style="font-size:32px;font-weight:900;color:${netPositive?'#dc2626':'#15803d'}">${money(Math.abs(d.net_vat||0))}</div>
+      <div style="font-size:13px;font-weight:700;color:${netPositive?'#dc2626':'#15803d'};margin-top:6px">${d.net_vat_status||''}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:8px;padding:10px;background:white;border-radius:8px">${escH(d.recommendation||'')}</div>
+    </div>
+  </div>`;
+}
+
+window.etaLoadVatReturn = function() {
+  const m = +document.getElementById('vatMonth')?.value || new Date().getMonth()+1;
+  const y = +document.getElementById('vatYear')?.value  || new Date().getFullYear();
+  const el = document.getElementById('etaSubContent');
+  if(!el) return;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  _etaVatReturnForPeriod(m, y).then(html=>{ el.innerHTML=html; }).catch(e=>{ el.innerHTML=`<div style="color:#dc2626">${e.message}</div>`; });
+};
+
+window.etaSyncPeriod = async function(month, year) {
+  try {
+    toast('⏳ جارٍ المزامنة...');
+    const r = await api('POST', `/api/eta/${_accClientId}/sync`, {month, year});
+    toast(r.message || '✅ تمت المزامنة');
+    window.etaLoadVatReturn();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// ── Documents list ─────────────────────────────────────────────────────────
+async function _etaDocuments() {
+  const month = new Date().getMonth()+1;
+  const year  = new Date().getFullYear();
+  return _etaDocsForPeriod(month, year, '', '');
+}
+
+async function _etaDocsForPeriod(month, year, direction, docType) {
+  let url = `/api/eta/${_accClientId}/documents?page_size=100`;
+  if(month) url += `&month=${month}`;
+  if(year)  url += `&year=${year}`;
+  if(direction) url += `&direction=${direction}`;
+  if(docType)   url += `&doc_type=${docType}`;
+  const data = await api('GET', url);
+  const items = data.items || [];
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:14px;font-weight:800;color:#1e293b;margin:0">📄 الفواتير الإلكترونية (${data.total||0})</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <select id="etaDocMonth" onchange="etaReloadDocs()" style="font-family:inherit;font-size:12px;border:1px solid #e8edf3;border-radius:6px;padding:5px 8px">
+        ${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===month?'selected':''}>${ETA_MONTHS[i+1]}</option>`).join('')}
+      </select>
+      <select id="etaDocYear" onchange="etaReloadDocs()" style="font-family:inherit;font-size:12px;border:1px solid #e8edf3;border-radius:6px;padding:5px 8px">
+        ${[2023,2024,2025,2026].map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('')}
+      </select>
+      <select id="etaDocDir" onchange="etaReloadDocs()" style="font-family:inherit;font-size:12px;border:1px solid #e8edf3;border-radius:6px;padding:5px 8px">
+        <option value="">الكل</option><option value="outgoing">صادر</option><option value="incoming">وارد</option>
+      </select>
+      <select id="etaDocType" onchange="etaReloadDocs()" style="font-family:inherit;font-size:12px;border:1px solid #e8edf3;border-radius:6px;padding:5px 8px">
+        <option value="">كل الأنواع</option><option value="I">فواتير</option><option value="C">إشعار دائن</option><option value="D">إشعار مدين</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#f8fafc">
+        ${['الاتجاه','النوع','الطرف','رقم الفاتورة','التاريخ','صافي القيمة','ض ق م','الإجمالي','الحالة',''].map(h=>`<th style="padding:9px 10px;text-align:right;border-bottom:2px solid #e8edf3;font-size:11px;font-weight:700;color:#64748b;white-space:nowrap">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${items.length===0?`<tr><td colspan="10" style="text-align:center;padding:40px;color:#94a3b8">
+          <div style="font-size:36px;margin-bottom:10px">🇪🇬</div>
+          لا توجد فواتير — قم بالمزامنة أولاً
+        </td></tr>`:
+          items.map(d=>{
+            const statusColor = ETA_STATUS_COLORS[d.status] || '#94a3b8';
+            const dirColor    = d.direction==='outgoing'?'#15803d':'#1a2472';
+            const party       = d.direction==='outgoing' ? (d.receiver_name||d.receiver_tin||'—') : (d.issuer_name||d.issuer_tin||'—');
+            return `<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+              <td style="padding:7px 10px"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:${dirColor+'22'};color:${dirColor}">${d.direction==='outgoing'?'صادر':'وارد'}</span></td>
+              <td style="padding:7px 10px;font-size:11px;color:#64748b">${ETA_DOC_TYPES[d.doc_type]||d.doc_type||'—'}</td>
+              <td style="padding:7px 10px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${escH(party)}</td>
+              <td style="padding:7px 10px;font-size:11px;color:#1a2472;font-weight:600">${escH(d.internal_id||d.eta_uuid?.slice(0,12)||'—')}</td>
+              <td style="padding:7px 10px;white-space:nowrap;color:#64748b">${d.doc_date||'—'}</td>
+              <td style="padding:7px 10px;font-weight:700">${money(d.net_amount||0)}</td>
+              <td style="padding:7px 10px;color:#7c3aed;font-weight:600">${money(d.vat_amount||0)}</td>
+              <td style="padding:7px 10px;font-weight:800">${money(d.total_amount||0)}</td>
+              <td style="padding:7px 10px"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:${statusColor+'22'};color:${statusColor}">${ETA_STATUS_LABELS[d.status]||d.status||'—'}</span></td>
+              <td style="padding:7px 10px">
+                ${!d.journal_entry_id?`<button onclick="etaCreateJE('${d.eta_uuid}')" style="background:#eef1fb;border:none;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;color:#1a2472;font-family:inherit" title="إنشاء قيد محاسبي">+ قيد</button>`:'<span style="font-size:10px;color:#15803d">✅ قيد</span>'}
+              </td>
+            </tr>`;
+          }).join('')}
+      </tbody>
+      ${items.length>0?`<tfoot><tr style="background:#f8fafc;font-weight:700">
+        <td colspan="5" style="padding:9px 10px;font-size:12px;color:#64748b">الإجمالي (${items.length})</td>
+        <td style="padding:9px 10px">${money(items.reduce((s,d)=>s+(d.net_amount||0),0))}</td>
+        <td style="padding:9px 10px;color:#7c3aed">${money(items.reduce((s,d)=>s+(d.vat_amount||0),0))}</td>
+        <td style="padding:9px 10px">${money(items.reduce((s,d)=>s+(d.total_amount||0),0))}</td>
+        <td colspan="2"></td>
+      </tr></tfoot>`:'' }
+    </table>
+    </div>
+  </div>`;
+}
+
+window.etaReloadDocs = function() {
+  const m = +document.getElementById('etaDocMonth')?.value || 1;
+  const y = +document.getElementById('etaDocYear')?.value  || 2025;
+  const dir  = document.getElementById('etaDocDir')?.value  || '';
+  const type = document.getElementById('etaDocType')?.value || '';
+  const el = document.getElementById('etaSubContent');
+  if(!el) return;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  _etaDocsForPeriod(m, y, dir, type).then(html=>el.innerHTML=html).catch(e=>{el.innerHTML=`<div style="color:#dc2626">${e.message}</div>`;});
+};
+
+window.etaCreateJE = async function(etaUuid) {
+  try {
+    const r = await api('POST', `/api/eta/${_accClientId}/documents/${etaUuid}/create-journal-entry`);
+    toast(r.message || '✅ تم إنشاء القيد');
+    window.etaReloadDocs();
+  } catch(e) { toast(e.message,'error'); }
+};
+
+// ── Settings tab ───────────────────────────────────────────────────────────
+function _etaSettingsHtml() {
+  return `
+  <div style="max-width:560px">
+    <div style="background:white;border-radius:14px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0 0 20px">⚙️ إعدادات ربط ETA</h3>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Client ID *</label>
+        <input id="etaClientIdEdit" class="input" placeholder="Client ID من بوابة ETA" style="font-family:monospace;font-size:13px"/>
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Client Secret * <span style="font-size:11px;color:#94a3b8">(اترك فارغاً للإبقاء على القيمة الحالية)</span></label>
+        <input id="etaClientSecretEdit" type="password" class="input" placeholder="اترك فارغاً للإبقاء على السر الحالي" style="font-family:monospace"/>
+      </div>
+      <div id="etaSettingsResult" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="etaSaveCredential(true)" class="btn btn-primary" style="flex:1">💾 حفظ التعديلات</button>
+        <button onclick="etaTestConnection()" style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:0 16px;cursor:pointer;color:#15803d;font-weight:700;font-family:inherit">🔗 اختبار الاتصال</button>
+      </div>
+    </div>
+
+    <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:16px;margin-top:14px">
+      <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠️ حذف ربط ETA</div>
+      <div style="font-size:12px;color:#374151;margin-bottom:12px">سيتم حذف بيانات الاتصال فقط. الفواتير المزامَنة ستبقى محفوظة.</div>
+      <button onclick="etaDeleteCredential()" style="background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:7px 16px;cursor:pointer;color:#dc2626;font-weight:700;font-family:inherit;font-size:13px">🗑 حذف ربط ETA</button>
+    </div>
+  </div>`;
+}
+
+// ── ETA Actions ────────────────────────────────────────────────────────────
+async function etaSaveCredential(isEdit=false) {
+  const idEl  = document.getElementById(isEdit?'etaClientIdEdit':'etaClientId');
+  const secEl = document.getElementById(isEdit?'etaClientSecretEdit':'etaClientSecret');
+  const resEl = document.getElementById(isEdit?'etaSettingsResult':'etaSetupResult');
+  if(!resEl) return;
+
+  const cid = idEl?.value?.trim();
+  const sec = secEl?.value?.trim();
+  if(!cid) { resEl.innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل Client ID</div>`; return; }
+  if(!sec && !isEdit) { resEl.innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل Client Secret</div>`; return; }
+
+  resEl.innerHTML=`<div style="color:#64748b;font-size:13px">⏳ جارٍ اختبار الاتصال...</div>`;
+  try {
+    const payload = {eta_client_id: cid, eta_client_secret: sec||'KEEP'};
+    if(!sec && isEdit) {
+      // Get current secret — not possible client-side; require the user to enter it
+      resEl.innerHTML=`<div style="color:#d97706;font-size:13px">⚠️ يجب إدخال Client Secret للتحديث</div>`;
+      return;
+    }
+    const r = await api('POST', `/api/eta/${_accClientId}/credential`, payload);
+    resEl.innerHTML=`<div style="color:#15803d;font-size:13px">✅ ${escH(r.message)}</div>`;
+    setTimeout(()=>accRender(), 1500);
+  } catch(e) {
+    resEl.innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+async function etaTestConnection() {
+  const resEl = document.getElementById('etaSettingsResult');
+  if(resEl) resEl.innerHTML=`<div style="color:#64748b;font-size:13px">⏳ جارٍ الاختبار...</div>`;
+  try {
+    const r = await api('POST', `/api/eta/${_accClientId}/test`);
+    if(r.success) {
+      if(resEl) resEl.innerHTML=`<div style="color:#15803d;font-size:13px">✅ الاتصال يعمل بنجاح</div>`;
+      toast('✅ الاتصال بـ ETA يعمل بنجاح');
+    } else {
+      if(resEl) resEl.innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(r.error||'فشل')}</div>`;
+    }
+  } catch(e) {
+    if(resEl) resEl.innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+async function etaDeleteCredential() {
+  if(!confirm('حذف ربط ETA لهذه الشركة؟ الفواتير المحفوظة ستبقى.')) return;
+  try {
+    await api('DELETE', `/api/eta/${_accClientId}/credential`);
+    toast('✅ تم حذف ربط ETA');
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function etaSync() {
+  const today = new Date();
+  try {
+    toast('⏳ جارٍ المزامنة مع ETA...');
+    const r = await api('POST', `/api/eta/${_accClientId}/sync/latest`);
+    const results = r.results || [];
+    const newDocs = results.reduce((s,x)=>s+(x.new||0), 0);
+    const updated = results.reduce((s,x)=>s+(x.updated||0), 0);
+    toast(`✅ تمت المزامنة — ${newDocs} جديدة + ${updated} محدَّثة`);
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+function etaOpenSettings() {
+  _etaSubTab = 'settings';
+  switchEtaTab('settings');
 }
 
 // ── General Ledger (دفتر الأستاذ) ─────────────────────────────────────────────
@@ -7063,6 +7572,14 @@ window.saveManualJE = saveManualJE;
 window.showJournalDetail = showJournalDetail;
 window.postJournalEntry = postJournalEntry;
 window.copyJournalEntry = copyJournalEntry;
+// ETA exports
+window.accETA = accETA;
+window.switchEtaTab = switchEtaTab;
+window.etaSaveCredential = etaSaveCredential;
+window.etaTestConnection = etaTestConnection;
+window.etaDeleteCredential = etaDeleteCredential;
+window.etaSync = etaSync;
+window.etaOpenSettings = etaOpenSettings;
 // ERP Phase 1 exports
 window.accGeneralLedger = accGeneralLedger;
 window.accTreasury = accTreasury;

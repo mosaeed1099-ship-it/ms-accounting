@@ -16,6 +16,7 @@ from app.routers import collection
 from app.routers import gdrive
 from app.routers import quotations
 from app.routers import accounting
+from app.routers import eta as eta_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -174,6 +175,7 @@ app.include_router(collection.router)
 app.include_router(gdrive.router)
 app.include_router(quotations.router)
 app.include_router(accounting.router)
+app.include_router(eta_router.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
