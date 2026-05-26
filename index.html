@@ -132,6 +132,62 @@
       thead th{font-size:10px;padding:8px}
       tbody td{font-size:12px;padding:8px}
     }
+
+    /* ─── Print Styles ─── */
+    .print-header { display:none }
+
+    @media print {
+      @page { size:A4; margin:15mm 12mm; }
+
+      /* إخفاء عناصر الـ UI */
+      .app-sidebar,
+      .sidebar-overlay,
+      #topbar-wrap,
+      .mobile-menu-btn,
+      .no-print,
+      .btn,
+      .btn-primary,
+      .btn-secondary,
+      .modal-overlay { display:none !important; }
+
+      /* إخفاء الأزرار داخل الجداول والبطاقات */
+      button { display:none !important; }
+
+      /* تخطيط الطباعة */
+      html, body { background:white !important; font-size:12px; color:#000; }
+      .app-layout { display:block !important; }
+      .app-main   { width:100% !important; padding:0 !important; }
+      .page       { padding:0 !important; margin:0 !important; }
+
+      /* رأس الطباعة */
+      .print-header {
+        display:flex !important;
+        justify-content:space-between;
+        align-items:center;
+        border-bottom:2.5px solid #1a2472;
+        margin-bottom:16px;
+        padding-bottom:10px;
+      }
+      .print-header .ph-title { font-size:18px; font-weight:800; color:#1a2472; }
+      .print-header .ph-meta  { font-size:11px; color:#64748b; text-align:left; }
+
+      /* جداول */
+      table { width:100% !important; border-collapse:collapse !important; font-size:11px; }
+      th, td { border:1px solid #cbd5e1 !important; padding:5px 8px !important; }
+      thead tr { background:#1a2472 !important; color:white !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      tfoot tr { background:#f1f5f9 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      tr:nth-child(even) td { background:#f8fafc !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+      /* بطاقات */
+      div[style*="border-radius"] { break-inside:avoid; }
+      .kanban-col, .kanban-card   { break-inside:avoid; }
+
+      /* ألوان الشارات والحالات */
+      * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+
+      /* لا تقطع الصفوف */
+      tr { break-inside:avoid; page-break-inside:avoid; }
+    }
   </style>
 </head>
 <body>
@@ -213,6 +269,19 @@ const fmtDate = dateAr;
 function closeModal() {
   document.getElementById('modal')?.remove();
 }
+
+function printCurrentPage() {
+  // حدّث رأس الطباعة بعنوان الصفحة والتاريخ
+  const pageTitle = document.getElementById('pageTitle')?.textContent || 'MS Accounting';
+  const el = document.getElementById('printPageLabel');
+  const dt = document.getElementById('printDate');
+  if (el) el.textContent = pageTitle;
+  if (dt) dt.textContent = new Date().toLocaleDateString('ar-EG', {
+    weekday:'long', year:'numeric', month:'long', day:'numeric'
+  });
+  window.print();
+}
+window.printCurrentPage = printCurrentPage;
 function daysUntil(d) {
   if(!d) return null;
   const diff = Math.ceil((new Date(d)-new Date())/(1000*60*60*24));
@@ -345,7 +414,7 @@ function renderApp() {
     <!-- Main -->
     <div class="app-main">
       <!-- Topbar -->
-      <div style="background:white;border-bottom:1.5px solid #e8edf3;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:9;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+      <div id="topbar-wrap" style="background:white;border-bottom:1.5px solid #e8edf3;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:9;box-shadow:0 1px 4px rgba(0,0,0,.04)">
         <div style="display:flex;align-items:center;gap:12px">
           <button class="mobile-menu-btn" onclick="openSidebar()" title="القائمة">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1a2472" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -361,6 +430,8 @@ function renderApp() {
               <span id="searchPlaceholder" style="font-size:12px;color:#94a3b8;white-space:nowrap">بحث... (Ctrl+K)</span>
             </div>
           </div>
+          <!-- Print button -->
+          <button onclick="printCurrentPage()" title="طباعة الصفحة الحالية" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">🖨️</button>
           <!-- Quick compose email button -->
           <button onclick="navigate('mail')" title="إرسال بريد إلكتروني" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">📧</button>
           <!-- Notification Bell -->
@@ -385,6 +456,16 @@ function renderApp() {
         </div>
       </div>
       <!-- Page content -->
+      <!-- رأس الطباعة — يظهر فقط عند الطباعة -->
+      <div class="print-header" id="printHeader">
+        <div>
+          <div class="ph-title">🏢 MS Accounting — مكتب محاسبة</div>
+          <div class="ph-meta" id="printPageLabel" style="font-size:13px;color:#475569;font-weight:600;margin-top:3px"></div>
+        </div>
+        <div class="ph-meta" style="text-align:left">
+          <div>تاريخ الطباعة: <span id="printDate"></span></div>
+        </div>
+      </div>
       <div id="main" style="flex:1;padding:24px;max-width:1200px;width:100%;margin:0 auto;box-sizing:border-box"></div>
     </div>
   </div>`;
