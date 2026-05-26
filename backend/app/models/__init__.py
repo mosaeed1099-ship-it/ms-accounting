@@ -17,6 +17,7 @@ from app.models.accounting import (AccAccount, AccJournalEntry, AccJournalLine,
                                    AccTransaction, AccTreasury, AccTreasuryTx,
                                    AccCheck, AccAdvance)
 from app.models.eta import ETACredential, ETADocument
+from app.models.settlement import EmployeeCustody, EmployeeSettlement, Appointment, GovernmentPaper
 
 __all__ = [
     "User", "UserRole",

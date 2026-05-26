@@ -173,6 +173,13 @@ def _run_migrations_pg():
         # Safety: add any possibly-missing ETA columns
         "ALTER TABLE eta_credentials ADD COLUMN IF NOT EXISTS company_name_eta VARCHAR(300)",
         "ALTER TABLE eta_credentials ADD COLUMN IF NOT EXISTS last_sync_message TEXT",
+        # ── Settlement / Appointments / Government Papers ────────────────────
+        # These tables are created by create_all; safety columns below
+        "ALTER TABLE employee_settlements ADD COLUMN IF NOT EXISTS company_name VARCHAR(300)",
+        "ALTER TABLE employee_settlements ADD COLUMN IF NOT EXISTS destination VARCHAR(500)",
+        "ALTER TABLE employee_settlements ADD COLUMN IF NOT EXISTS reason TEXT",
+        "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE government_papers ADD COLUMN IF NOT EXISTS has_copy BOOLEAN DEFAULT FALSE",
     ]
     with engine.connect() as conn:
         for sql in migrations:

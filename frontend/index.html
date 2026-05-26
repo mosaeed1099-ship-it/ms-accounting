@@ -208,6 +208,7 @@ function dateAr(d) {
   if(!d) return '—';
   return new Intl.DateTimeFormat('ar-EG',{year:'numeric',month:'short',day:'numeric'}).format(new Date(d));
 }
+const fmtDate = dateAr;
 function daysUntil(d) {
   if(!d) return null;
   const diff = Math.ceil((new Date(d)-new Date())/(1000*60*60*24));
@@ -292,6 +293,9 @@ const navItems = [
   {id:'establishment', icon:'🏗️', label:'تأسيس الشركات'},
   {id:'documents',     icon:'📁', label:'الأرشيف'},
   {id:'tax',           icon:'🧾', label:'الإقرارات'},
+  {id:'settlements',   icon:'👷', label:'تسويات الموظفين'},
+  {id:'appointments',  icon:'📅', label:'المواعيد'},
+  {id:'papers',        icon:'📄', label:'الأوراق الحكومية'},
   {id:'mail',          icon:'📧', label:'البريد الإلكتروني'},
   {id:'settings',      icon:'⚙️', label:'الإعدادات'},
 ];
@@ -696,13 +700,13 @@ window.addEventListener('unhandledrejection', function(e) {
 function navigate(page) {
   currentPage = page;
   $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers};
   if(pages[page]) pages[page]();
 }
 
@@ -7556,6 +7560,824 @@ async function accCashFlow() {
   </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// ══  تسويات الموظفين  ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+
+let _settleEmp = null; // الموظف المفتوح حاليًا
+let _settleMonth = new Date().getMonth() + 1;
+let _settleYear  = new Date().getFullYear();
+
+async function loadSettlements() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  try {
+    const employees = await api('GET', '/api/settlements/employees');
+    _settleEmp = null;
+    renderSettlementsList(employees);
+  } catch(e) {
+    main.innerHTML = `<div style="color:#dc2626;padding:20px">❌ خطأ: ${escH(e.message)}</div>`;
+  }
+}
+
+function renderSettlementsList(employees) {
+  const main = document.getElementById('main');
+  const total_balance = employees.reduce((s,e)=>s+(e.current_balance||0),0);
+  const total_given   = employees.reduce((s,e)=>s+(e.total_given||0),0);
+
+  main.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+    <div>
+      <h2 style="font-size:18px;font-weight:800;color:#1e293b;margin:0">👷 تسويات الموظفين</h2>
+      <p style="font-size:13px;color:#64748b;margin:4px 0 0">تتبع مصروفات المأموريات والعهد اليومية</p>
+    </div>
+    <button onclick="showAddEmployee()" class="btn btn-primary" style="font-size:13px">➕ إضافة موظف</button>
+  </div>
+
+  <!-- KPI شريط -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:24px">
+    ${[
+      {label:'عدد الموظفين',   val:employees.length,       icon:'👥', color:'#1a2472', bg:'#eef1fb'},
+      {label:'إجمالي العهد',   val:money(total_given),     icon:'💰', color:'#15803d', bg:'#f0fdf4'},
+      {label:'إجمالي المتبقي', val:money(total_balance),   icon:'💼', color:'#d97706', bg:'#fef9c3'},
+    ].map(k=>`
+    <div style="background:${k.bg};border-radius:14px;padding:16px 18px;border:1.5px solid ${k.color}22">
+      <div style="font-size:22px;margin-bottom:4px">${k.icon}</div>
+      <div style="font-size:20px;font-weight:800;color:${k.color}">${k.val}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px">${k.label}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- قائمة الموظفين -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
+    ${employees.length === 0 ? `
+    <div style="grid-column:1/-1;text-align:center;padding:60px;color:#94a3b8">
+      <div style="font-size:48px;margin-bottom:12px">👷</div>
+      <div style="font-size:16px;font-weight:600">لا يوجد موظفون بعد</div>
+      <div style="font-size:13px;margin-top:6px">ابدأ بإضافة موظف لتتبع تسوياته</div>
+    </div>` : employees.map(emp => {
+      const bal = emp.current_balance || 0;
+      const balColor = bal > 0 ? '#15803d' : bal < 0 ? '#dc2626' : '#64748b';
+      return `
+    <div style="background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,.06);border:1.5px solid #e8edf3;transition:transform .15s,box-shadow .15s"
+         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'"
+         onmouseout="this.style.transform='';this.style.boxShadow='0 2px 10px rgba(0,0,0,.06)'">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a2472,#2563eb);display:flex;align-items:center;justify-content:center;font-size:18px;color:white;font-weight:700;flex-shrink:0">
+            ${escH(emp.employee_name[0])}
+          </div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#1e293b">${escH(emp.employee_name)}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">آخر تسوية: ${emp.last_settlement_date ? fmtDate(emp.last_settlement_date) : 'لا يوجد'}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- أرقام العهدة -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:#f8fafc;border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:15px;font-weight:800;color:#1a2472">${money(emp.total_given||0)}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">إجمالي العهد</div>
+        </div>
+        <div style="background:#f8fafc;border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:15px;font-weight:800;color:#dc2626">${money(emp.total_spent||0)}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">إجمالي الصرف</div>
+        </div>
+      </div>
+      <div style="background:${bal>0?'#f0fdf4':bal<0?'#fef2f2':'#f8fafc'};border-radius:10px;padding:12px;text-align:center;margin-bottom:14px;border:1.5px solid ${bal>0?'#bbf7d0':bal<0?'#fecaca':'#e2e8f0'}">
+        <div style="font-size:18px;font-weight:800;color:${balColor}">${money(Math.abs(bal))}</div>
+        <div style="font-size:11px;color:${balColor};margin-top:2px;font-weight:600">${bal >= 0 ? '💼 رصيد العهدة المتبقي' : '⚠️ الموظف مدين'}</div>
+      </div>
+
+      <!-- أزرار -->
+      <div style="display:flex;gap:8px">
+        <button onclick="openEmployeeSettlements(${emp.id}, '${escH(emp.employee_name)}')"
+          style="flex:1;padding:8px;background:linear-gradient(135deg,#1a2472,#2563eb);color:white;border:none;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
+          📋 التسويات
+        </button>
+        <button onclick="showCustodyTopup(${emp.id}, '${escH(emp.employee_name)}')"
+          style="flex:1;padding:8px;background:#f0fdf4;color:#15803d;border:1.5px solid #bbf7d0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
+          💰 إضافة عهدة
+        </button>
+      </div>
+    </div>`}).join('')}
+  </div>`;
+}
+
+async function openEmployeeSettlements(empId, empName) {
+  _settleEmp = {id: empId, name: empName};
+  const main = document.getElementById('main');
+  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+
+  const now = new Date();
+  _settleMonth = now.getMonth() + 1;
+  _settleYear  = now.getFullYear();
+  await renderEmpSettlements();
+}
+
+async function renderEmpSettlements() {
+  const main = document.getElementById('main');
+  try {
+    const [detail, report] = await Promise.all([
+      api('GET', `/api/settlements/employees/${_settleEmp.id}`),
+      api('GET', `/api/settlements/report/${_settleEmp.id}?month=${_settleMonth}&year=${_settleYear}`),
+    ]);
+
+    const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const bal = detail.custody?.current_balance || 0;
+    const settlements = report.settlements || [];
+
+    main.innerHTML = `
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onclick="loadSettlements()" style="background:#f1f5f9;border:none;border-radius:10px;padding:8px 14px;cursor:pointer;font-size:13px;color:#475569">← رجوع</button>
+        <div>
+          <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0">👷 ${escH(_settleEmp.name)}</h2>
+          <p style="font-size:12px;color:#64748b;margin:2px 0 0">تسويات ${monthNames[_settleMonth-1]} ${_settleYear}</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select onchange="_settleMonth=+this.value;renderEmpSettlements()"
+          style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:white">
+          ${monthNames.map((m,i)=>`<option value="${i+1}" ${i+1===_settleMonth?'selected':''}>${m}</option>`).join('')}
+        </select>
+        <select onchange="_settleYear=+this.value;renderEmpSettlements()"
+          style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:white">
+          ${[2023,2024,2025,2026].map(y=>`<option ${y===_settleYear?'selected':''}>${y}</option>`).join('')}
+        </select>
+        <button onclick="showAddSettlement()" class="btn btn-primary" style="font-size:13px">➕ تسوية جديدة</button>
+      </div>
+    </div>
+
+    <!-- ملخص الشهر -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:18px">
+      ${[
+        {label:'رصيد العهدة الحالي', val:money(bal), icon:'💼', color:bal>=0?'#15803d':'#dc2626', bg:bal>=0?'#f0fdf4':'#fef2f2'},
+        {label:'عهد أُضيفت الشهر',  val:money(report.total_custody_added||0), icon:'💰', color:'#1a2472', bg:'#eef1fb'},
+        {label:'إجمالي الصرف',      val:money(report.total_spent||0), icon:'💸', color:'#d97706', bg:'#fef9c3'},
+        {label:'أيام مأمورية',      val:settlements.length, icon:'📅', color:'#7c3aed', bg:'#f5f3ff'},
+      ].map(k=>`
+      <div style="background:${k.bg};border-radius:12px;padding:14px;border:1px solid ${k.color}20">
+        <div style="font-size:18px;margin-bottom:4px">${k.icon}</div>
+        <div style="font-size:17px;font-weight:800;color:${k.color}">${k.val}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${k.label}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- جدول التسويات -->
+    <div style="background:white;border-radius:14px;border:1.5px solid #e8edf3;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:14px;font-weight:700;color:#1e293b">📋 سجل التسويات — ${monthNames[_settleMonth-1]} ${_settleYear}</span>
+        <span style="font-size:12px;color:#64748b">${settlements.length} تسوية</span>
+      </div>
+      ${settlements.length === 0 ? `
+      <div style="text-align:center;padding:50px;color:#94a3b8">
+        <div style="font-size:36px;margin-bottom:10px">📋</div>
+        <div>لا توجد تسويات في هذا الشهر</div>
+        <div style="font-size:12px;margin-top:6px">اضغط "تسوية جديدة" لإضافة أول تسوية</div>
+      </div>` : `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f8fafc">
+              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap">التاريخ</th>
+              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">الشركة / الوجهة</th>
+              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">السبب</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">انتقالات</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">أكل</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">أخرى</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">إجمالي</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">رصيد مفتاح</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">عهدة جديدة</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">رصيد ختامي</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${settlements.map((s,idx)=>`
+            <tr style="border-top:1px solid #f1f5f9;${idx%2===1?'background:#fafbfc':''}">
+              <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap">${fmtDate(s.date)}</td>
+              <td style="padding:10px 14px">
+                <div style="font-weight:600;color:#1e293b;font-size:12px">${escH(s.company_name||'—')}</div>
+                <div style="font-size:11px;color:#64748b">${escH(s.destination||'')}</div>
+              </td>
+              <td style="padding:10px 14px;color:#475569;font-size:12px;max-width:160px">${escH(s.reason||'—')}</td>
+              <td style="padding:10px 14px;text-align:center;color:#1a2472">${s.transportation?money(s.transportation):'—'}</td>
+              <td style="padding:10px 14px;text-align:center;color:#1a2472">${s.meals?money(s.meals):'—'}</td>
+              <td style="padding:10px 14px;text-align:center;color:#1a2472">${s.other_expenses?money(s.other_expenses):'—'}</td>
+              <td style="padding:10px 14px;text-align:center;font-weight:700;color:#dc2626">${money(s.total_spent||0)}</td>
+              <td style="padding:10px 14px;text-align:center;color:#475569">${money(s.opening_balance||0)}</td>
+              <td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600">${s.custody_added?money(s.custody_added):'—'}</td>
+              <td style="padding:10px 14px;text-align:center;font-weight:700;color:${(s.closing_balance||0)>=0?'#15803d':'#dc2626'}">${money(s.closing_balance||0)}</td>
+              <td style="padding:10px 14px;text-align:center">
+                <button onclick="deleteSettlement(${s.id})" title="حذف"
+                  style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px">🗑️</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#1a2472;color:white">
+              <td colspan="3" style="padding:12px 14px;font-weight:700;font-size:13px">الإجمالي</td>
+              <td style="padding:12px 14px;text-align:center;font-weight:700">${money(report.total_transportation||0)}</td>
+              <td style="padding:12px 14px;text-align:center;font-weight:700">${money(report.total_meals||0)}</td>
+              <td style="padding:12px 14px;text-align:center;font-weight:700">${money(report.total_other||0)}</td>
+              <td style="padding:12px 14px;text-align:center;font-weight:800;font-size:14px">${money(report.total_spent||0)}</td>
+              <td colspan="3" style="padding:12px 14px"></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`}
+    </div>`;
+  } catch(e) {
+    main.innerHTML = `<div style="color:#dc2626;padding:20px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+function showAddEmployee() {
+  const html = `
+  <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">👷 إضافة موظف جديد</h3>
+      <div class="form-group">
+        <label class="label">اسم الموظف *</label>
+        <input id="empNameInp" class="input" placeholder="مثال: أحمد محمد" style="text-align:right">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="label">رصيد العهدة الابتدائي</label>
+        <input id="empBalInp" class="input" type="number" placeholder="0" value="0">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="label">ملاحظات</label>
+        <textarea id="empNoteInp" class="input" rows="2" placeholder="ملاحظات اختيارية..."></textarea>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button onclick="saveNewEmployee()" class="btn btn-primary" style="flex:1">حفظ</button>
+        <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function saveNewEmployee() {
+  const name = document.getElementById('empNameInp')?.value?.trim();
+  const balance = parseFloat(document.getElementById('empBalInp')?.value || '0');
+  const notes = document.getElementById('empNoteInp')?.value?.trim();
+  if (!name) { alert('ادخل اسم الموظف'); return; }
+  try {
+    await api('POST', '/api/settlements/employees', {employee_name:name, current_balance:balance, notes});
+    closeModal();
+    loadSettlements();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+function showCustodyTopup(empId, empName) {
+  const html = `
+  <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">💰 إضافة عهدة — ${escH(empName)}</h3>
+      <div class="form-group">
+        <label class="label">المبلغ المضاف *</label>
+        <input id="topupAmt" class="input" type="number" placeholder="0" style="font-size:18px;font-weight:700">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="label">ملاحظات</label>
+        <input id="topupNote" class="input" placeholder="سبب إضافة العهدة...">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button onclick="saveCustodyTopup(${empId})" class="btn btn-primary" style="flex:1">إضافة</button>
+        <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function saveCustodyTopup(empId) {
+  const amount = parseFloat(document.getElementById('topupAmt')?.value || '0');
+  const notes = document.getElementById('topupNote')?.value?.trim();
+  if (!amount || amount <= 0) { alert('ادخل مبلغ صحيح'); return; }
+  try {
+    await api('POST', `/api/settlements/employees/${empId}/topup`, {amount, notes});
+    closeModal();
+    if (_settleEmp) renderEmpSettlements(); else loadSettlements();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+function showAddSettlement() {
+  if (!_settleEmp) return;
+  const today = new Date().toISOString().split('T')[0];
+  const html = `
+  <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto">
+      <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">📋 تسوية جديدة — ${escH(_settleEmp.name)}</h3>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">التاريخ *</label>
+          <input id="stlDate" class="input" type="date" value="${today}">
+        </div>
+        <div class="form-group">
+          <label class="label">اسم الشركة</label>
+          <input id="stlCompany" class="input" placeholder="الشركة اللي اشتغل فيها">
+        </div>
+        <div class="form-group">
+          <label class="label">الوجهة / المكان</label>
+          <input id="stlDest" class="input" placeholder="مثال: مدينة نصر">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">سبب المأمورية</label>
+          <textarea id="stlReason" class="input" rows="2" placeholder="وصف المهمة أو السبب..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="label">💸 الانتقالات</label>
+          <input id="stlTrans" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
+        </div>
+        <div class="form-group">
+          <label class="label">🍽️ مصروف الأكل</label>
+          <input id="stlMeals" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
+        </div>
+        <div class="form-group">
+          <label class="label">📦 مصاريف أخرى</label>
+          <input id="stlOther" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
+        </div>
+        <div class="form-group">
+          <label class="label">💰 عهدة جديدة اليوم</label>
+          <input id="stlCustody" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">ملاحظات</label>
+          <input id="stlNotes" class="input" placeholder="ملاحظات إضافية...">
+        </div>
+      </div>
+
+      <!-- ملخص تلقائي -->
+      <div id="stlSummary" style="background:#f8fafc;border-radius:12px;padding:14px;margin:16px 0;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+        <div><div style="font-size:13px;color:#64748b">إجمالي الصرف</div><div id="stlTotalDisp" style="font-size:16px;font-weight:800;color:#dc2626">0 ج.م</div></div>
+        <div><div style="font-size:13px;color:#64748b">عهدة جديدة</div><div id="stlCustDisp" style="font-size:16px;font-weight:800;color:#15803d">0 ج.م</div></div>
+        <div><div style="font-size:13px;color:#64748b">المتوقع يتبقى</div><div id="stlBalDisp" style="font-size:16px;font-weight:800;color:#1a2472">— ج.م</div></div>
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button onclick="saveSettlement()" class="btn btn-primary" style="flex:1">💾 حفظ التسوية</button>
+        <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function calcStlTotal() {
+  const trans = parseFloat(document.getElementById('stlTrans')?.value||0);
+  const meals  = parseFloat(document.getElementById('stlMeals')?.value||0);
+  const other  = parseFloat(document.getElementById('stlOther')?.value||0);
+  const cust   = parseFloat(document.getElementById('stlCustody')?.value||0);
+  const total  = trans + meals + other;
+  const disp = (v) => v.toLocaleString('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:0}) + ' ج.م';
+  if(document.getElementById('stlTotalDisp')) document.getElementById('stlTotalDisp').textContent = disp(total);
+  if(document.getElementById('stlCustDisp'))  document.getElementById('stlCustDisp').textContent  = disp(cust);
+  if(document.getElementById('stlBalDisp'))   document.getElementById('stlBalDisp').textContent   = '— ج.م';
+}
+
+async function saveSettlement() {
+  const date     = document.getElementById('stlDate')?.value;
+  const company  = document.getElementById('stlCompany')?.value?.trim();
+  const dest     = document.getElementById('stlDest')?.value?.trim();
+  const reason   = document.getElementById('stlReason')?.value?.trim();
+  const trans    = parseFloat(document.getElementById('stlTrans')?.value||0);
+  const meals    = parseFloat(document.getElementById('stlMeals')?.value||0);
+  const other    = parseFloat(document.getElementById('stlOther')?.value||0);
+  const custody  = parseFloat(document.getElementById('stlCustody')?.value||0);
+  const notes    = document.getElementById('stlNotes')?.value?.trim();
+  if (!date) { alert('اختر التاريخ'); return; }
+  try {
+    await api('POST', `/api/settlements/employees/${_settleEmp.id}/settlements`, {
+      date, company_name:company, destination:dest, reason,
+      transportation:trans, meals, other_expenses:other, custody_added:custody, notes
+    });
+    closeModal();
+    renderEmpSettlements();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+async function deleteSettlement(id) {
+  if (!confirm('حذف هذه التسوية؟')) return;
+  try {
+    await api('DELETE', `/api/settlements/${id}`);
+    renderEmpSettlements();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ══  جدول المواعيد  ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+
+let _apptFilter = 'upcoming';
+
+async function loadAppointments() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  await renderAppointments();
+}
+
+async function renderAppointments() {
+  const main = document.getElementById('main');
+  try {
+    const params = _apptFilter === 'all' ? '?limit=200' : `?status=${_apptFilter}&limit=100`;
+    const appts  = await api('GET', `/api/appointments${params}`);
+
+    const statusBadge = (s) => {
+      const m = {pending:{l:'قيد الانتظار',c:'#d97706',bg:'#fef9c3'},confirmed:{l:'مؤكد',c:'#15803d',bg:'#dcfce7'},done:{l:'منتهي',c:'#64748b',bg:'#f1f5f9'},cancelled:{l:'ملغى',c:'#dc2626',bg:'#fee2e2'}};
+      const x = m[s]||{l:s,c:'#64748b',bg:'#f1f5f9'};
+      return `<span style="background:${x.bg};color:${x.c};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${x.l}</span>`;
+    };
+
+    const filterTabs = [
+      {id:'upcoming', label:'القادمة 🔜'},
+      {id:'pending',  label:'قيد الانتظار'},
+      {id:'confirmed',label:'مؤكدة ✅'},
+      {id:'done',     label:'منتهية'},
+      {id:'all',      label:'الكل'},
+    ];
+
+    main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px">
+      <div>
+        <h2 style="font-size:18px;font-weight:800;color:#1e293b;margin:0">📅 جدول المواعيد</h2>
+        <p style="font-size:13px;color:#64748b;margin:4px 0 0">${appts.length} موعد</p>
+      </div>
+      <button onclick="showAddAppointment()" class="btn btn-primary" style="font-size:13px">➕ موعد جديد</button>
+    </div>
+
+    <!-- Filter tabs -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">
+      ${filterTabs.map(f=>`
+      <button onclick="_apptFilter='${f.id}';renderAppointments()"
+        style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${_apptFilter===f.id?'#1a2472':'#e2e8f0'};background:${_apptFilter===f.id?'#1a2472':'white'};color:${_apptFilter===f.id?'white':'#64748b'}">
+        ${f.label}
+      </button>`).join('')}
+    </div>
+
+    <!-- قائمة المواعيد -->
+    ${appts.length === 0 ? `
+    <div style="text-align:center;padding:60px;color:#94a3b8;background:white;border-radius:16px;border:1.5px solid #e8edf3">
+      <div style="font-size:48px;margin-bottom:12px">📅</div>
+      <div style="font-size:16px;font-weight:600">لا توجد مواعيد</div>
+      <div style="font-size:13px;margin-top:6px">اضغط "موعد جديد" لإضافة موعد</div>
+    </div>` : `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${appts.map(a=>`
+      <div style="background:white;border-radius:14px;padding:18px 20px;border:1.5px solid #e8edf3;box-shadow:0 1px 6px rgba(0,0,0,.04);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;gap:14px;align-items:flex-start;flex:1;min-width:200px">
+          <div style="background:#eef1fb;border-radius:12px;padding:10px 14px;text-align:center;flex-shrink:0;min-width:52px">
+            <div style="font-size:20px;font-weight:800;color:#1a2472;line-height:1">${new Date(a.appt_date+'T00:00:00').getDate()}</div>
+            <div style="font-size:10px;color:#64748b;font-weight:600">${['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][new Date(a.appt_date+'T00:00:00').getMonth()]}</div>
+          </div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:14px;font-weight:700;color:#1e293b">${escH(a.title)}</span>
+              ${statusBadge(a.status)}
+            </div>
+            ${a.client_name ? `<div style="font-size:12px;color:#1a2472;margin-top:4px;font-weight:600">👤 ${escH(a.client_name)}</div>` : ''}
+            <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap">
+              ${a.appt_time?`<span style="font-size:12px;color:#64748b">🕐 ${a.appt_time}</span>`:''}
+              ${a.location  ?`<span style="font-size:12px;color:#64748b">📍 ${escH(a.location)}</span>`:''}
+              ${a.employee_name?`<span style="font-size:12px;color:#64748b">👷 ${escH(a.employee_name)}</span>`:''}
+            </div>
+            ${a.description?`<div style="font-size:12px;color:#94a3b8;margin-top:4px">${escH(a.description)}</div>`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
+          ${a.status==='pending'   ?`<button onclick="updateApptStatus(${a.id},'confirmed')" style="padding:5px 12px;background:#dcfce7;color:#15803d;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">✅ تأكيد</button>`:''}
+          ${a.status!=='done'&&a.status!=='cancelled'?`<button onclick="updateApptStatus(${a.id},'done')" style="padding:5px 12px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">✓ منتهي</button>`:''}
+          <button onclick="deleteAppt(${a.id})" style="padding:5px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">🗑️</button>
+        </div>
+      </div>`).join('')}
+    </div>`}`;
+  } catch(e) {
+    main.innerHTML = `<div style="color:#dc2626;padding:20px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+async function showAddAppointment() {
+  let clients = [];
+  try { clients = await api('GET','/api/clients?limit=200'); } catch(e){}
+  const today = new Date().toISOString().split('T')[0];
+  const html = `
+  <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:500px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto">
+      <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">📅 موعد جديد</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">عنوان الموعد *</label>
+          <input id="apptTitle" class="input" placeholder="مثال: اجتماع ميزانية سنوية">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">العميل</label>
+          <select id="apptClient" class="input">
+            <option value="">-- بدون عميل --</option>
+            ${(Array.isArray(clients)?clients:clients.clients||[]).map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="label">التاريخ *</label>
+          <input id="apptDate" class="input" type="date" value="${today}">
+        </div>
+        <div class="form-group">
+          <label class="label">الوقت</label>
+          <input id="apptTime" class="input" type="time">
+        </div>
+        <div class="form-group">
+          <label class="label">المسؤول</label>
+          <input id="apptEmp" class="input" placeholder="اسم الموظف">
+        </div>
+        <div class="form-group">
+          <label class="label">المكان</label>
+          <input id="apptLoc" class="input" placeholder="مثال: المكتب الرئيسي">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">تفاصيل</label>
+          <textarea id="apptDesc" class="input" rows="2" placeholder="تفاصيل الموعد..."></textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button onclick="saveAppointment()" class="btn btn-primary" style="flex:1">💾 حفظ</button>
+        <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function saveAppointment() {
+  const title    = document.getElementById('apptTitle')?.value?.trim();
+  const clientId = document.getElementById('apptClient')?.value;
+  const date     = document.getElementById('apptDate')?.value;
+  const time     = document.getElementById('apptTime')?.value;
+  const emp      = document.getElementById('apptEmp')?.value?.trim();
+  const loc      = document.getElementById('apptLoc')?.value?.trim();
+  const desc     = document.getElementById('apptDesc')?.value?.trim();
+  if (!title||!date) { alert('ادخل العنوان والتاريخ'); return; }
+  try {
+    await api('POST', '/api/appointments', {title, client_id:clientId||null, appt_date:date, appt_time:time||null, employee_name:emp||null, location:loc||null, description:desc||null});
+    closeModal();
+    renderAppointments();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+async function updateApptStatus(id, status) {
+  try {
+    await api('PATCH', `/api/appointments/${id}/status`, {status});
+    renderAppointments();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+async function deleteAppt(id) {
+  if (!confirm('حذف هذا الموعد؟')) return;
+  try {
+    await api('DELETE', `/api/appointments/${id}`);
+    renderAppointments();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ══  الأوراق الحكومية  ═════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+
+let _papersSearch = '';
+let _papersStatus = '';
+
+async function loadGovernmentPapers() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  await renderGovernmentPapers();
+}
+
+async function renderGovernmentPapers() {
+  const main = document.getElementById('main');
+  try {
+    const [papers, alerts] = await Promise.all([
+      api('GET', `/api/government-papers?search=${encodeURIComponent(_papersSearch)}&status=${_papersStatus}&limit=200`),
+      api('GET', '/api/government-papers/alerts'),
+    ]);
+
+    const paperTypes = ['بطاقة ضريبية','سجل تجاري','شهادة ض.ق.م','بطاقة رقم قومي','عقد إيجار','ترخيص تجاري','بيان قيد','ختم الشركة','توكيل رسمي','عقد شركة','شهادة استثمار','أخرى'];
+
+    const statusInfo = (s) => {
+      const m = {active:{l:'سارية',c:'#15803d',bg:'#dcfce7',icon:'✅'},expired:{l:'منتهية',c:'#dc2626',bg:'#fee2e2',icon:'❌'},expiring_soon:{l:'تنتهي قريباً',c:'#d97706',bg:'#fef9c3',icon:'⚠️'},pending_renewal:{l:'قيد التجديد',c:'#7c3aed',bg:'#f5f3ff',icon:'🔄'},cancelled:{l:'ملغاة',c:'#94a3b8',bg:'#f1f5f9',icon:'⛔'}};
+      const x = m[s]||{l:s,c:'#64748b',bg:'#f1f5f9',icon:'📄'};
+      return `<span style="background:${x.bg};color:${x.c};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${x.icon} ${x.l}</span>`;
+    };
+
+    const filterTabs = [
+      {id:'',               label:'الكل'},
+      {id:'expiring_soon',  label:'⚠️ تنتهي قريباً'},
+      {id:'expired',        label:'❌ منتهية'},
+      {id:'active',         label:'✅ سارية'},
+      {id:'pending_renewal',label:'🔄 قيد التجديد'},
+    ];
+
+    main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px">
+      <div>
+        <h2 style="font-size:18px;font-weight:800;color:#1e293b;margin:0">📄 الأوراق الحكومية</h2>
+        <p style="font-size:13px;color:#64748b;margin:4px 0 0">تتبع وثائق العملاء وتواريخ الانتهاء</p>
+      </div>
+      <button onclick="showAddPaper()" class="btn btn-primary" style="font-size:13px">➕ إضافة ورقة</button>
+    </div>
+
+    <!-- تنبيهات الانتهاء -->
+    ${alerts.length > 0 ? `
+    <div style="background:#fef9c3;border:1.5px solid #fbbf24;border-radius:14px;padding:14px 18px;margin-bottom:18px">
+      <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:8px">⚠️ ${alerts.length} ورقة تحتاج انتباهاً</div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        ${alerts.slice(0,5).map(a=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+          <span style="color:#92400e"><strong>${escH(a.client_name)}</strong> — ${escH(a.paper_type)}</span>
+          <span style="color:${a.days_to_expiry<0?'#dc2626':'#d97706'};font-weight:700">${a.days_to_expiry<0?'منتهية منذ '+Math.abs(a.days_to_expiry)+' يوم':'تنتهي خلال '+a.days_to_expiry+' يوم'}</span>
+        </div>`).join('')}
+        ${alerts.length>5?`<div style="font-size:11px;color:#92400e;margin-top:4px">+ ${alerts.length-5} أخرى...</div>`:''}
+      </div>
+    </div>` : ''}
+
+    <!-- بحث وفلترة -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <input value="${escH(_papersSearch)}" oninput="_papersSearch=this.value;renderGovernmentPapers()"
+        class="input" placeholder="🔍 بحث باسم العميل أو نوع الورقة..." style="max-width:280px">
+      ${filterTabs.map(f=>`
+      <button onclick="_papersStatus='${f.id}';renderGovernmentPapers()"
+        style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${_papersStatus===f.id?'#1a2472':'#e2e8f0'};background:${_papersStatus===f.id?'#1a2472':'white'};color:${_papersStatus===f.id?'white':'#64748b'}">
+        ${f.label}
+      </button>`).join('')}
+    </div>
+
+    <!-- الجدول -->
+    ${papers.length === 0 ? `
+    <div style="text-align:center;padding:60px;color:#94a3b8;background:white;border-radius:16px;border:1.5px solid #e8edf3">
+      <div style="font-size:48px;margin-bottom:12px">📄</div>
+      <div style="font-size:16px;font-weight:600">لا توجد أوراق</div>
+    </div>` : `
+    <div style="background:white;border-radius:14px;border:1.5px solid #e8edf3;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f8fafc">
+              <th style="padding:11px 14px;text-align:right;color:#64748b;font-weight:600">العميل</th>
+              <th style="padding:11px 14px;text-align:right;color:#64748b;font-weight:600">نوع الورقة</th>
+              <th style="padding:11px 14px;text-align:center;color:#64748b;font-weight:600">الرقم</th>
+              <th style="padding:11px 14px;text-align:center;color:#64748b;font-weight:600">تاريخ الإصدار</th>
+              <th style="padding:11px 14px;text-align:center;color:#64748b;font-weight:600">تاريخ الانتهاء</th>
+              <th style="padding:11px 14px;text-align:center;color:#64748b;font-weight:600">الحالة</th>
+              <th style="padding:11px 14px;text-align:center;color:#64748b;font-weight:600">نسخة</th>
+              <th style="padding:11px 14px;text-align:center;color:#64748b;font-weight:600"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${papers.map((p,idx)=>{
+              const daysLeft = p.expiry_date ? Math.ceil((new Date(p.expiry_date)-new Date())/(86400000)) : null;
+              const rowBg = p.status==='expired'?'#fff5f5':p.status==='expiring_soon'?'#fffbeb':'';
+              return `
+              <tr style="border-top:1px solid #f1f5f9;background:${rowBg}">
+                <td style="padding:10px 14px;font-weight:600;color:#1e293b">${escH(p.client_name||'—')}</td>
+                <td style="padding:10px 14px;color:#475569">${escH(p.paper_type)}</td>
+                <td style="padding:10px 14px;text-align:center;color:#64748b;font-size:12px">${escH(p.paper_number||'—')}</td>
+                <td style="padding:10px 14px;text-align:center;color:#64748b;font-size:12px">${p.issue_date?fmtDate(p.issue_date):'—'}</td>
+                <td style="padding:10px 14px;text-align:center">
+                  <div style="font-size:12px;color:${daysLeft!==null&&daysLeft<30?'#dc2626':'#475569'};font-weight:${daysLeft!==null&&daysLeft<30?'700':'400'}">${p.expiry_date?fmtDate(p.expiry_date):'—'}</div>
+                  ${daysLeft!==null?`<div style="font-size:10px;color:${daysLeft<0?'#dc2626':daysLeft<30?'#d97706':'#94a3b8'}">${daysLeft<0?'منتهية منذ '+Math.abs(daysLeft)+' يوم':daysLeft===0?'اليوم':'بعد '+daysLeft+' يوم'}</div>`:''}
+                </td>
+                <td style="padding:10px 14px;text-align:center">${statusInfo(p.status)}</td>
+                <td style="padding:10px 14px;text-align:center">
+                  <span style="background:${p.has_copy?'#dcfce7':'#fee2e2'};color:${p.has_copy?'#15803d':'#dc2626'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${p.has_copy?'✅ موجودة':'❌ غير موجودة'}</span>
+                </td>
+                <td style="padding:10px 14px;text-align:center">
+                  <div style="display:flex;gap:4px;justify-content:center">
+                    <button onclick="showEditPaper(${p.id})" title="تعديل"
+                      style="background:#eef1fb;border:none;border-radius:6px;color:#1a2472;cursor:pointer;font-size:12px;padding:5px 9px">✏️</button>
+                    <button onclick="deletePaper(${p.id})" title="حذف"
+                      style="background:#fee2e2;border:none;border-radius:6px;color:#dc2626;cursor:pointer;font-size:12px;padding:5px 9px">🗑️</button>
+                  </div>
+                </td>
+              </tr>`;}).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`}`;
+  } catch(e) {
+    main.innerHTML = `<div style="color:#dc2626;padding:20px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+async function showAddPaper(existingPaper) {
+  let clients = [];
+  try { clients = await api('GET','/api/clients?limit=200'); } catch(e){}
+  const clientArr = Array.isArray(clients)?clients:clients.clients||[];
+  const paperTypes = ['بطاقة ضريبية','سجل تجاري','شهادة ض.ق.م','بطاقة رقم قومي','عقد إيجار','ترخيص تجاري','بيان قيد','ختم الشركة','توكيل رسمي','عقد شركة','شهادة استثمار','أخرى'];
+  const p = existingPaper || {};
+  const isEdit = !!p.id;
+
+  const html = `
+  <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto">
+      <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">${isEdit?'✏️ تعديل':'📄 إضافة'} ورقة حكومية</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">العميل *</label>
+          <select id="paperClient" class="input">
+            <option value="">-- اختر العميل --</option>
+            ${clientArr.map(c=>`<option value="${c.id}" ${p.client_id===c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">نوع الورقة *</label>
+          <select id="paperType" class="input">
+            ${paperTypes.map(t=>`<option ${p.paper_type===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="label">رقم الورقة / كود</label>
+          <input id="paperNum" class="input" placeholder="رقم التسجيل أو الكود" value="${escH(p.paper_number||'')}">
+        </div>
+        <div class="form-group">
+          <label class="label">الحالة</label>
+          <select id="paperStatus" class="input">
+            <option value="active"           ${p.status==='active'?'selected':''}>✅ سارية</option>
+            <option value="expired"          ${p.status==='expired'?'selected':''}>❌ منتهية</option>
+            <option value="expiring_soon"    ${p.status==='expiring_soon'?'selected':''}>⚠️ تنتهي قريباً</option>
+            <option value="pending_renewal"  ${p.status==='pending_renewal'?'selected':''}>🔄 قيد التجديد</option>
+            <option value="cancelled"        ${p.status==='cancelled'?'selected':''}>⛔ ملغاة</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="label">تاريخ الإصدار</label>
+          <input id="paperIssue" class="input" type="date" value="${p.issue_date||''}">
+        </div>
+        <div class="form-group">
+          <label class="label">تاريخ الانتهاء</label>
+          <input id="paperExpiry" class="input" type="date" value="${p.expiry_date||''}">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:12px;background:#f8fafc;border-radius:10px;border:1.5px solid #e2e8f0">
+          <input id="paperHasCopy" type="checkbox" ${p.has_copy?'checked':''} style="width:18px;height:18px;accent-color:#1a2472">
+          <label for="paperHasCopy" style="cursor:pointer;font-size:13px;font-weight:600;color:#1e293b">عندنا نسخة من الورقة</label>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="label">ملاحظات</label>
+          <textarea id="paperNotes" class="input" rows="2" placeholder="ملاحظات...">${escH(p.notes||'')}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button onclick="savePaper(${p.id||'null'})" class="btn btn-primary" style="flex:1">💾 حفظ</button>
+        <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function showEditPaper(id) {
+  try {
+    const papers = await api('GET', `/api/government-papers?limit=500`);
+    const p = papers.find(x=>x.id===id);
+    if (p) showAddPaper(p);
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+async function savePaper(existingId) {
+  const clientId  = document.getElementById('paperClient')?.value;
+  const paperType = document.getElementById('paperType')?.value;
+  const paperNum  = document.getElementById('paperNum')?.value?.trim();
+  const status    = document.getElementById('paperStatus')?.value;
+  const issue     = document.getElementById('paperIssue')?.value;
+  const expiry    = document.getElementById('paperExpiry')?.value;
+  const hasCopy   = document.getElementById('paperHasCopy')?.checked;
+  const notes     = document.getElementById('paperNotes')?.value?.trim();
+  if (!clientId) { alert('اختر العميل'); return; }
+  const body = {client_id:+clientId, paper_type:paperType, paper_number:paperNum||null, status, issue_date:issue||null, expiry_date:expiry||null, has_copy:hasCopy, notes:notes||null};
+  try {
+    if (existingId && existingId !== 'null') {
+      await api('PUT', `/api/government-papers/${existingId}`, body);
+    } else {
+      await api('POST', '/api/government-papers', body);
+    }
+    closeModal();
+    renderGovernmentPapers();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
+async function deletePaper(id) {
+  if (!confirm('حذف هذه الورقة؟')) return;
+  try {
+    await api('DELETE', `/api/government-papers/${id}`);
+    renderGovernmentPapers();
+  } catch(e) { alert('خطأ: ' + e.message); }
+}
+
 window.openClientAccounting = openClientAccounting;
 window.switchAccTab = switchAccTab;
 window.accRender = accRender;
@@ -7602,6 +8424,33 @@ window.saveAdvance = saveAdvance;
 window.showSettleAdvance = showSettleAdvance;
 window.confirmSettleAdvance = confirmSettleAdvance;
 window.deleteAdvance = deleteAdvance;
+// Settlements
+window.loadSettlements = loadSettlements;
+window.renderSettlementsList = renderSettlementsList;
+window.openEmployeeSettlements = openEmployeeSettlements;
+window.renderEmpSettlements = renderEmpSettlements;
+window.showAddEmployee = showAddEmployee;
+window.saveNewEmployee = saveNewEmployee;
+window.showCustodyTopup = showCustodyTopup;
+window.saveCustodyTopup = saveCustodyTopup;
+window.showAddSettlement = showAddSettlement;
+window.calcStlTotal = calcStlTotal;
+window.saveSettlement = saveSettlement;
+window.deleteSettlement = deleteSettlement;
+// Appointments
+window.loadAppointments = loadAppointments;
+window.renderAppointments = renderAppointments;
+window.showAddAppointment = showAddAppointment;
+window.saveAppointment = saveAppointment;
+window.updateApptStatus = updateApptStatus;
+window.deleteAppt = deleteAppt;
+// Government Papers
+window.loadGovernmentPapers = loadGovernmentPapers;
+window.renderGovernmentPapers = renderGovernmentPapers;
+window.showAddPaper = showAddPaper;
+window.showEditPaper = showEditPaper;
+window.savePaper = savePaper;
+window.deletePaper = deletePaper;
 </script>
 </body>
 </html>
