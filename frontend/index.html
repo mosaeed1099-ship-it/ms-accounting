@@ -7749,13 +7749,10 @@ async function renderEmpSettlements() {
           <thead>
             <tr style="background:#f8fafc">
               <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap">التاريخ</th>
-              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">الشركة / الوجهة</th>
-              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">السبب</th>
-              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">انتقالات</th>
-              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">أكل</th>
-              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">أخرى</th>
-              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">إجمالي</th>
-              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">رصيد مفتاح</th>
+              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">البنود</th>
+              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">الوصف</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">الإجمالي</th>
+              <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">رصيد افتتاحي</th>
               <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">عهدة جديدة</th>
               <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">رصيد ختامي</th>
               <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600"></th>
@@ -7764,20 +7761,20 @@ async function renderEmpSettlements() {
           <tbody>
             ${settlements.map((s,idx)=>`
             <tr style="border-top:1px solid #f1f5f9;${idx%2===1?'background:#fafbfc':''}">
-              <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap">${fmtDate(s.date)}</td>
-              <td style="padding:10px 14px">
-                <div style="font-weight:600;color:#1e293b;font-size:12px">${escH(s.company_name||'—')}</div>
-                <div style="font-size:11px;color:#64748b">${escH(s.destination||'')}</div>
+              <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">${fmtDate(s.date)}</td>
+              <td style="padding:10px 14px;vertical-align:top;min-width:200px">
+                ${(s.expense_items||[]).map(item=>`
+                <div style="display:flex;justify-content:space-between;gap:16px;font-size:12px;padding:2px 0;border-bottom:1px solid #f1f5f9;last-child:border:none">
+                  <span style="color:#475569">${escH(item.description)}</span>
+                  <span style="color:#1a2472;font-weight:700;white-space:nowrap">${money(item.amount)}</span>
+                </div>`).join('')}
               </td>
-              <td style="padding:10px 14px;color:#475569;font-size:12px;max-width:160px">${escH(s.reason||'—')}</td>
-              <td style="padding:10px 14px;text-align:center;color:#1a2472">${s.transportation?money(s.transportation):'—'}</td>
-              <td style="padding:10px 14px;text-align:center;color:#1a2472">${s.meals?money(s.meals):'—'}</td>
-              <td style="padding:10px 14px;text-align:center;color:#1a2472">${s.other_expenses?money(s.other_expenses):'—'}</td>
-              <td style="padding:10px 14px;text-align:center;font-weight:700;color:#dc2626">${money(s.total_spent||0)}</td>
-              <td style="padding:10px 14px;text-align:center;color:#475569">${money(s.opening_balance||0)}</td>
-              <td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600">${s.custody_added?money(s.custody_added):'—'}</td>
-              <td style="padding:10px 14px;text-align:center;font-weight:700;color:${(s.closing_balance||0)>=0?'#15803d':'#dc2626'}">${money(s.closing_balance||0)}</td>
-              <td style="padding:10px 14px;text-align:center">
+              <td style="padding:10px 14px;color:#94a3b8;font-size:11px;vertical-align:top;max-width:130px">${escH(s.reason||'')}</td>
+              <td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626;vertical-align:top;white-space:nowrap">${money(s.total_spent||0)}</td>
+              <td style="padding:10px 14px;text-align:center;color:#475569;vertical-align:top;white-space:nowrap">${money(s.opening_balance||0)}</td>
+              <td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">${s.custody_added?money(s.custody_added):'—'}</td>
+              <td style="padding:10px 14px;text-align:center;font-weight:800;vertical-align:top;white-space:nowrap;color:${(s.closing_balance||0)>=0?'#15803d':'#dc2626'}">${money(s.closing_balance||0)}</td>
+              <td style="padding:10px 14px;text-align:center;vertical-align:top">
                 <button onclick="deleteSettlement(${s.id})" title="حذف"
                   style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px">🗑️</button>
               </td>
@@ -7786,9 +7783,6 @@ async function renderEmpSettlements() {
           <tfoot>
             <tr style="background:#1a2472;color:white">
               <td colspan="3" style="padding:12px 14px;font-weight:700;font-size:13px">الإجمالي</td>
-              <td style="padding:12px 14px;text-align:center;font-weight:700">${money(report.total_transportation||0)}</td>
-              <td style="padding:12px 14px;text-align:center;font-weight:700">${money(report.total_meals||0)}</td>
-              <td style="padding:12px 14px;text-align:center;font-weight:700">${money(report.total_other||0)}</td>
               <td style="padding:12px 14px;text-align:center;font-weight:800;font-size:14px">${money(report.total_spent||0)}</td>
               <td colspan="3" style="padding:12px 14px"></td>
               <td></td>
@@ -7880,53 +7874,46 @@ function showAddSettlement() {
   const today = new Date().toISOString().split('T')[0];
   const html = `
   <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
-    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto">
       <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">📋 تسوية جديدة — ${escH(_settleEmp.name)}</h3>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-group" style="grid-column:1/-1">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-group">
           <label class="label">التاريخ *</label>
           <input id="stlDate" class="input" type="date" value="${today}">
-        </div>
-        <div class="form-group">
-          <label class="label">اسم الشركة</label>
-          <input id="stlCompany" class="input" placeholder="الشركة اللي اشتغل فيها">
-        </div>
-        <div class="form-group">
-          <label class="label">الوجهة / المكان</label>
-          <input id="stlDest" class="input" placeholder="مثال: مدينة نصر">
-        </div>
-        <div class="form-group" style="grid-column:1/-1">
-          <label class="label">سبب المأمورية</label>
-          <textarea id="stlReason" class="input" rows="2" placeholder="وصف المهمة أو السبب..."></textarea>
-        </div>
-        <div class="form-group">
-          <label class="label">💸 الانتقالات</label>
-          <input id="stlTrans" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
-        </div>
-        <div class="form-group">
-          <label class="label">🍽️ مصروف الأكل</label>
-          <input id="stlMeals" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
-        </div>
-        <div class="form-group">
-          <label class="label">📦 مصاريف أخرى</label>
-          <input id="stlOther" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
         </div>
         <div class="form-group">
           <label class="label">💰 عهدة جديدة اليوم</label>
           <input id="stlCustody" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
         </div>
         <div class="form-group" style="grid-column:1/-1">
-          <label class="label">ملاحظات</label>
-          <input id="stlNotes" class="input" placeholder="ملاحظات إضافية...">
+          <label class="label">وصف / سبب عام (اختياري)</label>
+          <input id="stlReason" class="input" placeholder="مثال: مأموريات يوم 26 مايو">
         </div>
       </div>
 
-      <!-- ملخص تلقائي -->
-      <div id="stlSummary" style="background:#f8fafc;border-radius:12px;padding:14px;margin:16px 0;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
-        <div><div style="font-size:13px;color:#64748b">إجمالي الصرف</div><div id="stlTotalDisp" style="font-size:16px;font-weight:800;color:#dc2626">0 ج.م</div></div>
-        <div><div style="font-size:13px;color:#64748b">عهدة جديدة</div><div id="stlCustDisp" style="font-size:16px;font-weight:800;color:#15803d">0 ج.م</div></div>
-        <div><div style="font-size:13px;color:#64748b">المتوقع يتبقى</div><div id="stlBalDisp" style="font-size:16px;font-weight:800;color:#1a2472">— ج.م</div></div>
+      <!-- بنود المصروفات -->
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <label class="label" style="margin:0;font-size:13px;font-weight:700">📝 بنود المصروفات</label>
+          <button type="button" onclick="addStlItem()" style="background:#eef1fb;color:#1a2472;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">+ إضافة بند</button>
+        </div>
+        <div id="stlItemsList">
+          <!-- بند أول افتراضي -->
+        </div>
+        <div id="stlItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <!-- ملخص -->
+      <div style="background:#f8fafc;border-radius:12px;padding:14px;margin-bottom:16px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+        <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">إجمالي الصرف</div><div id="stlTotalDisp" style="font-size:17px;font-weight:800;color:#dc2626">0 ج.م</div></div>
+        <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">عهدة جديدة</div><div id="stlCustDisp" style="font-size:17px;font-weight:800;color:#15803d">0 ج.م</div></div>
+        <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">المتوقع يتبقى</div><div id="stlBalDisp" style="font-size:17px;font-weight:800;color:#1a2472">— ج.م</div></div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:16px">
+        <label class="label">ملاحظات</label>
+        <input id="stlNotes" class="input" placeholder="ملاحظات إضافية...">
       </div>
 
       <div style="display:flex;gap:10px">
@@ -7936,36 +7923,72 @@ function showAddSettlement() {
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+  // ابدأ ببند أول فارغ
+  addStlItem();
+}
+
+let _stlItemCount = 0;
+function addStlItem(desc = '', amount = '') {
+  const list = document.getElementById('stlItemsList');
+  if (!list) return;
+  const idx = _stlItemCount++;
+  const row = document.createElement('div');
+  row.id = `stlItem_${idx}`;
+  row.style.cssText = 'display:flex;gap:8px;align-items:center';
+  row.innerHTML = `
+    <input type="text" placeholder="اسم البند (مثال: الانتقالات)" value="${escH(desc)}"
+      class="input" style="flex:1;font-size:13px" oninput="calcStlTotal()">
+    <input type="number" placeholder="المبلغ" value="${amount}"
+      class="input" style="width:110px;font-size:13px;text-align:center" oninput="calcStlTotal()">
+    <span style="color:#64748b;font-size:11px;white-space:nowrap">ج.م</span>
+    <button type="button" onclick="removeStlItem('stlItem_${idx}')"
+      style="background:#fee2e2;border:none;border-radius:6px;color:#dc2626;cursor:pointer;padding:6px 9px;font-size:13px;flex-shrink:0">✕</button>
+  `;
+  list.appendChild(row);
+  calcStlTotal();
+}
+
+function removeStlItem(id) {
+  document.getElementById(id)?.remove();
+  calcStlTotal();
 }
 
 function calcStlTotal() {
-  const trans = parseFloat(document.getElementById('stlTrans')?.value||0);
-  const meals  = parseFloat(document.getElementById('stlMeals')?.value||0);
-  const other  = parseFloat(document.getElementById('stlOther')?.value||0);
-  const cust   = parseFloat(document.getElementById('stlCustody')?.value||0);
-  const total  = trans + meals + other;
-  const disp = (v) => v.toLocaleString('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:0}) + ' ج.م';
+  const list = document.getElementById('stlItemsList');
+  let total = 0;
+  if (list) {
+    list.querySelectorAll('input[type=number]').forEach(inp => { total += parseFloat(inp.value||0); });
+  }
+  const cust = parseFloat(document.getElementById('stlCustody')?.value||0);
+  const disp = v => v.toLocaleString('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:0}) + ' ج.م';
   if(document.getElementById('stlTotalDisp')) document.getElementById('stlTotalDisp').textContent = disp(total);
   if(document.getElementById('stlCustDisp'))  document.getElementById('stlCustDisp').textContent  = disp(cust);
   if(document.getElementById('stlBalDisp'))   document.getElementById('stlBalDisp').textContent   = '— ج.م';
 }
 
 async function saveSettlement() {
-  const date     = document.getElementById('stlDate')?.value;
-  const company  = document.getElementById('stlCompany')?.value?.trim();
-  const dest     = document.getElementById('stlDest')?.value?.trim();
-  const reason   = document.getElementById('stlReason')?.value?.trim();
-  const trans    = parseFloat(document.getElementById('stlTrans')?.value||0);
-  const meals    = parseFloat(document.getElementById('stlMeals')?.value||0);
-  const other    = parseFloat(document.getElementById('stlOther')?.value||0);
-  const custody  = parseFloat(document.getElementById('stlCustody')?.value||0);
-  const notes    = document.getElementById('stlNotes')?.value?.trim();
+  const date    = document.getElementById('stlDate')?.value;
+  const reason  = document.getElementById('stlReason')?.value?.trim();
+  const custody = parseFloat(document.getElementById('stlCustody')?.value||0);
+  const notes   = document.getElementById('stlNotes')?.value?.trim();
   if (!date) { alert('اختر التاريخ'); return; }
+
+  // اجمع البنود من الصفوف الديناميكية
+  const expense_items = [];
+  const list = document.getElementById('stlItemsList');
+  if (list) {
+    list.querySelectorAll('div[id^="stlItem_"]').forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      const desc   = inputs[0]?.value?.trim();
+      const amount = parseFloat(inputs[1]?.value||0);
+      if (desc || amount > 0) expense_items.push({description: desc || '—', amount});
+    });
+  }
+  if (expense_items.length === 0) { alert('أضف بند واحد على الأقل'); return; }
   try {
     await api('POST', '/api/settlements', {
-      employee_name:_settleEmp.name,
-      date, company_name:company, destination:dest, reason,
-      transportation:trans, meals, other_expenses:other, custody_added:custody, notes
+      employee_name: _settleEmp.name,
+      date, reason, expense_items, custody_added: custody, notes
     });
     closeModal();
     renderEmpSettlements();
@@ -8460,6 +8483,8 @@ window.saveNewEmployee = saveNewEmployee;
 window.showCustodyTopup = showCustodyTopup;
 window.saveCustodyTopup = saveCustodyTopup;
 window.showAddSettlement = showAddSettlement;
+window.addStlItem = addStlItem;
+window.removeStlItem = removeStlItem;
 window.calcStlTotal = calcStlTotal;
 window.saveSettlement = saveSettlement;
 window.deleteSettlement = deleteSettlement;

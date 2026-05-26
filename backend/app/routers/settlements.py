@@ -2,9 +2,10 @@
 تسويات الموظفين + المواعيد + الأوراق الحكومية
 Employee Settlements · Appointments · Government Papers
 """
+import json
 import logging
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, List
 from calendar import monthrange
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,15 +22,15 @@ router = APIRouter(prefix="/api/settlements", tags=["Settlements"])
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+class ExpenseItem(BaseModel):
+    description: str
+    amount:      float = 0
+
 class SettlementIn(BaseModel):
     employee_name:  str
     date:           str           # YYYY-MM-DD
-    company_name:   Optional[str] = None
-    destination:    Optional[str] = None
     reason:         Optional[str] = None
-    transportation: float = 0
-    meals:          float = 0
-    other_expenses: float = 0
+    expense_items:  List[ExpenseItem] = []
     custody_added:  float = 0
     notes:          Optional[str] = None
 
@@ -181,27 +182,24 @@ def add_settlement(
     except ValueError:
         raise HTTPException(400, "تاريخ غير صحيح")
 
-    total_spent    = payload.transportation + payload.meals + payload.other_expenses
-    opening        = custody.current_balance
-    closing        = opening + payload.custody_added - total_spent
+    items      = [{"description": i.description, "amount": round(i.amount, 2)} for i in payload.expense_items]
+    total_spent = round(sum(i["amount"] for i in items), 2)
+    opening     = custody.current_balance
+    closing     = round(opening + payload.custody_added - total_spent, 2)
 
     s = EmployeeSettlement(
-        employee_name  = name,
-        date           = d,
-        month          = d.month,
-        year           = d.year,
-        company_name   = payload.company_name,
-        destination    = payload.destination,
-        reason         = payload.reason,
-        transportation = payload.transportation,
-        meals          = payload.meals,
-        other_expenses = payload.other_expenses,
-        total_spent    = round(total_spent, 2),
+        employee_name   = name,
+        date            = d,
+        month           = d.month,
+        year            = d.year,
+        reason          = payload.reason,
+        expense_items   = json.dumps(items, ensure_ascii=False),
+        total_spent     = total_spent,
         opening_balance = round(opening, 2),
-        custody_added  = payload.custody_added,
-        closing_balance = round(closing, 2),
-        notes          = payload.notes,
-        created_by     = current_user.id,
+        custody_added   = payload.custody_added,
+        closing_balance = closing,
+        notes           = payload.notes,
+        created_by      = current_user.id,
     )
     db.add(s)
 
@@ -282,15 +280,15 @@ def monthly_report(
 
 
 def _s_dict(s: EmployeeSettlement) -> dict:
+    try:
+        items = json.loads(s.expense_items or "[]")
+    except Exception:
+        items = []
     return {
         "id":              s.id,
         "date":            str(s.date),
-        "company_name":    s.company_name,
-        "destination":     s.destination,
         "reason":          s.reason,
-        "transportation":  s.transportation,
-        "meals":           s.meals,
-        "other_expenses":  s.other_expenses,
+        "expense_items":   items,
         "total_spent":     s.total_spent,
         "opening_balance": s.opening_balance,
         "custody_added":   s.custody_added,

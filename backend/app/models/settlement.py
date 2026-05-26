@@ -35,15 +35,12 @@ class EmployeeSettlement(Base):
     year             = Column(Integer, index=True)
 
     # تفاصيل المأمورية
-    company_name     = Column(String(300))   # اسم الشركة اللي اشتغل فيها
-    destination      = Column(String(500))   # راح فين (الوجهة)
-    reason           = Column(Text)          # سبب المأمورية
+    reason           = Column(Text)          # وصف / سبب عام
 
-    # المصروفات
-    transportation   = Column(Float, default=0)   # الانتقالات
-    meals            = Column(Float, default=0)   # مصروف الأكل
-    other_expenses   = Column(Float, default=0)   # مصاريف أخرى
-    total_spent      = Column(Float, default=0)   # إجمالي الصرف اليوم
+    # بنود المصروفات الديناميكية
+    # JSON: [{"description": "الانتقالات", "amount": 30}, ...]
+    expense_items    = Column(Text, default='[]')
+    total_spent      = Column(Float, default=0)   # إجمالي الصرف اليوم (مجموع البنود)
 
     # حركة العهدة
     opening_balance  = Column(Float, default=0)   # رصيد العهدة أول اليوم (من أمس)
