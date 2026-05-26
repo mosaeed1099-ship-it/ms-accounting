@@ -5626,6 +5626,12 @@ async function openClientAccounting(clientId, clientName) {
         ['balance','🏛️','الميزانية'],
         ['vat','🧾','ض ق م'],
         ['accounts','📚','دليل الحسابات'],
+        ['ledger','📖','دفتر الأستاذ'],
+        ['treasury','🏦','الخزينة والبنوك'],
+        ['checks','🔖','الشيكات'],
+        ['advances','💼','العهد والسلف'],
+        ['arap','👤','عملاء / موردين'],
+        ['cashflow','💧','التدفقات النقدية'],
       ].map(([id,icon,label])=>`
         <button id="accTab_${id}" onclick="switchAccTab('${id}')"
           style="padding:10px 14px;border:none;background:transparent;font-family:inherit;font-size:13px;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;font-weight:500;transition:all .15s">
@@ -5672,6 +5678,12 @@ async function accRender() {
       case 'balance':    content.innerHTML = await accBalanceSheet(); break;
       case 'vat':        content.innerHTML = await accVatSummary(); break;
       case 'accounts':   content.innerHTML = await accChartOfAccounts(); break;
+      case 'ledger':     await accGeneralLedger(); break;
+      case 'treasury':   content.innerHTML = await accTreasury(); break;
+      case 'checks':     content.innerHTML = await accChecks(); break;
+      case 'advances':   content.innerHTML = await accAdvances(); break;
+      case 'arap':       content.innerHTML = await accArAp(); break;
+      case 'cashflow':   content.innerHTML = await accCashFlow(); break;
     }
   } catch(e) {
     content.innerHTML = `<div style="color:#dc2626;padding:20px">❌ خطأ: ${escH(e.message)}</div>`;
@@ -5962,8 +5974,9 @@ async function accJournal() {
                 ${je.is_balanced ? '' : '⚠️ '} ${STATUS[je.status]||je.status}
               </span>
             </td>
-            <td style="padding:9px 12px" onclick="event.stopPropagation()">
-              ${je.status === 'draft' ? `<button onclick="postJournalEntry(${je.id})" style="background:#dcfce7;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:#15803d;font-family:inherit">ترحيل</button>` : ''}
+            <td style="padding:9px 12px;white-space:nowrap" onclick="event.stopPropagation()">
+              ${je.status === 'draft' ? `<button onclick="postJournalEntry(${je.id})" style="background:#dcfce7;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:#15803d;font-family:inherit;margin-left:4px">ترحيل</button>` : ''}
+              <button onclick="copyJournalEntry(${je.id})" style="background:#eef1fb;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;color:#1a2472;font-family:inherit" title="نسخ القيد">📋</button>
             </td>
           </tr>`).join('')}
       </tbody>
@@ -6018,6 +6031,14 @@ async function postJournalEntry(jeId) {
   try {
     const r = await api('PATCH', `/api/accounting/${_accClientId}/journal-entries/${jeId}/post`);
     toast(r.message);
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function copyJournalEntry(jeId) {
+  try {
+    const r = await api('POST', `/api/accounting/${_accClientId}/journal-entries/${jeId}/copy`);
+    toast(r.message || '✅ تم نسخ القيد كمسودة');
     accRender();
   } catch(e) { toast(e.message,'error'); }
 }
@@ -6344,6 +6365,688 @@ async function accImportExcel(file) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+// ── General Ledger (دفتر الأستاذ) ─────────────────────────────────────────────
+let _accLedgerAccountId = null;
+
+async function accGeneralLedger() {
+  const content = document.getElementById('accContent');
+  const accounts = await api('GET', `/api/accounting/${_accClientId}/accounts`);
+  if(!accounts.length) {
+    content.innerHTML = `<div style="padding:40px;text-align:center;color:#94a3b8">لا يوجد دليل حسابات بعد — ثبّت الحسابات الافتراضية أولاً</div>`;
+    return;
+  }
+  if(!_accLedgerAccountId) _accLedgerAccountId = accounts[0]?.id;
+
+  const renderLedger = async () => {
+    const selEl = document.getElementById('ledgerAccSel');
+    if(selEl) _accLedgerAccountId = +selEl.value;
+    const data = await api('GET', `/api/accounting/${_accClientId}/ledger/${_accLedgerAccountId}?year=${_accYear}`);
+    const acc = data.account || {};
+    const rows = data.lines || [];
+    document.getElementById('ledgerTable').innerHTML = `
+      <div style="background:#eef1fb;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap">
+        <div><div style="font-size:11px;color:#64748b">الحساب</div><div style="font-size:14px;font-weight:800;color:#1a2472">${escH(acc.code||'')} — ${escH(acc.name||'')}</div></div>
+        <div><div style="font-size:11px;color:#64748b">رصيد افتتاحي</div><div style="font-size:14px;font-weight:700;color:#374151">${money(data.opening_balance||0)}</div></div>
+        <div><div style="font-size:11px;color:#64748b">إجمالي مدين</div><div style="font-size:14px;font-weight:700;color:#1a2472">${money(data.total_debit||0)}</div></div>
+        <div><div style="font-size:11px;color:#64748b">إجمالي دائن</div><div style="font-size:14px;font-weight:700;color:#dc2626">${money(data.total_credit||0)}</div></div>
+        <div><div style="font-size:11px;color:#64748b">الرصيد النهائي</div><div style="font-size:16px;font-weight:800;color:${(data.closing_balance||0)>=0?'#15803d':'#dc2626'}">${money(Math.abs(data.closing_balance||0))} ${(data.closing_balance||0)>=0?'مدين':'دائن'}</div></div>
+      </div>
+      <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#f8fafc">
+            ${['التاريخ','رقم القيد','الوصف','مدين','دائن','الرصيد'].map(h=>`<th style="padding:9px 12px;text-align:right;border-bottom:2px solid #e8edf3;font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${rows.length===0?`<tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8">لا توجد حركات لهذا الحساب في ${_accYear}</td></tr>`:
+              rows.map(r=>`<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                <td style="padding:8px 12px;white-space:nowrap;color:#64748b">${r.date||'—'}</td>
+                <td style="padding:8px 12px;font-weight:600;color:#1a2472;font-size:12px">${escH(r.entry_number||'')}</td>
+                <td style="padding:8px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(r.description||r.partner_name||'')}</td>
+                <td style="padding:8px 12px;font-weight:700;color:#1a2472">${r.debit>0?money(r.debit):'—'}</td>
+                <td style="padding:8px 12px;font-weight:700;color:#dc2626">${r.credit>0?money(r.credit):'—'}</td>
+                <td style="padding:8px 12px;font-weight:800;color:${r.running_balance>=0?'#15803d':'#dc2626'}">${money(Math.abs(r.running_balance))} <span style="font-size:10px">${r.running_balance>=0?'م':'د'}</span></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        </div>
+      </div>`;
+  };
+
+  content.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">📖 دفتر الأستاذ — ${_accYear}</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="ledgerAccSel" onchange="window._accLedgerReload()" style="font-family:inherit;font-size:13px;border:1.5px solid #e8edf3;border-radius:8px;padding:6px 12px;background:white;color:#1e293b;min-width:260px">
+        ${accounts.map(a=>`<option value="${a.id}" ${a.id===_accLedgerAccountId?'selected':''}>${escH(a.code)} — ${escH(a.name)}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div id="ledgerTable"><div class="loading"><div class="spinner"></div></div></div>`;
+
+  window._accLedgerReload = renderLedger;
+  await renderLedger();
+}
+
+// ── Treasury & Bank Accounts ───────────────────────────────────────────────────
+async function accTreasury() {
+  const treasuries = await api('GET', `/api/accounting/${_accClientId}/treasuries`);
+  const list = Array.isArray(treasuries) ? treasuries : (treasuries.items || []);
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">🏦 الخزينة والحسابات البنكية</h3>
+    <button onclick="showAddTreasury()" class="btn btn-primary" style="font-size:13px">+ إضافة خزينة / بنك</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:24px">
+    ${list.length===0?`<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94a3b8;background:white;border-radius:12px">لا توجد خزائن بعد — اضغط "+ إضافة"</div>`
+    : list.map(t=>`
+      <div style="background:white;border-radius:14px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.07);border-top:4px solid ${t.treasury_type==='bank'?'#1a2472':'#15803d'}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-size:24px;margin-bottom:4px">${t.treasury_type==='bank'?'🏦':'💵'}</div>
+            <div style="font-size:14px;font-weight:800;color:#1e293b">${escH(t.name)}</div>
+            ${t.bank_name?`<div style="font-size:12px;color:#64748b">${escH(t.bank_name)}${t.account_number?' — '+escH(t.account_number):''}</div>`:''}
+          </div>
+          <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:${t.treasury_type==='bank'?'#eef1fb':'#f0fdf4'};color:${t.treasury_type==='bank'?'#1a2472':'#15803d'};font-weight:700">${t.treasury_type==='bank'?'بنك':'نقدية'}</span>
+        </div>
+        <div style="font-size:22px;font-weight:900;color:#1e293b;margin-bottom:12px">${money(t.current_balance||t.opening_balance||0)}</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="showTreasuryTxs(${t.id},'${escH(t.name)}')" style="flex:1;background:#eef1fb;border:none;border-radius:8px;padding:7px;cursor:pointer;font-family:inherit;font-size:12px;color:#1a2472;font-weight:600">📋 الحركات</button>
+          <button onclick="showAddTreasuryTx(${t.id})" style="flex:1;background:#f0fdf4;border:none;border-radius:8px;padding:7px;cursor:pointer;font-family:inherit;font-size:12px;color:#15803d;font-weight:600">+ حركة</button>
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+
+function showAddTreasury() {
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.style.zIndex = '1200';
+  ov.innerHTML = `<div class="modal" style="max-width:480px">
+    <div style="padding:14px 20px;background:#1a2472;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-weight:700;font-size:14px">🏦 إضافة خزينة / بنك</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white">✕</button>
+    </div>
+    <div style="padding:20px">
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">الاسم *</label>
+        <input id="trName" class="input" placeholder="الخزينة الرئيسية / البنك الأهلي"/></div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">النوع</label>
+        <select id="trType" class="input" onchange="document.getElementById('trBankFields').style.display=this.value==='bank'?'block':'none'">
+          <option value="cash">نقدية</option><option value="bank">حساب بنكي</option>
+        </select></div>
+      <div id="trBankFields" style="display:none">
+        <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">اسم البنك</label>
+          <input id="trBankName" class="input" placeholder="البنك الأهلي المصري"/></div>
+        <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">رقم الحساب</label>
+          <input id="trAccNum" class="input" placeholder="1234567890"/></div>
+      </div>
+      <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">الرصيد الافتتاحي</label>
+        <input id="trOpenBal" type="number" class="input" value="0"/></div>
+      <div id="trResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button class="btn btn-primary" onclick="saveTreasury()">💾 حفظ</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+}
+
+async function saveTreasury() {
+  const payload = {
+    name: document.getElementById('trName')?.value?.trim(),
+    treasury_type: document.getElementById('trType')?.value||'cash',
+    bank_name: document.getElementById('trBankName')?.value?.trim()||null,
+    account_number: document.getElementById('trAccNum')?.value?.trim()||null,
+    opening_balance: parseFloat(document.getElementById('trOpenBal')?.value||0),
+  };
+  if(!payload.name) { document.getElementById('trResult').innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل الاسم</div>`; return; }
+  try {
+    await api('POST', `/api/accounting/${_accClientId}/treasuries`, payload);
+    toast('✅ تمت الإضافة');
+    document.querySelector('.modal-overlay:last-child')?.remove();
+    accRender();
+  } catch(e) { document.getElementById('trResult').innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`; }
+}
+
+async function showTreasuryTxs(treasuryId, name) {
+  const data = await api('GET', `/api/accounting/${_accClientId}/treasuries/${treasuryId}/transactions?page_size=100`);
+  const txs = data.items || [];
+  const TX_LABELS = {deposit:'إيداع',withdrawal:'سحب',transfer_in:'تحويل وارد',transfer_out:'تحويل صادر'};
+  const TX_COLORS = {deposit:'#15803d',withdrawal:'#dc2626',transfer_in:'#1a2472',transfer_out:'#d97706'};
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.style.zIndex = '1200';
+  ov.innerHTML = `<div class="modal" style="max-width:680px">
+    <div style="padding:14px 20px;background:#1a2472;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-weight:700;font-size:14px">📋 حركات — ${escH(name)}</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white">✕</button>
+    </div>
+    <div style="padding:20px;max-height:70vh;overflow-y:auto">
+      <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#f8fafc">
+            ${['التاريخ','النوع','المبلغ','الوصف',''].map(h=>`<th style="padding:9px 12px;text-align:right;border-bottom:2px solid #e8edf3;font-size:12px;font-weight:700;color:#64748b">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${txs.length===0?`<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8">لا توجد حركات</td></tr>`:
+              txs.map(t=>`<tr style="border-bottom:1px solid #f1f5f9">
+                <td style="padding:8px 12px;white-space:nowrap">${t.date||'—'}</td>
+                <td style="padding:8px 12px"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:${TX_COLORS[t.tx_type]+'22'};color:${TX_COLORS[t.tx_type]}">${TX_LABELS[t.tx_type]||t.tx_type}</span></td>
+                <td style="padding:8px 12px;font-weight:700;color:${['deposit','transfer_in'].includes(t.tx_type)?'#15803d':'#dc2626'}">${['deposit','transfer_in'].includes(t.tx_type)?'+':'-'}${money(t.amount)}</td>
+                <td style="padding:8px 12px;color:#64748b;font-size:12px">${escH(t.description||'')}</td>
+                <td style="padding:8px 12px"><button onclick="deleteTreasuryTx(${t.id})" style="background:#fee2e2;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#dc2626">🗑</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+}
+
+function showAddTreasuryTx(treasuryId) {
+  const today = new Date().toISOString().split('T')[0];
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.style.zIndex = '1300';
+  ov.innerHTML = `<div class="modal" style="max-width:440px">
+    <div style="padding:14px 20px;background:#1a2472;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-weight:700;font-size:14px">+ حركة خزينة</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white">✕</button>
+    </div>
+    <div style="padding:20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">التاريخ</label>
+          <input id="ttDate" type="date" class="input" value="${today}"/></div>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">النوع</label>
+          <select id="ttType" class="input">
+            <option value="deposit">إيداع</option>
+            <option value="withdrawal">سحب</option>
+          </select></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">المبلغ *</label>
+        <input id="ttAmount" type="number" class="input" placeholder="0"/></div>
+      <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">الوصف</label>
+        <input id="ttDesc" class="input" placeholder="وصف الحركة..."/></div>
+      <div id="ttResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button class="btn btn-primary" onclick="saveTreasuryTx(${treasuryId})">💾 حفظ</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+}
+
+async function saveTreasuryTx(treasuryId) {
+  const amt = parseFloat(document.getElementById('ttAmount')?.value||0);
+  if(!amt) { document.getElementById('ttResult').innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل المبلغ</div>`; return; }
+  try {
+    await api('POST', `/api/accounting/${_accClientId}/treasuries/transactions`, {
+      treasury_id: treasuryId,
+      date: document.getElementById('ttDate')?.value,
+      tx_type: document.getElementById('ttType')?.value,
+      amount: amt,
+      description: document.getElementById('ttDesc')?.value?.trim()||null,
+    });
+    toast('✅ تمت الإضافة');
+    document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
+    accRender();
+  } catch(e) { document.getElementById('ttResult').innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`; }
+}
+
+async function deleteTreasuryTx(txId) {
+  if(!confirm('حذف هذه الحركة؟')) return;
+  try {
+    await api('DELETE', `/api/accounting/${_accClientId}/treasuries/transactions/${txId}`);
+    toast('تم الحذف');
+    document.querySelector('.modal-overlay')?.remove();
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ── Checks Management ─────────────────────────────────────────────────────────
+async function accChecks() {
+  const [data, summary] = await Promise.all([
+    api('GET', `/api/accounting/${_accClientId}/checks?page_size=200`),
+    api('GET', `/api/accounting/${_accClientId}/checks/summary`).catch(()=>({})),
+  ]);
+  const items = data.items || [];
+  const STATUS_LABEL = {pending:'قيد التحصيل',deposited:'مودَّع',cleared:'محصَّل',rejected:'مرتجع',cashed:'صُرِّف',cancelled:'ملغى'};
+  const STATUS_COLOR = {pending:'#d97706',deposited:'#1a2472',cleared:'#15803d',rejected:'#dc2626',cashed:'#7c3aed',cancelled:'#94a3b8'};
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">🔖 إدارة الشيكات</h3>
+    <button onclick="showAddCheck()" class="btn btn-primary" style="font-size:13px">+ إضافة شيك</button>
+  </div>
+
+  ${(summary.overdue_count||0)>0 || (summary.due_soon_count||0)>0 ? `
+  <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    ${(summary.overdue_count||0)>0?`<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;color:#dc2626">⚠️ ${summary.overdue_count} شيك متأخر — ${money(summary.overdue_amount||0)}</div>`:''}
+    ${(summary.due_soon_count||0)>0?`<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;color:#92400e">⏰ ${summary.due_soon_count} شيك مستحق قريباً — ${money(summary.due_soon_amount||0)}</div>`:''}
+  </div>` : ''}
+
+  <!-- Totals -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px">
+    ${[
+      {label:'وارد قيد التحصيل',  val:money(summary.incoming_pending||0),  color:'#15803d', bg:'#f0fdf4'},
+      {label:'صادر قيد السداد',   val:money(summary.outgoing_pending||0),  color:'#dc2626', bg:'#fef2f2'},
+      {label:'محصَّل هذا الشهر',  val:money(summary.cleared_this_month||0),color:'#1a2472', bg:'#eef1fb'},
+    ].map(k=>`<div style="background:${k.bg};border-radius:10px;padding:12px;border-right:3px solid ${k.color}">
+      <div style="font-size:17px;font-weight:800;color:${k.color}">${k.val}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">${k.label}</div>
+    </div>`).join('')}
+  </div>
+
+  <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#f8fafc">
+        ${['النوع','رقم الشيك','صاحب الشيك / المستلم','البنك','المبلغ','تاريخ الاستحقاق','الحالة',''].map(h=>`<th style="padding:9px 12px;text-align:right;border-bottom:2px solid #e8edf3;font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${items.length===0?`<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد شيكات — اضغط "+ إضافة شيك"</td></tr>`:
+          items.map(c=>`<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <td style="padding:8px 12px"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:${c.check_type==='incoming'?'#f0fdf4':'#fef2f2'};color:${c.check_type==='incoming'?'#15803d':'#dc2626'}">${c.check_type==='incoming'?'وارد':'صادر'}</span></td>
+            <td style="padding:8px 12px;font-weight:700;color:#1a2472">${escH(c.check_number||'—')}</td>
+            <td style="padding:8px 12px;font-weight:600">${escH(c.partner_name||'—')}</td>
+            <td style="padding:8px 12px;font-size:12px;color:#64748b">${escH(c.bank_name||'—')}</td>
+            <td style="padding:8px 12px;font-weight:800;color:#1e293b">${money(c.amount)}</td>
+            <td style="padding:8px 12px;font-size:12px">${c.due_date||'—'}</td>
+            <td style="padding:8px 12px">
+              <select onchange="updateCheckStatus(${c.id},this.value)" style="font-family:inherit;font-size:11px;font-weight:700;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;background:${STATUS_COLOR[c.status]+'22'};color:${STATUS_COLOR[c.status]}">
+                ${Object.entries(STATUS_LABEL).map(([v,l])=>`<option value="${v}" ${v===c.status?'selected':''}>${l}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:8px 12px"><button onclick="deleteCheck(${c.id})" style="background:#fee2e2;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#dc2626">🗑</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+}
+
+function showAddCheck() {
+  const today = new Date().toISOString().split('T')[0];
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.style.zIndex = '1200';
+  ov.innerHTML = `<div class="modal" style="max-width:520px">
+    <div style="padding:14px 20px;background:#1a2472;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-weight:700;font-size:14px">🔖 إضافة شيك</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white">✕</button>
+    </div>
+    <div style="padding:20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">النوع *</label>
+          <select id="chkType" class="input"><option value="incoming">وارد (مقبوض)</option><option value="outgoing">صادر (مدفوع)</option></select></div>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">رقم الشيك</label>
+          <input id="chkNum" class="input" placeholder="123456"/></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">الطرف الآخر (صاحب الشيك / المستلم) *</label>
+        <input id="chkPartner" class="input" placeholder="اسم الشركة أو الشخص"/></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">البنك</label>
+          <input id="chkBank" class="input" placeholder="البنك الأهلي"/></div>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">الفرع</label>
+          <input id="chkBranch" class="input" placeholder="فرع..."/></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">المبلغ *</label>
+          <input id="chkAmount" type="number" class="input" placeholder="0"/></div>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">تاريخ الاستحقاق *</label>
+          <input id="chkDue" type="date" class="input" value="${today}"/></div>
+      </div>
+      <div id="chkResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button class="btn btn-primary" onclick="saveCheck()">💾 حفظ</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+}
+
+async function saveCheck() {
+  const amt = parseFloat(document.getElementById('chkAmount')?.value||0);
+  const partner = document.getElementById('chkPartner')?.value?.trim();
+  if(!amt||!partner) { document.getElementById('chkResult').innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل الطرف والمبلغ</div>`; return; }
+  try {
+    await api('POST', `/api/accounting/${_accClientId}/checks`, {
+      check_type: document.getElementById('chkType')?.value,
+      check_number: document.getElementById('chkNum')?.value?.trim()||null,
+      partner_name: partner,
+      bank_name: document.getElementById('chkBank')?.value?.trim()||null,
+      branch: document.getElementById('chkBranch')?.value?.trim()||null,
+      amount: amt,
+      issue_date: new Date().toISOString().split('T')[0],
+      due_date: document.getElementById('chkDue')?.value||null,
+    });
+    toast('✅ تمت الإضافة');
+    document.querySelector('.modal-overlay:last-child')?.remove();
+    accRender();
+  } catch(e) { document.getElementById('chkResult').innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`; }
+}
+
+async function updateCheckStatus(checkId, status) {
+  try {
+    await api('PATCH', `/api/accounting/${_accClientId}/checks/${checkId}/status`, {status});
+    toast('✅ تم تحديث الحالة');
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function deleteCheck(checkId) {
+  if(!confirm('حذف هذا الشيك؟')) return;
+  try {
+    await api('DELETE', `/api/accounting/${_accClientId}/checks/${checkId}`);
+    toast('تم الحذف');
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ── Advances & Custody ────────────────────────────────────────────────────────
+async function accAdvances() {
+  const data = await api('GET', `/api/accounting/${_accClientId}/advances?page_size=200`);
+  const items = data.items || [];
+  const STATUS_LABEL = {active:'نشطة',partially_settled:'مسدَّدة جزئياً',settled:'مسدَّدة',cancelled:'ملغاة'};
+  const STATUS_COLOR = {active:'#d97706',partially_settled:'#1a2472',settled:'#15803d',cancelled:'#94a3b8'};
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">💼 العهد والسلف</h3>
+    <button onclick="showAddAdvance()" class="btn btn-primary" style="font-size:13px">+ إضافة</button>
+  </div>
+
+  <!-- Totals -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">
+    ${[
+      {label:'إجمالي نشطة',  val:money(items.filter(i=>i.status==='active').reduce((s,i)=>s+i.amount,0)),             color:'#d97706',bg:'#fef9c3'},
+      {label:'متبقي غير مسدَّد',val:money(items.reduce((s,i)=>s+(i.amount-(i.settled_amount||0)),0)),              color:'#dc2626',bg:'#fef2f2'},
+      {label:'مسدَّد',        val:money(items.reduce((s,i)=>s+(i.settled_amount||0),0)),                            color:'#15803d',bg:'#f0fdf4'},
+    ].map(k=>`<div style="background:${k.bg};border-radius:10px;padding:14px;border-right:3px solid ${k.color}">
+      <div style="font-size:18px;font-weight:800;color:${k.color}">${k.val}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">${k.label}</div>
+    </div>`).join('')}
+  </div>
+
+  <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#f8fafc">
+        ${['النوع','الموظف','المبلغ','المسدَّد','المتبقي','تاريخ الصرف','تاريخ الاستحقاق','الغرض','الحالة',''].map(h=>`<th style="padding:9px 12px;text-align:right;border-bottom:2px solid #e8edf3;font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${items.length===0?`<tr><td colspan="10" style="text-align:center;padding:40px;color:#94a3b8">لا توجد عهد أو سلف — اضغط "+ إضافة"</td></tr>`:
+          items.map(a=>{
+            const remaining = a.amount - (a.settled_amount||0);
+            return `<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+              <td style="padding:8px 12px"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#ede9fe;color:#7c3aed">${a.advance_type==='custody'?'عهدة':'سلفة'}</span></td>
+              <td style="padding:8px 12px;font-weight:600">${escH(a.employee_name)}</td>
+              <td style="padding:8px 12px;font-weight:700">${money(a.amount)}</td>
+              <td style="padding:8px 12px;color:#15803d;font-weight:600">${money(a.settled_amount||0)}</td>
+              <td style="padding:8px 12px;font-weight:700;color:${remaining>0?'#dc2626':'#15803d'}">${money(remaining)}</td>
+              <td style="padding:8px 12px;font-size:12px;color:#64748b">${a.issue_date||'—'}</td>
+              <td style="padding:8px 12px;font-size:12px;color:#64748b">${a.due_date||'—'}</td>
+              <td style="padding:8px 12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151;font-size:12px">${escH(a.purpose||'—')}</td>
+              <td style="padding:8px 12px"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:${STATUS_COLOR[a.status]+'22'};color:${STATUS_COLOR[a.status]}">${STATUS_LABEL[a.status]||a.status}</span></td>
+              <td style="padding:8px 12px;white-space:nowrap">
+                ${a.status!=='settled'&&a.status!=='cancelled'?`<button onclick="showSettleAdvance(${a.id},${a.amount},${a.settled_amount||0})" style="background:#f0fdf4;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;color:#15803d;margin-left:4px;font-family:inherit">تسوية</button>`:''}
+                <button onclick="deleteAdvance(${a.id})" style="background:#fee2e2;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#dc2626">🗑</button>
+              </td>
+            </tr>`;
+          }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+}
+
+function showAddAdvance() {
+  const today = new Date().toISOString().split('T')[0];
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.style.zIndex = '1200';
+  ov.innerHTML = `<div class="modal" style="max-width:480px">
+    <div style="padding:14px 20px;background:#1a2472;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-weight:700;font-size:14px">💼 إضافة عهدة / سلفة</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white">✕</button>
+    </div>
+    <div style="padding:20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">النوع</label>
+          <select id="advType" class="input"><option value="advance">سلفة</option><option value="custody">عهدة</option></select></div>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">المبلغ *</label>
+          <input id="advAmount" type="number" class="input" placeholder="0"/></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">اسم الموظف *</label>
+        <input id="advEmployee" class="input" placeholder="اسم الموظف"/></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">تاريخ الصرف *</label>
+          <input id="advIssue" type="date" class="input" value="${today}"/></div>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">تاريخ الاستحقاق</label>
+          <input id="advDue" type="date" class="input"/></div>
+      </div>
+      <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">الغرض</label>
+        <input id="advPurpose" class="input" placeholder="مصاريف سفر / شراء مستلزمات..."/></div>
+      <div id="advResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button class="btn btn-primary" onclick="saveAdvance()">💾 حفظ</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+}
+
+async function saveAdvance() {
+  const amt = parseFloat(document.getElementById('advAmount')?.value||0);
+  const emp = document.getElementById('advEmployee')?.value?.trim();
+  if(!amt||!emp) { document.getElementById('advResult').innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل الموظف والمبلغ</div>`; return; }
+  try {
+    await api('POST', `/api/accounting/${_accClientId}/advances`, {
+      advance_type: document.getElementById('advType')?.value,
+      employee_name: emp,
+      amount: amt,
+      issue_date: document.getElementById('advIssue')?.value,
+      due_date: document.getElementById('advDue')?.value||null,
+      purpose: document.getElementById('advPurpose')?.value?.trim()||null,
+    });
+    toast('✅ تمت الإضافة');
+    document.querySelector('.modal-overlay:last-child')?.remove();
+    accRender();
+  } catch(e) { document.getElementById('advResult').innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`; }
+}
+
+function showSettleAdvance(advId, total, settled) {
+  const remaining = total - settled;
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.style.zIndex = '1300';
+  ov.innerHTML = `<div class="modal" style="max-width:380px">
+    <div style="padding:14px 20px;background:#15803d;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-weight:700;font-size:14px">✅ تسوية سلفة / عهدة</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white">✕</button>
+    </div>
+    <div style="padding:20px">
+      <div style="background:#f0fdf4;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px">
+        <div>المبلغ الكلي: <strong>${money(total)}</strong></div>
+        <div>تم تسوية: <strong>${money(settled)}</strong></div>
+        <div>المتبقي: <strong style="color:#dc2626">${money(remaining)}</strong></div>
+      </div>
+      <div style="margin-bottom:14px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">مبلغ التسوية *</label>
+        <input id="settleAmt" type="number" class="input" value="${remaining}" max="${remaining}"/></div>
+      <div id="settleResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button class="btn btn-primary" onclick="confirmSettleAdvance(${advId})" style="background:#15803d">✅ تأكيد التسوية</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+}
+
+async function confirmSettleAdvance(advId) {
+  const amt = parseFloat(document.getElementById('settleAmt')?.value||0);
+  if(!amt) return;
+  try {
+    await api('PATCH', `/api/accounting/${_accClientId}/advances/${advId}/settle`, {amount: amt});
+    toast('✅ تمت التسوية');
+    document.querySelector('.modal-overlay:last-child')?.remove();
+    accRender();
+  } catch(e) { document.getElementById('settleResult').innerHTML=`<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`; }
+}
+
+async function deleteAdvance(advId) {
+  if(!confirm('حذف هذا السجل؟')) return;
+  try {
+    await api('DELETE', `/api/accounting/${_accClientId}/advances/${advId}`);
+    toast('تم الحذف'); accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ── AR/AP Aging ───────────────────────────────────────────────────────────────
+async function accArAp() {
+  const data = await api('GET', `/api/accounting/${_accClientId}/ar-ap`);
+  const ar = data.ar || {items:[], totals:{}};
+  const ap = data.ap || {items:[], totals:{}};
+  const AGING_LABELS = ['0-30 يوم','31-60 يوم','61-90 يوم','+90 يوم'];
+  const AGING_COLORS = ['#15803d','#d97706','#dc2626','#7c3aed'];
+
+  const agingTable = (title, icon, items, totals, colorMain) => `
+    <div style="margin-bottom:20px">
+      <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:10px">${icon} ${title}</div>
+      ${items.length===0?`<div style="background:white;border-radius:10px;padding:24px;text-align:center;color:#94a3b8;font-size:13px">لا توجد بيانات</div>`:`
+      <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#f8fafc">
+            ${['الطرف','الإجمالي','0-30 يوم','31-60 يوم','61-90 يوم','+90 يوم'].map(h=>`<th style="padding:9px 12px;text-align:right;border-bottom:2px solid #e8edf3;font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${items.map(i=>`<tr style="border-bottom:1px solid #f1f5f9">
+              <td style="padding:9px 12px;font-weight:600">${escH(i.partner_name||'—')}</td>
+              <td style="padding:9px 12px;font-weight:800;color:${colorMain}">${money(i.total_amount)}</td>
+              ${[i.bucket_0_30,i.bucket_31_60,i.bucket_61_90,i.bucket_90plus].map((v,idx)=>`<td style="padding:9px 12px;font-weight:${v>0?'700':'400'};color:${v>0?AGING_COLORS[idx]:'#94a3b8'}">${v>0?money(v):'—'}</td>`).join('')}
+            </tr>`).join('')}
+          </tbody>
+          <tfoot><tr style="background:#f8fafc;font-weight:700">
+            <td style="padding:9px 12px;color:#64748b">الإجمالي (${items.length})</td>
+            <td style="padding:9px 12px;color:${colorMain}">${money(totals.total_amount||0)}</td>
+            ${[totals.bucket_0_30,totals.bucket_31_60,totals.bucket_61_90,totals.bucket_90plus].map((v,idx)=>`<td style="padding:9px 12px;color:${AGING_COLORS[idx]}">${v>0?money(v):'—'}</td>`).join('')}
+          </tr></tfoot>
+        </table>
+        </div>
+      </div>`}
+    </div>`;
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">👤 تقرير العملاء والموردين (التقادم)</h3>
+    <div style="font-size:12px;color:#64748b;background:white;border-radius:8px;padding:6px 12px;border:1px solid #e8edf3">بناءً على معاملات ${_accYear}</div>
+  </div>
+
+  <!-- AR summary cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:20px">
+    <div style="background:#f0fdf4;border-radius:10px;padding:14px;border-right:3px solid #15803d">
+      <div style="font-size:20px;font-weight:900;color:#15803d">${money(ar.totals?.total_amount||0)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">إجمالي الذمم المدينة (عملاء)</div>
+    </div>
+    <div style="background:#fef2f2;border-radius:10px;padding:14px;border-right:3px solid #dc2626">
+      <div style="font-size:20px;font-weight:900;color:#dc2626">${money(ap.totals?.total_amount||0)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">إجمالي الذمم الدائنة (موردين)</div>
+    </div>
+    <div style="background:#eef1fb;border-radius:10px;padding:14px;border-right:3px solid #1a2472">
+      <div style="font-size:20px;font-weight:900;color:#1a2472">${money((ar.totals?.total_amount||0)-(ap.totals?.total_amount||0))}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">صافي المركز</div>
+    </div>
+  </div>
+
+  ${agingTable('ذمم مدينة — العملاء','📈', ar.items||[], ar.totals||{}, '#15803d')}
+  ${agingTable('ذمم دائنة — الموردين','📦', ap.items||[], ap.totals||{}, '#dc2626')}`;
+}
+
+// ── Cash Flow Statement ───────────────────────────────────────────────────────
+async function accCashFlow() {
+  const data = await api('GET', `/api/accounting/${_accClientId}/reports/cash-flow?year=${_accYear}`);
+  const months = data.months || [];
+  const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">💧 قائمة التدفقات النقدية — ${_accYear}</h3>
+    <div style="display:flex;gap:10px">
+      <div style="padding:6px 14px;border-radius:8px;background:#f0fdf4;color:#15803d;font-size:12px;font-weight:700">تدفقات واردة: ${money(data.total_inflow||0)}</div>
+      <div style="padding:6px 14px;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:12px;font-weight:700">تدفقات صادرة: ${money(data.total_outflow||0)}</div>
+      <div style="padding:6px 14px;border-radius:8px;background:${(data.net_cash_flow||0)>=0?'#eef1fb':'#fef2f2'};color:${(data.net_cash_flow||0)>=0?'#1a2472':'#dc2626'};font-size:12px;font-weight:700">صافي: ${money(data.net_cash_flow||0)}</div>
+    </div>
+  </div>
+
+  <!-- Bar chart visualization -->
+  <div style="background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:14px">مقارنة التدفقات الشهرية</div>
+    <div style="display:flex;gap:6px;align-items:flex-end;height:120px;padding-bottom:4px">
+      ${months.map((m,i) => {
+        const maxVal = Math.max(...months.map(x=>Math.max(x.inflow||0,x.outflow||0,1)));
+        const inH = Math.round(((m.inflow||0)/maxVal)*110);
+        const outH = Math.round(((m.outflow||0)/maxVal)*110);
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
+          <div style="width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:110px">
+            <div style="flex:1;background:#22c55e;border-radius:3px 3px 0 0;height:${inH}px;min-height:${(m.inflow||0)>0?2:0}px" title="وارد: ${money(m.inflow||0)}"></div>
+            <div style="flex:1;background:#ef4444;border-radius:3px 3px 0 0;height:${outH}px;min-height:${(m.outflow||0)>0?2:0}px" title="صادر: ${money(m.outflow||0)}"></div>
+          </div>
+          <div style="font-size:9px;color:#94a3b8;text-align:center">${MONTH_NAMES[i].slice(0,3)}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:8px;font-size:11px;color:#64748b">
+      <span><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;margin-left:4px"></span>وارد</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;margin-left:4px"></span>صادر</span>
+    </div>
+  </div>
+
+  <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#f8fafc">
+        ${['الشهر','تدفقات واردة','تدفقات صادرة','صافي التدفق','المؤشر'].map(h=>`<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #e8edf3;font-size:12px;font-weight:700;color:#64748b">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${months.map((m,i) => {
+          const hasData = m.inflow > 0 || m.outflow > 0;
+          return `<tr style="border-bottom:1px solid #f1f5f9;opacity:${hasData?1:.4}">
+            <td style="padding:9px 14px;font-weight:600">${MONTH_NAMES[i]}</td>
+            <td style="padding:9px 14px;font-weight:700;color:#15803d">${m.inflow>0?money(m.inflow):'—'}</td>
+            <td style="padding:9px 14px;font-weight:700;color:#dc2626">${m.outflow>0?money(m.outflow):'—'}</td>
+            <td style="padding:9px 14px;font-weight:800;color:${m.net>=0?'#1a2472':'#dc2626'}">${hasData?money(m.net):'—'}</td>
+            <td style="padding:9px 14px">${!hasData?'' : `
+              <div style="background:#f1f5f9;border-radius:20px;height:6px;width:120px;overflow:hidden">
+                <div style="background:${m.net>=0?'#22c55e':'#ef4444'};height:100%;width:${Math.min(100,Math.abs((m.net/(Math.max(m.inflow,m.outflow,1))*100)))}%;border-radius:20px"></div>
+              </div>`}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+      <tfoot><tr style="background:#1a2472">
+        <td style="padding:11px 14px;color:white;font-weight:700">الإجمالي السنوي</td>
+        <td style="padding:11px 14px;color:#86efac;font-weight:800">${money(data.total_inflow||0)}</td>
+        <td style="padding:11px 14px;color:#fca5a5;font-weight:800">${money(data.total_outflow||0)}</td>
+        <td style="padding:11px 14px;color:${(data.net_cash_flow||0)>=0?'#fbbf24':'#fca5a5'};font-weight:800;font-size:15px">${money(data.net_cash_flow||0)}</td>
+        <td></td>
+      </tr></tfoot>
+    </table>
+  </div>`;
+}
+
 window.openClientAccounting = openClientAccounting;
 window.switchAccTab = switchAccTab;
 window.accRender = accRender;
@@ -6359,6 +7062,29 @@ window.calcJeBalance = calcJeBalance;
 window.saveManualJE = saveManualJE;
 window.showJournalDetail = showJournalDetail;
 window.postJournalEntry = postJournalEntry;
+window.copyJournalEntry = copyJournalEntry;
+// ERP Phase 1 exports
+window.accGeneralLedger = accGeneralLedger;
+window.accTreasury = accTreasury;
+window.accChecks = accChecks;
+window.accAdvances = accAdvances;
+window.accArAp = accArAp;
+window.accCashFlow = accCashFlow;
+window.showAddTreasury = showAddTreasury;
+window.saveTreasury = saveTreasury;
+window.showTreasuryTxs = showTreasuryTxs;
+window.showAddTreasuryTx = showAddTreasuryTx;
+window.saveTreasuryTx = saveTreasuryTx;
+window.deleteTreasuryTx = deleteTreasuryTx;
+window.showAddCheck = showAddCheck;
+window.saveCheck = saveCheck;
+window.updateCheckStatus = updateCheckStatus;
+window.deleteCheck = deleteCheck;
+window.showAddAdvance = showAddAdvance;
+window.saveAdvance = saveAdvance;
+window.showSettleAdvance = showSettleAdvance;
+window.confirmSettleAdvance = confirmSettleAdvance;
+window.deleteAdvance = deleteAdvance;
 </script>
 </body>
 </html>
