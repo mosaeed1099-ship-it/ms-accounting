@@ -7619,6 +7619,7 @@ function renderSettlementsList(employees) {
     </div>` : employees.map(emp => {
       const bal = emp.current_balance || 0;
       const balColor = bal > 0 ? '#15803d' : bal < 0 ? '#dc2626' : '#64748b';
+      const empKey = encodeURIComponent(emp.employee_name);
       return `
     <div style="background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,.06);border:1.5px solid #e8edf3;transition:transform .15s,box-shadow .15s"
          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'"
@@ -7630,7 +7631,7 @@ function renderSettlementsList(employees) {
           </div>
           <div>
             <div style="font-size:14px;font-weight:700;color:#1e293b">${escH(emp.employee_name)}</div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:2px">آخر تسوية: ${emp.last_settlement_date ? fmtDate(emp.last_settlement_date) : 'لا يوجد'}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">آخر تسوية: ${emp.last_settlement ? fmtDate(emp.last_settlement) : 'لا يوجد'}</div>
           </div>
         </div>
       </div>
@@ -7653,11 +7654,11 @@ function renderSettlementsList(employees) {
 
       <!-- أزرار -->
       <div style="display:flex;gap:8px">
-        <button onclick="openEmployeeSettlements(${emp.id}, '${escH(emp.employee_name)}')"
+        <button onclick="openEmployeeSettlements('${escH(emp.employee_name)}')"
           style="flex:1;padding:8px;background:linear-gradient(135deg,#1a2472,#2563eb);color:white;border:none;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
           📋 التسويات
         </button>
-        <button onclick="showCustodyTopup(${emp.id}, '${escH(emp.employee_name)}')"
+        <button onclick="showCustodyTopup('${escH(emp.employee_name)}')"
           style="flex:1;padding:8px;background:#f0fdf4;color:#15803d;border:1.5px solid #bbf7d0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
           💰 إضافة عهدة
         </button>
@@ -7666,8 +7667,8 @@ function renderSettlementsList(employees) {
   </div>`;
 }
 
-async function openEmployeeSettlements(empId, empName) {
-  _settleEmp = {id: empId, name: empName};
+async function openEmployeeSettlements(empName) {
+  _settleEmp = {name: empName};
   const main = document.getElementById('main');
   main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
 
@@ -7680,14 +7681,18 @@ async function openEmployeeSettlements(empId, empName) {
 async function renderEmpSettlements() {
   const main = document.getElementById('main');
   try {
-    const [detail, report] = await Promise.all([
-      api('GET', `/api/settlements/employees/${_settleEmp.id}`),
-      api('GET', `/api/settlements/report/${_settleEmp.id}?month=${_settleMonth}&year=${_settleYear}`),
-    ]);
+    const detail = await api('GET', `/api/settlements/employees/${encodeURIComponent(_settleEmp.name)}?month=${_settleMonth}&year=${_settleYear}`);
 
     const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-    const bal = detail.custody?.current_balance || 0;
-    const settlements = report.settlements || [];
+    const bal = detail.current_balance || 0;
+    const settlements = detail.settlements || [];
+    const report = {
+      total_custody_added: settlements.reduce((s,x)=>s+(x.custody_added||0),0),
+      total_spent:         settlements.reduce((s,x)=>s+(x.total_spent||0),0),
+      total_transportation:settlements.reduce((s,x)=>s+(x.transportation||0),0),
+      total_meals:         settlements.reduce((s,x)=>s+(x.meals||0),0),
+      total_other:         settlements.reduce((s,x)=>s+(x.other_expenses||0),0),
+    };
 
     main.innerHTML = `
     <!-- Header -->
@@ -7829,13 +7834,13 @@ async function saveNewEmployee() {
   const notes = document.getElementById('empNoteInp')?.value?.trim();
   if (!name) { alert('ادخل اسم الموظف'); return; }
   try {
-    await api('POST', '/api/settlements/employees', {employee_name:name, current_balance:balance, notes});
+    await api('POST', '/api/settlements/employees', {employee_name:name, amount:balance, notes});
     closeModal();
     loadSettlements();
   } catch(e) { alert('خطأ: ' + e.message); }
 }
 
-function showCustodyTopup(empId, empName) {
+function showCustodyTopup(empName) {
   const html = `
   <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px">
     <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
@@ -7848,8 +7853,9 @@ function showCustodyTopup(empId, empName) {
         <label class="label">ملاحظات</label>
         <input id="topupNote" class="input" placeholder="سبب إضافة العهدة...">
       </div>
+      <input type="hidden" id="topupEmpName" value="${escH(empName)}">
       <div style="display:flex;gap:10px;margin-top:20px">
-        <button onclick="saveCustodyTopup(${empId})" class="btn btn-primary" style="flex:1">إضافة</button>
+        <button onclick="saveCustodyTopup()" class="btn btn-primary" style="flex:1">إضافة</button>
         <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
       </div>
     </div>
@@ -7857,12 +7863,13 @@ function showCustodyTopup(empId, empName) {
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
-async function saveCustodyTopup(empId) {
+async function saveCustodyTopup() {
+  const empName = document.getElementById('topupEmpName')?.value;
   const amount = parseFloat(document.getElementById('topupAmt')?.value || '0');
   const notes = document.getElementById('topupNote')?.value?.trim();
   if (!amount || amount <= 0) { alert('ادخل مبلغ صحيح'); return; }
   try {
-    await api('POST', `/api/settlements/employees/${empId}/topup`, {amount, notes});
+    await api('POST', '/api/settlements/custody/topup', {employee_name:empName, amount, notes});
     closeModal();
     if (_settleEmp) renderEmpSettlements(); else loadSettlements();
   } catch(e) { alert('خطأ: ' + e.message); }
@@ -7955,7 +7962,8 @@ async function saveSettlement() {
   const notes    = document.getElementById('stlNotes')?.value?.trim();
   if (!date) { alert('اختر التاريخ'); return; }
   try {
-    await api('POST', `/api/settlements/employees/${_settleEmp.id}/settlements`, {
+    await api('POST', '/api/settlements', {
+      employee_name:_settleEmp.name,
       date, company_name:company, destination:dest, reason,
       transportation:trans, meals, other_expenses:other, custody_added:custody, notes
     });
@@ -7976,7 +7984,7 @@ async function deleteSettlement(id) {
 // ══  جدول المواعيد  ════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════════════════
 
-let _apptFilter = 'upcoming';
+let _apptFilter = 'all';
 
 async function loadAppointments() {
   const main = document.getElementById('main');
@@ -7988,8 +7996,13 @@ async function loadAppointments() {
 async function renderAppointments() {
   const main = document.getElementById('main');
   try {
-    const params = _apptFilter === 'all' ? '?limit=200' : `?status=${_apptFilter}&limit=100`;
-    const appts  = await api('GET', `/api/appointments${params}`);
+    const allAppts = await api('GET', '/api/appointments');
+    const today = new Date().toISOString().split('T')[0];
+    const appts = _apptFilter === 'upcoming'
+      ? allAppts.filter(a => a.appt_date >= today && a.status !== 'cancelled' && a.status !== 'done')
+      : _apptFilter === 'all'
+      ? allAppts
+      : allAppts.filter(a => a.status === _apptFilter);
 
     const statusBadge = (s) => {
       const m = {pending:{l:'قيد الانتظار',c:'#d97706',bg:'#fef9c3'},confirmed:{l:'مؤكد',c:'#15803d',bg:'#dcfce7'},done:{l:'منتهي',c:'#64748b',bg:'#f1f5f9'},cancelled:{l:'ملغى',c:'#dc2626',bg:'#fee2e2'}};
@@ -7998,11 +8011,11 @@ async function renderAppointments() {
     };
 
     const filterTabs = [
+      {id:'all',      label:'الكل'},
       {id:'upcoming', label:'القادمة 🔜'},
       {id:'pending',  label:'قيد الانتظار'},
       {id:'confirmed',label:'مؤكدة ✅'},
       {id:'done',     label:'منتهية'},
-      {id:'all',      label:'الكل'},
     ];
 
     main.innerHTML = `
@@ -8116,7 +8129,9 @@ async function showAddAppointment() {
 
 async function saveAppointment() {
   const title    = document.getElementById('apptTitle')?.value?.trim();
-  const clientId = document.getElementById('apptClient')?.value;
+  const clientEl = document.getElementById('apptClient');
+  const clientId = clientEl?.value;
+  const clientName = clientId ? clientEl.options[clientEl.selectedIndex]?.text : null;
   const date     = document.getElementById('apptDate')?.value;
   const time     = document.getElementById('apptTime')?.value;
   const emp      = document.getElementById('apptEmp')?.value?.trim();
@@ -8124,7 +8139,7 @@ async function saveAppointment() {
   const desc     = document.getElementById('apptDesc')?.value?.trim();
   if (!title||!date) { alert('ادخل العنوان والتاريخ'); return; }
   try {
-    await api('POST', '/api/appointments', {title, client_id:clientId||null, appt_date:date, appt_time:time||null, employee_name:emp||null, location:loc||null, description:desc||null});
+    await api('POST', '/api/appointments', {title, client_id:clientId?+clientId:null, client_name:clientName||null, appt_date:date, appt_time:time||null, employee_name:emp||null, location:loc||null, description:desc||null});
     closeModal();
     renderAppointments();
   } catch(e) { alert('خطأ: ' + e.message); }
@@ -8162,10 +8177,19 @@ async function loadGovernmentPapers() {
 async function renderGovernmentPapers() {
   const main = document.getElementById('main');
   try {
-    const [papers, alerts] = await Promise.all([
-      api('GET', `/api/government-papers?search=${encodeURIComponent(_papersSearch)}&status=${_papersStatus}&limit=200`),
+    const [allPapers, alertsRaw] = await Promise.all([
+      api('GET', `/api/government-papers${_papersStatus?`?status=${_papersStatus}`:''}`),
       api('GET', '/api/government-papers/alerts'),
     ]);
+    // client-side search filter
+    const papers = _papersSearch
+      ? allPapers.filter(p=>(p.client_name||'').toLowerCase().includes(_papersSearch.toLowerCase())||(p.paper_type||'').includes(_papersSearch))
+      : allPapers;
+    // alerts: backend returns {expired:[], expiring_soon:[]}
+    const alerts = [
+      ...(alertsRaw.expired||[]).map(a=>({...a, days_to_expiry:a.days_left})),
+      ...(alertsRaw.expiring_soon||[]).map(a=>({...a, days_to_expiry:a.days_left})),
+    ].sort((a,b)=>(a.days_to_expiry||0)-(b.days_to_expiry||0));
 
     const paperTypes = ['بطاقة ضريبية','سجل تجاري','شهادة ض.ق.م','بطاقة رقم قومي','عقد إيجار','ترخيص تجاري','بيان قيد','ختم الشركة','توكيل رسمي','عقد شركة','شهادة استثمار','أخرى'];
 
@@ -8240,7 +8264,7 @@ async function renderGovernmentPapers() {
           </thead>
           <tbody>
             ${papers.map((p,idx)=>{
-              const daysLeft = p.expiry_date ? Math.ceil((new Date(p.expiry_date)-new Date())/(86400000)) : null;
+              const daysLeft = p.days_left ?? (p.expiry_date ? Math.ceil((new Date(p.expiry_date+'T00:00:00')-new Date())/(86400000)) : null);
               const rowBg = p.status==='expired'?'#fff5f5':p.status==='expiring_soon'?'#fffbeb':'';
               return `
               <tr style="border-top:1px solid #f1f5f9;background:${rowBg}">
@@ -8342,7 +8366,7 @@ async function showAddPaper(existingPaper) {
 
 async function showEditPaper(id) {
   try {
-    const papers = await api('GET', `/api/government-papers?limit=500`);
+    const papers = await api('GET', '/api/government-papers');
     const p = papers.find(x=>x.id===id);
     if (p) showAddPaper(p);
   } catch(e) { alert('خطأ: ' + e.message); }
@@ -8358,7 +8382,9 @@ async function savePaper(existingId) {
   const hasCopy   = document.getElementById('paperHasCopy')?.checked;
   const notes     = document.getElementById('paperNotes')?.value?.trim();
   if (!clientId) { alert('اختر العميل'); return; }
-  const body = {client_id:+clientId, paper_type:paperType, paper_number:paperNum||null, status, issue_date:issue||null, expiry_date:expiry||null, has_copy:hasCopy, notes:notes||null};
+  const clientEl2 = document.getElementById('paperClient');
+  const clientNameVal = clientEl2?.options[clientEl2.selectedIndex]?.text || null;
+  const body = {client_id:+clientId, client_name:clientNameVal, paper_type:paperType, paper_number:paperNum||null, status, issue_date:issue||null, expiry_date:expiry||null, has_copy:hasCopy, notes:notes||null};
   try {
     if (existingId && existingId !== 'null') {
       await api('PUT', `/api/government-papers/${existingId}`, body);
