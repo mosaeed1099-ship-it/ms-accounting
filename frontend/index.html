@@ -135,6 +135,31 @@
       tbody td{font-size:12px;padding:8px}
     }
 
+    /* ─── Bottom Navigation Bar (Mobile only) ─── */
+    .bottom-nav{display:none}
+    @media(max-width:768px){
+      .bottom-nav{
+        display:flex;position:fixed;bottom:0;left:0;right:0;z-index:180;
+        background:white;border-top:1.5px solid #e8edf3;
+        box-shadow:0 -4px 20px rgba(0,0,0,.08);
+        height:62px;align-items:stretch;
+        padding-bottom:env(safe-area-inset-bottom,0px);
+      }
+      .bottom-nav-item{
+        flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        gap:3px;border:none;background:none;cursor:pointer;padding:6px 2px;
+        color:#94a3b8;font-size:10px;font-weight:600;font-family:inherit;
+        transition:color .15s;-webkit-tap-highlight-color:transparent;
+      }
+      .bottom-nav-item .bn-icon{font-size:20px;line-height:1}
+      .bottom-nav-item.active{color:#1a2472}
+      .bottom-nav-item.active .bn-icon{filter:drop-shadow(0 0 4px rgba(26,36,114,.3))}
+      /* push page content above bottom nav */
+      #main{padding-bottom:74px!important}
+      /* hide sidebar drawer toggle — bottom nav replaces it */
+      .mobile-menu-btn{display:none!important}
+    }
+
     /* ─── Page & Section Titles ─── */
 
     /* العناوين الرئيسية للصفحات (h2) — تدرج ناف/أزرق */
@@ -170,6 +195,7 @@
       .sidebar-overlay,
       #topbar-wrap,
       .mobile-menu-btn,
+      .bottom-nav,
       .no-print,
       .btn,
       .btn-primary,
@@ -437,6 +463,24 @@ function renderApp() {
         </div>
       </div>
     </div>
+    <!-- Bottom Navigation (mobile) -->
+    <nav class="bottom-nav" id="bottomNav">
+      <button class="bottom-nav-item" onclick="navigate('dashboard')" data-page="dashboard">
+        <span class="bn-icon">🏠</span><span>الرئيسية</span>
+      </button>
+      <button class="bottom-nav-item" onclick="navigate('clients')" data-page="clients">
+        <span class="bn-icon">👥</span><span>العملاء</span>
+      </button>
+      <button class="bottom-nav-item" onclick="navigate('invoices')" data-page="invoices">
+        <span class="bn-icon">📄</span><span>الفواتير</span>
+      </button>
+      <button class="bottom-nav-item" onclick="navigate('tasks')" data-page="tasks">
+        <span class="bn-icon">✅</span><span>المهام</span>
+      </button>
+      <button class="bottom-nav-item" onclick="openSidebar()" id="bottomNavMore">
+        <span class="bn-icon">☰</span><span>المزيد</span>
+      </button>
+    </nav>
     <!-- Main -->
     <div class="app-main">
       <!-- Topbar -->
@@ -811,6 +855,8 @@ window.addEventListener('unhandledrejection', function(e) {
 function navigate(page) {
   currentPage = page;
   $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
+  // Update bottom nav active state
+  $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
   const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
