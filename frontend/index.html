@@ -184,6 +184,37 @@
       border-right-color: #2563eb !important;
     }
 
+    /* ─── Skeleton Loading ─── */
+    .skeleton{background:linear-gradient(90deg,#f0f4f8 25%,#e2e8f0 50%,#f0f4f8 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:8px}
+    @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .skel-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f3f4f6}
+    .skel-row:last-child{border-bottom:none}
+    .skel-circle{border-radius:50%;flex-shrink:0}
+    .skel-line{height:12px;border-radius:6px}
+
+    /* ─── FAB ─── */
+    .fab-wrap{position:fixed;bottom:80px;left:20px;z-index:170;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+    @media(max-width:768px){.fab-wrap{bottom:74px}}
+    .fab-main{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#1a2472,#2563eb);color:white;border:none;font-size:26px;cursor:pointer;box-shadow:0 4px 18px rgba(26,36,114,.4);display:flex;align-items:center;justify-content:center;transition:all .2s;font-family:inherit}
+    .fab-main:hover{transform:scale(1.08);box-shadow:0 6px 24px rgba(26,36,114,.5)}
+    .fab-main.open{transform:rotate(45deg);background:linear-gradient(135deg,#dc2626,#f87171)}
+    .fab-menu{display:none;flex-direction:column;gap:8px;align-items:flex-end}
+    .fab-menu.open{display:flex;animation:fadeUp .2s ease}
+    .fab-option{display:flex;align-items:center;gap:10px;padding:9px 16px;background:white;border:1.5px solid #e8edf3;border-radius:24px;cursor:pointer;font-size:13px;font-weight:600;color:#1e293b;box-shadow:0 2px 10px rgba(0,0,0,.1);white-space:nowrap;font-family:inherit;transition:all .15s}
+    .fab-option:hover{background:#eef1fb;border-color:#1a2472;color:#1a2472;transform:translateX(-3px)}
+    .fab-option-icon{font-size:18px}
+
+    /* ─── Nav Group Headers ─── */
+    .nav-group-label{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.35);padding:14px 14px 5px;margin-top:4px}
+    .nav-group-label:first-child{padding-top:2px;margin-top:0}
+
+    /* ─── Confirm Dialog ─── */
+    .confirm-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+    .confirm-box{background:white;border-radius:18px;padding:28px 28px 20px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:fadeUp .2s ease}
+    .confirm-box h3{margin:0 0 10px;font-size:16px;font-weight:800;color:#1e293b}
+    .confirm-box p{margin:0 0 22px;font-size:14px;color:#64748b;line-height:1.6}
+    .confirm-btns{display:flex;gap:10px;justify-content:flex-end}
+
     /* ─── Print Styles ─── */
     .print-header { display:none }
 
@@ -322,6 +353,65 @@ function closeModal() {
   document.getElementById('modal')?.remove();
 }
 
+// ── Styled Confirm Dialog ──────────────────────────────
+function confirmDlg(msg, title='هل أنت متأكد؟', dangerLabel='تأكيد', isDanger=true) {
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'confirm-overlay';
+    el.id = '__confirmDlg';
+    el.innerHTML = `
+      <div class="confirm-box">
+        <h3>${title}</h3>
+        <p>${msg}</p>
+        <div class="confirm-btns">
+          <button class="btn btn-secondary" onclick="document.getElementById('__confirmDlg').remove();window.__confirmResolve(false)">إلغاء</button>
+          <button class="btn ${isDanger?'btn-danger':'btn-primary'}" onclick="document.getElementById('__confirmDlg').remove();window.__confirmResolve(true)">${dangerLabel}</button>
+        </div>
+      </div>`;
+    window.__confirmResolve = resolve;
+    document.body.append(el);
+  });
+}
+
+// ── Skeleton Loading Helper ────────────────────────────
+function skeletonTable(rows=5, cols=5) {
+  const ths = Array(cols).fill('<th><div class="skeleton" style="height:10px;width:70%"></div></th>').join('');
+  const tds = rows => Array(rows).fill('').map(()=>`<tr>${Array(cols).fill('<td><div class="skeleton skel-line" style="width:${60+Math.random()*30|0}%"></div></td>').join('')}</tr>`).join('');
+  return `<div class="card" style="overflow:hidden"><table><thead><tr>${ths}</tr></thead><tbody>${tds(rows)}</tbody></table></div>`;
+}
+function skeletonCards(n=6) {
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
+    ${Array(n).fill('').map(()=>`<div class="card" style="padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div class="skeleton skel-circle" style="width:42px;height:42px;flex-shrink:0"></div>
+        <div style="flex:1"><div class="skeleton skel-line" style="width:70%;margin-bottom:6px"></div><div class="skeleton skel-line" style="width:45%;height:10px"></div></div>
+      </div>
+      <div class="skeleton skel-line" style="margin-bottom:8px"></div>
+      <div class="skeleton skel-line" style="width:60%"></div>
+    </div>`).join('')}
+  </div>`;
+}
+
+// ── FAB Functions ──────────────────────────────────────
+function toggleFab() {
+  const btn = document.getElementById('fabBtn');
+  const menu = document.getElementById('fabMenu');
+  if(!btn||!menu) return;
+  const open = menu.classList.toggle('open');
+  btn.classList.toggle('open', open);
+}
+function closeFab() {
+  document.getElementById('fabMenu')?.classList.remove('open');
+  document.getElementById('fabBtn')?.classList.remove('open');
+}
+function quickAdd(type) {
+  closeFab();
+  if(type==='client')      { navigate('clients');      setTimeout(()=>showClientModal(),300); }
+  else if(type==='invoice'){ navigate('invoices');     setTimeout(()=>showInvoiceModal(),300); }
+  else if(type==='task')   { navigate('tasks');        setTimeout(()=>showTaskModal(),300); }
+  else if(type==='appointment'){ navigate('appointments'); setTimeout(()=>showAddAppointment(),300); }
+}
+
 function printCurrentPage() {
   // حدّث رأس الطباعة بعنوان الصفحة والتاريخ
   const pageTitle = document.getElementById('pageTitle')?.textContent || 'MS Accounting';
@@ -406,26 +496,36 @@ function renderLogin() {
 }
 
 // ── Sidebar nav items ──────────────────────────────
+// Flat list (for backward compat — active check, pages map, etc.)
 const navItems = [
-  {id:'dashboard',     icon:'📊', label:'الرئيسية'},
-  {id:'clients',       icon:'👥', label:'العملاء'},
-  {id:'leads',         icon:'🎯', label:'العملاء المحتملين'},
-  {id:'invoices',      icon:'💳', label:'أتعاب الحسابات'},
-  {id:'collections',   icon:'💰', label:'التحصيلات'},
-  {id:'tasks',         icon:'✅', label:'المهام'},
-  {id:'obligations',   icon:'🔔', label:'الالتزامات الضريبية'},
-  {id:'quotations',    icon:'💼', label:'عروض الأسعار'},
-  {id:'establishment', icon:'🏗️', label:'تأسيس الشركات'},
-  {id:'documents',     icon:'📁', label:'الأرشيف'},
-  {id:'tax',           icon:'🧾', label:'الإقرارات'},
-  {id:'payroll',       icon:'👔', label:'الرواتب والموظفين'},
-  {id:'assets',        icon:'🏭', label:'الأصول الثابتة'},
-  {id:'fin_reports',   icon:'📈', label:'التقارير المالية'},
-  {id:'settlements',   icon:'👷', label:'تسويات الموظفين'},
-  {id:'appointments',  icon:'📅', label:'المواعيد'},
-  {id:'papers',        icon:'📄', label:'الأوراق الحكومية'},
-  {id:'mail',          icon:'📧', label:'البريد الإلكتروني'},
-  {id:'settings',      icon:'⚙️', label:'الإعدادات'},
+  {id:'dashboard'    ,icon:'📊',label:'الرئيسية'},
+  {id:'clients'      ,icon:'👥',label:'العملاء'},
+  {id:'leads'        ,icon:'🎯',label:'العملاء المحتملين'},
+  {id:'quotations'   ,icon:'💼',label:'عروض الأسعار'},
+  {id:'establishment',icon:'🏗️',label:'تأسيس الشركات'},
+  {id:'invoices'     ,icon:'💳',label:'أتعاب الحسابات'},
+  {id:'collections'  ,icon:'💰',label:'التحصيلات'},
+  {id:'fin_reports'  ,icon:'📈',label:'التقارير المالية'},
+  {id:'tax'          ,icon:'🧾',label:'الإقرارات'},
+  {id:'tasks'        ,icon:'✅',label:'المهام'},
+  {id:'obligations'  ,icon:'🔔',label:'الالتزامات الضريبية'},
+  {id:'documents'    ,icon:'📁',label:'الأرشيف'},
+  {id:'appointments' ,icon:'📅',label:'المواعيد'},
+  {id:'papers'       ,icon:'📄',label:'الأوراق الحكومية'},
+  {id:'payroll'      ,icon:'👔',label:'الرواتب والموظفين'},
+  {id:'settlements'  ,icon:'👷',label:'تسويات الموظفين'},
+  {id:'assets'       ,icon:'🏭',label:'الأصول الثابتة'},
+  {id:'mail'         ,icon:'📧',label:'البريد الإلكتروني'},
+  {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
+];
+// Grouped navigation for sidebar display
+const navGroups = [
+  {label:'لوحة التحكم', items:['dashboard']},
+  {label:'CRM & المبيعات', items:['clients','leads','quotations','establishment']},
+  {label:'المالية', items:['invoices','collections','fin_reports','tax']},
+  {label:'التشغيل', items:['tasks','obligations','documents','appointments','papers']},
+  {label:'الموارد البشرية', items:['payroll','settlements','assets']},
+  {label:'الإدارة', items:['mail','settings']},
 ];
 
 // ── App Shell ──────────────────────────────────────
@@ -543,15 +643,43 @@ function renderApp() {
     </div>
   </div>`;
 
-  // Build nav
+  // Build grouped nav
   const nav = document.getElementById('nav');
-  navItems.forEach(item => {
-    const a = document.createElement('div');
-    a.className = `sidebar-link${currentPage===item.id?' active':''}`;
-    a.innerHTML = `<span class="icon">${item.icon}</span><span>${item.label}</span>`;
-    a.onclick = () => navigate(item.id);
-    nav.append(a);
+  const itemMap = Object.fromEntries(navItems.map(i=>[i.id,i]));
+  navGroups.forEach(group => {
+    const lbl = document.createElement('div');
+    lbl.className = 'nav-group-label';
+    lbl.textContent = group.label;
+    nav.append(lbl);
+    group.items.forEach(id => {
+      const item = itemMap[id]; if(!item) return;
+      const a = document.createElement('div');
+      a.className = `sidebar-link${currentPage===id?' active':''}`;
+      a.dataset.navId = id;
+      a.innerHTML = `<span class="icon">${item.icon}</span><span>${item.label}</span>`;
+      a.onclick = () => { navigate(id); if(window.innerWidth<=768) closeSidebar(); };
+      nav.append(a);
+    });
   });
+
+  // FAB (Quick Add)
+  const fab = document.createElement('div');
+  fab.className = 'fab-wrap no-print';
+  fab.id = 'fabWrap';
+  fab.innerHTML = `
+    <div class="fab-menu" id="fabMenu">
+      <button class="fab-option" onclick="quickAdd('appointment')"><span class="fab-option-icon">📅</span>موعد جديد</button>
+      <button class="fab-option" onclick="quickAdd('task')"><span class="fab-option-icon">✅</span>مهمة جديدة</button>
+      <button class="fab-option" onclick="quickAdd('invoice')"><span class="fab-option-icon">💳</span>فاتورة جديدة</button>
+      <button class="fab-option" onclick="quickAdd('client')"><span class="fab-option-icon">👥</span>عميل جديد</button>
+    </div>
+    <button class="fab-main" id="fabBtn" onclick="toggleFab()" title="إضافة سريعة">+</button>
+  `;
+  document.body.append(fab);
+  document.addEventListener('click', e => {
+    const w = document.getElementById('fabWrap');
+    if(w && !w.contains(e.target)) closeFab();
+  }, {capture:true, passive:true});
 
   // Start connection monitor (keeps checking every 30s + handles offline/online events)
   _startConnMonitor();
@@ -857,7 +985,7 @@ window.addEventListener('unhandledrejection', function(e) {
 
 function navigate(page) {
   currentPage = page;
-  $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
+  $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
   const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية',accounting:'المحاسبة',payroll:'الرواتب والموظفين',assets:'الأصول الثابتة',fin_reports:'التقارير المالية'};
@@ -872,13 +1000,19 @@ function navigate(page) {
 
 // ── DASHBOARD ──────────────────────────────────────
 async function loadDashboard() {
+  const main = document.getElementById('main');
+  if(main) { main.className='page'; main.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;margin-bottom:24px">
+      ${Array(5).fill('').map(()=>`<div style="height:100px;border-radius:18px" class="skeleton"></div>`).join('')}
+    </div>${skeletonTable(4,5)}`; }
   try {
-    const [stats, chart, activity, oblStats, oblUpcoming] = await Promise.all([
+    const [stats, chart, activity, oblStats, oblUpcoming, todayAppts] = await Promise.all([
       api('GET','/api/dashboard/stats'),
       api('GET','/api/dashboard/revenue-chart'),
       api('GET','/api/dashboard/recent-activity'),
       api('GET','/api/obligations/stats').catch(()=>null),
       api('GET','/api/obligations/upcoming?days=14').catch(()=>[]),
+      api('GET','/api/appointments').catch(()=>[]),
     ]);
     if (!stats) return;
     const main = document.getElementById('main');
@@ -895,6 +1029,14 @@ async function loadDashboard() {
     const upcoming  = Array.isArray(oblUpcoming) ? oblUpcoming : [];
     const overdueObl = upcoming.filter(o => o.days_remaining < 0).length;
     const urgentObl  = upcoming.filter(o => o.days_remaining >= 0 && o.days_remaining <= 3).length;
+
+    // Today's agenda
+    const todayStr = new Date().toISOString().split('T')[0];
+    const apptList = Array.isArray(todayAppts) ? todayAppts : (todayAppts?.items||[]);
+    const todayApptList = apptList.filter(a => a.date && a.date.startsWith(todayStr));
+    const urgentOblList = upcoming.filter(o => o.days_remaining !== undefined && o.days_remaining >= 0 && o.days_remaining <= 3);
+    const overdueOblList = upcoming.filter(o => o.days_remaining !== undefined && o.days_remaining < 0);
+    const hasAgenda = todayApptList.length>0 || urgentOblList.length>0 || overdueOblList.length>0 || stats.tasks.overdue>0;
 
     // KPI card builder
     const kpiCard = ({gradient, iconBg, icon, label, value, sub, subColor, badge, badgeColor, page}) => `
@@ -950,6 +1092,55 @@ async function loadDashboard() {
         </div>
       </div>
     </div>
+
+    <!-- ── Today's Agenda ── -->
+    ${hasAgenda ? `
+    <div class="dash-fadein" style="animation-delay:.04s;background:white;border-radius:18px;padding:18px 22px;margin-bottom:20px;border:1px solid #e8edf3;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span style="font-size:18px">📋</span>
+        <span style="font-size:14px;font-weight:800;color:#1e293b">أجندة اليوم</span>
+        <span style="font-size:12px;color:#94a3b8;margin-right:auto">${new Date().toLocaleDateString('ar-EG',{weekday:'long',day:'numeric',month:'long'})}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${todayApptList.map(a=>`
+          <div onclick="navigate('appointments')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-radius:10px;cursor:pointer;border:1px solid #e8edf3;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
+            <span style="font-size:18px">📅</span>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(a.title||'موعد')}</div>
+              <div style="font-size:11px;color:#64748b">${a.time||''} ${a.location?'— '+escH(a.location):''}</div>
+            </div>
+            <span style="background:#d8def5;color:#1a2472;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">موعد اليوم</span>
+          </div>`).join('')}
+        ${overdueOblList.slice(0,2).map(o=>`
+          <div onclick="navigate('obligations')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff1f2;border-radius:10px;cursor:pointer;border:1px solid #fecdd3;transition:all .15s" onmouseover="this.style.background='#ffe4e6'" onmouseout="this.style.background='#fff1f2'">
+            <span style="font-size:18px">🔴</span>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(o.obligation_name||o.name||'التزام ضريبي')}</div>
+              <div style="font-size:11px;color:#dc2626">${escH(o.client_name||'')} — متأخر ${Math.abs(o.days_remaining||0)} يوم</div>
+            </div>
+            <span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">متأخر</span>
+          </div>`).join('')}
+        ${urgentOblList.slice(0,2).map(o=>`
+          <div onclick="navigate('obligations')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fffbeb;border-radius:10px;cursor:pointer;border:1px solid #fde68a;transition:all .15s" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fffbeb'">
+            <span style="font-size:18px">⚠️</span>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(o.obligation_name||o.name||'التزام')}</div>
+              <div style="font-size:11px;color:#d97706">${escH(o.client_name||'')} — يستحق خلال ${o.days_remaining||0} يوم</div>
+            </div>
+            <span style="background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">عاجل</span>
+          </div>`).join('')}
+        ${stats.tasks.overdue>0?`
+          <div onclick="navigate('tasks')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f5f3ff;border-radius:10px;cursor:pointer;border:1px solid #ddd6fe;transition:all .15s" onmouseover="this.style.background='#ede9fe'" onmouseout="this.style.background='#f5f3ff'">
+            <span style="font-size:18px">⏰</span>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:#1e293b">مهام متأخرة</div>
+              <div style="font-size:11px;color:#7c3aed">${stats.tasks.overdue} مهمة تجاوزت موعدها</div>
+            </div>
+            <span style="background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">${stats.tasks.overdue} مهمة</span>
+          </div>`:''
+        }
+      </div>
+    </div>` : ''}
 
     <!-- ── KPI Cards ── -->
     <div class="dash-fadein" style="animation-delay:.05s;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;margin-bottom:24px">
@@ -1159,6 +1350,8 @@ async function loadDashboard() {
 let clientsData=[], clientSearch='', clientFilter='all';
 
 async function loadClients() {
+  const main=document.getElementById('main');
+  if(main&&!clientsData.length){main.className='page';main.innerHTML=skeletonTable(5,7);}
   try {
     const p = new URLSearchParams({limit:'100'});
     if(clientFilter && clientFilter!=='all') p.append('status', clientFilter);
@@ -1212,31 +1405,40 @@ function renderClients() {
   <div class="card" style="overflow:hidden">
     <table>
       <thead><tr>
-        <th>الكود</th><th>الاسم</th><th>النوع</th><th>الهاتف</th><th>النشاط</th><th>قيمة العقد</th><th>الحالة</th><th>إجراءات</th>
+        <th>الكود</th><th>الاسم</th><th>النوع</th><th>الهاتف</th><th>النشاط</th><th>قيمة العقد</th><th>الرصيد</th><th>الحالة</th><th>إجراءات</th>
       </tr></thead>
       <tbody>
-        ${clientsData.length===0?`<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا يوجد عملاء</td></tr>`:
-          clientsData.map(c=>`
+        ${clientsData.length===0?`<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">
+          <div style="font-size:40px;margin-bottom:10px">👥</div>
+          <div style="font-weight:700;color:#475569;margin-bottom:6px">لا يوجد عملاء</div>
+          <div style="font-size:12px">اضغط "+ إضافة عميل" لإنشاء أول عميل</div>
+        </td></tr>`:
+          clientsData.map(c=>{
+            const bal = c.balance||0;
+            const balStyle = bal>0?'color:#dc2626;font-weight:700':bal<0?'color:#16a34a;font-weight:700':'color:#94a3b8';
+            const balText = bal===0?'—': (bal>0?`<span style="${balStyle}">▲ ${money(bal)}</span>`:`<span style="${balStyle}">✓ ${money(Math.abs(bal))}</span>`);
+            return `
           <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
             <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
             <td>
-              <div style="font-weight:600;color:#1e293b">${c.name}</div>
-              ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${c.name_en}</div>`:''}
+              <div style="font-weight:600;color:#1e293b">${escH(c.name)}</div>
+              ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${escH(c.name_en)}</div>`:''}
             </td>
             <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
             <td style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
             <td style="color:#374151;font-size:12px">${c.activity||'—'}</td>
             <td style="font-weight:600;color:#1e293b">${c.contract_value?money(c.contract_value):'—'}</td>
+            <td>${balText}</td>
             <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
             <td onclick="event.stopPropagation()">
               <div style="display:flex;gap:6px">
-                <button class="btn btn-secondary btn-sm" onclick="showClientModal(${c.id})">✏️</button>
-                <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')">📄</button>
-                <button class="btn btn-secondary btn-sm" title="رفع ملف لهذا العميل" onclick="showUploadModal(${c.id})">📎</button>
-                <button class="btn btn-secondary btn-sm" title="إرسال بريد إلكتروني" onclick="showClientEmailModal(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.email||''}')">📧</button>
+                <button class="btn btn-secondary btn-sm" onclick="showClientModal(${c.id})" title="تعديل">✏️</button>
+                <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')" title="فاتورة جديدة">📄</button>
+                <button class="btn btn-secondary btn-sm" title="رفع ملف" onclick="showUploadModal(${c.id})">📎</button>
+                <button class="btn btn-secondary btn-sm" title="إرسال بريد" onclick="showClientEmailModal(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.email||''}')">📧</button>
               </div>
             </td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
       </tbody>
     </table>
   </div>`;
@@ -1586,6 +1788,8 @@ function addInvoiceForClient(clientId, clientName) {
 let invoicesData=[], invoiceFilter='all';
 
 async function loadInvoices() {
+  const main=document.getElementById('main');
+  if(main&&!invoicesData.length){main.className='page';main.innerHTML=skeletonTable(5,8);}
   try {
     const p = new URLSearchParams({limit:'100'});
     if(invoiceFilter && invoiceFilter!=='all') p.append('status', invoiceFilter);
@@ -1629,7 +1833,11 @@ function renderInvoices() {
     <table>
       <thead><tr><th>رقم الفاتورة</th><th>العميل</th><th>تاريخ الإصدار</th><th>تاريخ الاستحقاق</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead>
       <tbody>
-        ${invoicesData.length===0?`<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">لا توجد فواتير</td></tr>`:
+        ${invoicesData.length===0?`<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">
+          <div style="font-size:40px;margin-bottom:10px">💳</div>
+          <div style="font-weight:700;color:#475569;margin-bottom:6px">لا توجد فواتير</div>
+          <div style="font-size:12px">اضغط "+ أتعاب جديدة" لإنشاء أول فاتورة</div>
+        </td></tr>`:
           invoicesData.map(inv=>`
           <tr>
             <td><span style="font-weight:700;color:#1a2472">${inv.invoice_number}</span></td>
@@ -2199,7 +2407,7 @@ async function showTaskModal(id=null) {
 }
 
 async function deleteTask(id, overlay) {
-  if (!confirm('حذف هذه المهمة نهائياً؟')) return;
+  if (!await confirmDlg('حذف هذه المهمة نهائياً؟')) return;
   try {
     await api('DELETE', `/api/tasks/${id}`);
     overlay?.remove();
@@ -3080,7 +3288,7 @@ async function deleteLeadRow(id) {
     if(nr) nr.remove();
     return;
   }
-  if(!confirm('حذف هذا العميل المحتمل؟')) return;
+  if(!await confirmDlg('حذف هذا العميل المحتمل؟')) return;
   try {
     await api('DELETE',`/api/leads/${id}`);
     const row=document.querySelector(`tr[data-id="${id}"]`);
@@ -3810,7 +4018,7 @@ async function showEmployeeModal(userId=null) {
 }
 
 async function deactivateEmployee(userId) {
-  if(!confirm('هل أنت متأكد من تعطيل هذا الموظف؟'))return;
+  if(!await confirmDlg('هل أنت متأكد من تعطيل هذا الموظف؟'))return;
   try{
     await api('DELETE',`/api/users/${userId}`);
     toast('تم تعطيل الموظف');
@@ -4394,7 +4602,7 @@ async function confirmImport() {
   const skipDup = document.getElementById('skipDup')?.checked !== false;
   const importIssues = document.getElementById('importIssues')?.checked !== false;
   const btn = document.getElementById('confirmImportBtn');
-  if (!confirm(`هل أنت متأكد من استيراد ${importPreviewData?.total || 0} شركة؟\nهذه العملية لا يمكن التراجع عنها.`)) return;
+  if (!await confirmDlg(`هل أنت متأكد من استيراد ${importPreviewData?.total || 0} شركة؟\nهذه العملية لا يمكن التراجع عنها.`)) return;
   btn.disabled = true; btn.textContent = '⏳ جاري الاستيراد...';
   try {
     const result = await api('POST', '/api/import/confirm', {
@@ -5357,7 +5565,7 @@ async function duplicateQuotation(id) {
 }
 
 async function convertQuotationToClient(id) {
-  if(!confirm('هل تريد تحويل عرض السعر إلى عميل جديد؟ سيتم إنشاء ملف العميل وبدء workflow التأسيس تلقائياً.')) return;
+  if(!await confirmDlg('هل تريد تحويل عرض السعر إلى عميل جديد؟ سيتم إنشاء ملف العميل وبدء workflow التأسيس تلقائياً.')) return;
   try {
     const r = await api('POST', `/api/quotations/${id}/convert`);
     toast(r.message);
@@ -6369,7 +6577,7 @@ async function saveAccTransaction(type) {
 }
 
 async function deleteAccTx(txId) {
-  if(!confirm('حذف هذه المعاملة وقيدها اليومي؟')) return;
+  if(!await confirmDlg('حذف هذه المعاملة وقيدها اليومي؟')) return;
   try {
     await api('DELETE', `/api/accounting/${_accClientId}/transactions/${txId}`);
     toast('تم الحذف');
@@ -7285,7 +7493,7 @@ async function etaTestConnection() {
 }
 
 async function etaDeleteCredential() {
-  if(!confirm('حذف ربط ETA لهذه الشركة؟ الفواتير المحفوظة ستبقى.')) return;
+  if(!await confirmDlg('حذف ربط ETA لهذه الشركة؟ الفواتير المحفوظة ستبقى.')) return;
   try {
     await api('DELETE', `/api/eta/${_accClientId}/credential`);
     toast('✅ تم حذف ربط ETA');
@@ -7548,7 +7756,7 @@ async function saveTreasuryTx(treasuryId) {
 }
 
 async function deleteTreasuryTx(txId) {
-  if(!confirm('حذف هذه الحركة؟')) return;
+  if(!await confirmDlg('حذف هذه الحركة؟')) return;
   try {
     await api('DELETE', `/api/accounting/${_accClientId}/treasuries/transactions/${txId}`);
     toast('تم الحذف');
@@ -7691,7 +7899,7 @@ async function updateCheckStatus(checkId, status) {
 }
 
 async function deleteCheck(checkId) {
-  if(!confirm('حذف هذا الشيك؟')) return;
+  if(!await confirmDlg('حذف هذا الشيك؟')) return;
   try {
     await api('DELETE', `/api/accounting/${_accClientId}/checks/${checkId}`);
     toast('تم الحذف');
@@ -7854,7 +8062,7 @@ async function confirmSettleAdvance(advId) {
 }
 
 async function deleteAdvance(advId) {
-  if(!confirm('حذف هذا السجل؟')) return;
+  if(!await confirmDlg('حذف هذا السجل؟')) return;
   try {
     await api('DELETE', `/api/accounting/${_accClientId}/advances/${advId}`);
     toast('تم الحذف'); accRender();
@@ -8516,7 +8724,7 @@ async function saveSettlement() {
 }
 
 async function deleteSettlement(id) {
-  if (!confirm('حذف هذه التسوية؟')) return;
+  if (!await confirmDlg('حذف هذه التسوية؟')) return;
   try {
     await api('DELETE', `/api/settlements/${id}`);
     renderEmpSettlements();
@@ -8696,7 +8904,7 @@ async function updateApptStatus(id, status) {
 }
 
 async function deleteAppt(id) {
-  if (!confirm('حذف هذا الموعد؟')) return;
+  if (!await confirmDlg('حذف هذا الموعد؟')) return;
   try {
     await api('DELETE', `/api/appointments/${id}`);
     renderAppointments();
@@ -8940,7 +9148,7 @@ async function savePaper(existingId) {
 }
 
 async function deletePaper(id) {
-  if (!confirm('حذف هذه الورقة؟')) return;
+  if (!await confirmDlg('حذف هذه الورقة؟')) return;
   try {
     await api('DELETE', `/api/government-papers/${id}`);
     renderGovernmentPapers();
@@ -9230,7 +9438,7 @@ async function saveEditEmployee2(id) {
 }
 
 async function deleteEmployee2(id) {
-  if(!confirm('تأكيد إنهاء خدمة الموظف؟'))return;
+  if(!await confirmDlg('تأكيد إنهاء خدمة الموظف؟'))return;
   await api('DELETE',`/api/payroll/employees/${id}`);
   loadPayroll();
 }
@@ -9285,13 +9493,13 @@ async function viewPayrollRun(id) {
 }
 
 async function approveRun(id) {
-  if(!confirm('اعتماد هذا المسير؟'))return;
+  if(!await confirmDlg('اعتماد هذا المسير؟'))return;
   await api('PUT',`/api/payroll/runs/${id}/approve`,{});
   renderPayrollRuns();
 }
 
 async function deleteRun(id) {
-  if(!confirm('حذف المسير؟'))return;
+  if(!await confirmDlg('حذف المسير؟'))return;
   await api('DELETE',`/api/payroll/runs/${id}`);
   renderPayrollRuns();
 }
@@ -9487,7 +9695,7 @@ async function runDepreciation(id) {
 }
 
 async function deleteAsset(id) {
-  if(!confirm('حذف هذا الأصل؟'))return;
+  if(!await confirmDlg('حذف هذا الأصل؟'))return;
   await api('DELETE',`/api/assets/${id}`);
   loadAssetsData();
 }
