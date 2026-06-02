@@ -9064,7 +9064,7 @@ async function loadPayroll() {
 
 async function loadPayrollStats() {
   try {
-    const s = await api('/api/payroll/stats');
+    const s = await api('GET', '/api/payroll/stats');
     document.getElementById('payrollStats').innerHTML = `
       <div class="card" style="padding:16px;text-align:center">
         <div style="font-size:24px;font-weight:800;color:#1a2472">${s.total_employees}</div>
@@ -9101,7 +9101,7 @@ async function renderEmployeeList() {
   const content = document.getElementById('payrollContent');
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {
-    _payrollEmployees = await api('/api/payroll/employees');
+    _payrollEmployees = await api('GET', '/api/payroll/employees');
     if (!_payrollEmployees.length) {
       content.innerHTML = '<div class="empty-state">👔 لا يوجد موظفون مضافون</div>';
       return;
@@ -9142,7 +9142,7 @@ async function renderPayrollRuns() {
   const content = document.getElementById('payrollContent');
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {
-    _payrollRuns = await api('/api/payroll/runs');
+    _payrollRuns = await api('GET', '/api/payroll/runs');
     if (!_payrollRuns.length) {
       content.innerHTML = '<div class="empty-state">📋 لا يوجد مسيرات رواتب</div>';
       return;
@@ -9216,7 +9216,7 @@ function showAddEmployee2(emp=null) {
 async function saveEmployee2() {
   const body = {name:v('eN'),job_title:v('eJT'),department:v('eDept'),hire_date:v('eHD')||null,base_salary:parseFloat(v('eSal')||0),national_id:v('eNID')||null,insurance_number:v('eIns')||null,insurance_share:parseFloat(v('eIS')||11),company_insurance:parseFloat(v('eCI')||18),phone:v('ePh')||null,bank_name:v('eBnk')||null,bank_account:v('eBA')||null};
   if(!body.name){alert('الاسم مطلوب');return;}
-  try{await api('/api/payroll/employees','POST',body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('POST','/api/payroll/employees',body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
 }
 
 async function showEditEmployee2(id) {
@@ -9226,12 +9226,12 @@ async function showEditEmployee2(id) {
 
 async function saveEditEmployee2(id) {
   const body = {name:v('eN'),job_title:v('eJT'),department:v('eDept'),hire_date:v('eHD')||null,base_salary:parseFloat(v('eSal')||0),national_id:v('eNID')||null,insurance_number:v('eIns')||null,insurance_share:parseFloat(v('eIS')||11),company_insurance:parseFloat(v('eCI')||18),phone:v('ePh')||null,bank_name:v('eBnk')||null,bank_account:v('eBA')||null};
-  try{await api(`/api/payroll/employees/${id}`,'PUT',body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('PUT',`/api/payroll/employees/${id}`,body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
 }
 
 async function deleteEmployee2(id) {
   if(!confirm('تأكيد إنهاء خدمة الموظف؟'))return;
-  await api(`/api/payroll/employees/${id}`,'DELETE');
+  await api('DELETE',`/api/payroll/employees/${id}`);
   loadPayroll();
 }
 
@@ -9252,15 +9252,15 @@ function showAddPayrollRun() {
 }
 
 async function savePayrollRun() {
-  const emps = await api('/api/payroll/employees?status=active');
+  const emps = await api('GET', '/api/payroll/employees?status=active');
   if(!emps.length){alert('لا يوجد موظفون نشطون');return;}
   const items = emps.map(e=>({employee_id:e.id,base_salary:e.base_salary,allowances:0,overtime:0,bonus:0,deductions_other:0,advances_deduct:0}));
   const body = {month:parseInt(v('prM')),year:parseInt(v('prY')),notes:v('prNotes'),items};
-  try{await api('/api/payroll/runs','POST',body);closeModal();await switchPayrollView('runs');await loadPayrollStats();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('POST','/api/payroll/runs',body);closeModal();await switchPayrollView('runs');await loadPayrollStats();}catch(e){alert('خطأ: '+e.message);}
 }
 
 async function viewPayrollRun(id) {
-  const data = await api(`/api/payroll/runs/${id}`);
+  const data = await api('GET',`/api/payroll/runs/${id}`);
   const months = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   openModal(`📋 مسير ${months[data.run.month]} ${data.run.year}`, `
   <div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
@@ -9286,13 +9286,13 @@ async function viewPayrollRun(id) {
 
 async function approveRun(id) {
   if(!confirm('اعتماد هذا المسير؟'))return;
-  await api(`/api/payroll/runs/${id}/approve`,'PUT',{});
+  await api('PUT',`/api/payroll/runs/${id}/approve`,{});
   renderPayrollRuns();
 }
 
 async function deleteRun(id) {
   if(!confirm('حذف المسير؟'))return;
-  await api(`/api/payroll/runs/${id}`,'DELETE');
+  await api('DELETE',`/api/payroll/runs/${id}`);
   renderPayrollRuns();
 }
 
@@ -9342,8 +9342,8 @@ async function loadAssets() {
 async function loadAssetsData() {
   try {
     const [assets, stats] = await Promise.all([
-      api('/api/assets'),
-      api('/api/assets/stats')
+      api('GET','/api/assets'),
+      api('GET','/api/assets/stats')
     ]);
     _assets = assets;
     document.getElementById('assetsStats').innerHTML = `
@@ -9449,7 +9449,7 @@ function showAddAsset(asset=null) {
 async function saveAddAsset() {
   const body = {name:v('asN'),category:v('asCat')||null,purchase_date:v('asPD'),purchase_value:parseFloat(v('asPV')||0),useful_life_years:parseFloat(v('asUL')||5),residual_value:parseFloat(v('asRV')||0),depreciation_method:v('asDM'),location:v('asLoc')||null,supplier:v('asSup')||null,serial_number:v('asSN')||null};
   if(!body.name||!body.purchase_date){alert('الاسم وتاريخ الشراء مطلوبان');return;}
-  try{await api('/api/assets','POST',body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('POST','/api/assets',body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
 }
 
 function showEditAsset(id) {
@@ -9459,7 +9459,7 @@ function showEditAsset(id) {
 
 async function saveEditAsset(id) {
   const body = {name:v('asN'),category:v('asCat')||null,purchase_date:v('asPD'),purchase_value:parseFloat(v('asPV')||0),useful_life_years:parseFloat(v('asUL')||5),residual_value:parseFloat(v('asRV')||0),depreciation_method:v('asDM'),location:v('asLoc')||null,supplier:v('asSup')||null,serial_number:v('asSN')||null};
-  try{await api(`/api/assets/${id}`,'PUT',body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('PUT',`/api/assets/${id}`,body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
 }
 
 function showAssetDepreciation(id) {
@@ -9483,12 +9483,12 @@ async function runDepreciation(id) {
   const month = v('depM') ? parseInt(v('depM')) : null;
   let url = `/api/assets/${id}/depreciate?year=${year}`;
   if(month) url += `&month=${month}`;
-  try{const r=await api(url,'POST',{});closeModal();alert(`✅ تم تسجيل إهلاك ${fmtMoney(r.amount)} — القيمة الدفترية الجديدة: ${fmtMoney(r.book_value)}`);loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+  try{const r=await api('POST',url,{});closeModal();alert(`✅ تم تسجيل إهلاك ${fmtMoney(r.amount)} — القيمة الدفترية الجديدة: ${fmtMoney(r.book_value)}`);loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
 }
 
 async function deleteAsset(id) {
   if(!confirm('حذف هذا الأصل؟'))return;
-  await api(`/api/assets/${id}`,'DELETE');
+  await api('DELETE',`/api/assets/${id}`);
   loadAssetsData();
 }
 
@@ -9557,21 +9557,21 @@ async function refreshFinReport() {
 
   try {
     if(_finReportView === 'aging') {
-      const data = await api('/api/reports/aging');
+      const data = await api('GET', '/api/reports/aging');
       renderAgingReport(data);
     } else if(_finReportView === 'cashflow') {
       let url = `/api/reports/cashflow?year=${year}`;
       if(month) url += `&month=${month}`;
-      const data = await api(url);
+      const data = await api('GET', url);
       renderCashflowReport(data);
     } else if(_finReportView === 'summary') {
       let url = `/api/reports/summary?year=${year}`;
       if(month) url += `&month=${month}`;
-      const data = await api(url);
+      const data = await api('GET', url);
       renderSummaryReport(data);
     } else if(_finReportView === 'profitability') {
       const url = `/api/reports/clients-profit?year=${year}`;
-      const data = await api(url);
+      const data = await api('GET', url);
       renderProfitabilityReport(data);
     }
   } catch(e) { c.innerHTML = `<div class="empty-state">❌ خطأ في التحميل: ${e.message}</div>`; }
