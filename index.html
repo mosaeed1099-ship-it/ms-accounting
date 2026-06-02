@@ -9440,7 +9440,7 @@ function showAddAsset(asset=null) {
     <div class="form-group"><label>الموقع</label><input id="asLoc" class="form-control" value="${isEdit?asset.location||'':''}" placeholder="المكتب / الفرع ..."/></div>
   </div>
   <div class="form-row">
-    <div class="form-group"><label>المورد</label><input id="asSup" class="form-control" value="${isEdit?asset.supplier||':'':''}" placeholder="اسم المورد"/></div>
+    <div class="form-group"><label>المورد</label><input id="asSup" class="form-control" value="${isEdit?asset.supplier||'':''}" placeholder="اسم المورد"/></div>
     <div class="form-group"><label>الرقم التسلسلي</label><input id="asSN" class="form-control" value="${isEdit?asset.serial_number||'':''}"/></div>
   </div>
   <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="${isEdit?`saveEditAsset(${asset.id})`:'saveAddAsset()'}">💾 حفظ</button>
