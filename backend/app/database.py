@@ -179,6 +179,15 @@ def _run_migrations_pg():
         "ALTER TABLE employee_settlements ADD COLUMN IF NOT EXISTS expense_items TEXT DEFAULT '[]'",
         "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE",
         "ALTER TABLE government_papers ADD COLUMN IF NOT EXISTS has_copy BOOLEAN DEFAULT FALSE",
+        # ── Payroll / HR ──────────────────────────────────────────────────────
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS insurance_share FLOAT DEFAULT 11",
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS company_insurance FLOAT DEFAULT 18",
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100)",
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS bank_account VARCHAR(50)",
+        # ── Fixed Assets ─────────────────────────────────────────────────────
+        "ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
+        "ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS depreciation_method VARCHAR(30) DEFAULT 'straight_line'",
+        "ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS last_dep_date DATE",
     ]
     with engine.connect() as conn:
         for sql in migrations:

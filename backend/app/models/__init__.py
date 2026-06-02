@@ -18,6 +18,8 @@ from app.models.accounting import (AccAccount, AccJournalEntry, AccJournalLine,
                                    AccCheck, AccAdvance)
 from app.models.eta import ETACredential, ETADocument
 from app.models.settlement import EmployeeCustody, EmployeeSettlement, Appointment, GovernmentPaper
+from app.models.payroll import Employee, PayrollRun, PayrollItem
+from app.models.fixed_asset import FixedAsset, AssetDepreciation
 
 __all__ = [
     "User", "UserRole",

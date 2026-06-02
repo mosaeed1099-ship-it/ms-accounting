@@ -418,6 +418,10 @@ const navItems = [
   {id:'establishment', icon:'🏗️', label:'تأسيس الشركات'},
   {id:'documents',     icon:'📁', label:'الأرشيف'},
   {id:'tax',           icon:'🧾', label:'الإقرارات'},
+  {id:'accounting',    icon:'📒', label:'المحاسبة'},
+  {id:'payroll',       icon:'👔', label:'الرواتب والموظفين'},
+  {id:'assets',        icon:'🏭', label:'الأصول الثابتة'},
+  {id:'fin_reports',   icon:'📈', label:'التقارير المالية'},
   {id:'settlements',   icon:'👷', label:'تسويات الموظفين'},
   {id:'appointments',  icon:'📅', label:'المواعيد'},
   {id:'papers',        icon:'📄', label:'الأوراق الحكومية'},
@@ -857,13 +861,13 @@ function navigate(page) {
   $$('.sidebar-link').forEach((el,i)=>el.classList.toggle('active',navItems[i].id===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية',accounting:'المحاسبة',payroll:'الرواتب والموظفين',assets:'الأصول الثابتة',fin_reports:'التقارير المالية'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,accounting:loadAccounting,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports};
   if(pages[page]) pages[page]();
 }
 
@@ -9021,6 +9025,780 @@ window.showAddPaper = showAddPaper;
 window.showEditPaper = showEditPaper;
 window.savePaper = savePaper;
 window.deletePaper = deletePaper;
+
+// ═══════════════════════════════════════════════════════════════════
+// ██████╗  █████╗ ██╗   ██╗██████╗  ██████╗ ██╗     ██╗
+// ██╔══██╗██╔══██╗╚██╗ ██╔╝██╔══██╗██╔═══██╗██║     ██║
+// ██████╔╝███████║ ╚████╔╝ ██████╔╝██║   ██║██║     ██║
+// ██╔═══╝ ██╔══██║  ╚██╔╝  ██╔══██╗██║   ██║██║     ██║
+// ██║     ██║  ██║   ██║   ██║  ██║╚██████╔╝███████╗███████╗
+// ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝
+// SECTION: الرواتب والموظفين — Payroll & HR
+// ═══════════════════════════════════════════════════════════════════
+
+let _payrollView = 'employees'; // employees | runs
+let _payrollEmployees = [];
+let _payrollRuns = [];
+
+async function loadPayroll() {
+  const main = document.getElementById('main');
+  main.innerHTML = `
+  <div class="page">
+    <div class="print-header"><span>MS Accounting</span><span>الرواتب والموظفين</span><span>${new Date().toLocaleDateString('ar-EG')}</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2>👔 الرواتب والموظفين</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="background:#f1f5f9;border-radius:10px;padding:3px;display:flex">
+          <button onclick="switchPayrollView('employees')" id="pvEmp" style="padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:#1a2472;color:white">👥 الموظفين</button>
+          <button onclick="switchPayrollView('runs')" id="pvRun" style="padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:none;color:#64748b">📋 مسيرات الرواتب</button>
+        </div>
+        <button class="btn btn-primary" onclick="showAddEmployee2()" id="payrollAddBtn">➕ موظف جديد</button>
+        <button class="btn btn-secondary no-print" onclick="exportTableExcel('payrollTable','رواتب')">📥 Excel</button>
+      </div>
+    </div>
+    <div id="payrollStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px"></div>
+    <div id="payrollContent"></div>
+  </div>`;
+  await loadPayrollStats();
+  await switchPayrollView('employees');
+}
+
+async function loadPayrollStats() {
+  try {
+    const s = await api('/api/payroll/stats');
+    document.getElementById('payrollStats').innerHTML = `
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:#1a2472">${s.total_employees}</div>
+        <div style="font-size:12px;color:#64748b">موظف نشط</div>
+      </div>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:#16a34a">${fmtMoney(s.total_base_salary)}</div>
+        <div style="font-size:12px;color:#64748b">إجمالي الرواتب الأساسية</div>
+      </div>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:#7c3aed">${s.last_run ? `${s.last_run.month}/${s.last_run.year}` : '—'}</div>
+        <div style="font-size:12px;color:#64748b">آخر مسير</div>
+      </div>`;
+  } catch(e) {}
+}
+
+async function switchPayrollView(view) {
+  _payrollView = view;
+  document.getElementById('pvEmp').style.cssText = view==='employees' ? 'padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:#1a2472;color:white' : 'padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:none;color:#64748b';
+  document.getElementById('pvRun').style.cssText = view==='runs' ? 'padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:#1a2472;color:white' : 'padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:none;color:#64748b';
+  const addBtn = document.getElementById('payrollAddBtn');
+  if (view === 'employees') {
+    addBtn.textContent = '➕ موظف جديد';
+    addBtn.onclick = showAddEmployee2;
+    await renderEmployeeList();
+  } else {
+    addBtn.textContent = '➕ مسير جديد';
+    addBtn.onclick = showAddPayrollRun;
+    await renderPayrollRuns();
+  }
+}
+
+async function renderEmployeeList() {
+  const content = document.getElementById('payrollContent');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    _payrollEmployees = await api('/api/payroll/employees');
+    if (!_payrollEmployees.length) {
+      content.innerHTML = '<div class="empty-state">👔 لا يوجد موظفون مضافون</div>';
+      return;
+    }
+    content.innerHTML = `
+    <div class="card">
+      <table id="payrollTable" style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f8fafc">
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الاسم</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">المسمى</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">القسم</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الراتب الأساسي</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">تاريخ التعيين</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الحالة</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b" class="no-print">إجراء</th>
+        </tr></thead>
+        <tbody>
+          ${_payrollEmployees.map(e=>`
+          <tr style="border-top:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <td style="padding:10px;font-weight:600">${e.name}</td>
+            <td style="padding:10px;font-size:13px">${e.job_title||'—'}</td>
+            <td style="padding:10px;font-size:13px">${e.department||'—'}</td>
+            <td style="padding:10px;font-weight:700;color:#16a34a">${fmtMoney(e.base_salary)}</td>
+            <td style="padding:10px;font-size:12px">${e.hire_date?dateAr(e.hire_date):'—'}</td>
+            <td style="padding:10px"><span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${e.status==='active'?'#dcfce7':'#fee2e2'};color:${e.status==='active'?'#16a34a':'#dc2626'}">${e.status==='active'?'نشط':'غير نشط'}</span></td>
+            <td style="padding:10px" class="no-print">
+              <button onclick="showEditEmployee2(${e.id})" style="background:#eef1fb;border:none;color:#1a2472;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">✏️</button>
+              <button onclick="deleteEmployee2(${e.id})" style="background:#fee2e2;border:none;color:#dc2626;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">🗑️</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  } catch(e) { content.innerHTML = `<div class="empty-state">❌ خطأ في التحميل</div>`; }
+}
+
+async function renderPayrollRuns() {
+  const content = document.getElementById('payrollContent');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    _payrollRuns = await api('/api/payroll/runs');
+    if (!_payrollRuns.length) {
+      content.innerHTML = '<div class="empty-state">📋 لا يوجد مسيرات رواتب</div>';
+      return;
+    }
+    const months = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const statusMap = {draft:{label:'مسودة',bg:'#f1f5f9',color:'#64748b'},approved:{label:'معتمد',bg:'#dcfce7',color:'#16a34a'},paid:{label:'مدفوع',bg:'#dbeafe',color:'#1d4ed8'}};
+    content.innerHTML = `
+    <div class="card">
+      <table id="payrollTable" style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f8fafc">
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الشهر</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">إجمالي الرواتب</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">إجمالي الخصومات</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">صافي المدفوع</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الحالة</th>
+          <th style="padding:10px;text-align:right;font-size:12px;color:#64748b" class="no-print">إجراء</th>
+        </tr></thead>
+        <tbody>
+          ${_payrollRuns.map(r=>{
+            const s=statusMap[r.status]||statusMap.draft;
+            return `<tr style="border-top:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+              <td style="padding:10px;font-weight:600">${months[r.month]||r.month} ${r.year}</td>
+              <td style="padding:10px;color:#1a2472;font-weight:600">${fmtMoney(r.total_gross)}</td>
+              <td style="padding:10px;color:#dc2626">${fmtMoney(r.total_deduct)}</td>
+              <td style="padding:10px;color:#16a34a;font-weight:700">${fmtMoney(r.total_net)}</td>
+              <td style="padding:10px"><span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${s.bg};color:${s.color}">${s.label}</span></td>
+              <td style="padding:10px" class="no-print">
+                <button onclick="viewPayrollRun(${r.id})" style="background:#eef1fb;border:none;color:#1a2472;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">👁️ عرض</button>
+                ${r.status==='draft'?`<button onclick="approveRun(${r.id})" style="background:#dcfce7;border:none;color:#16a34a;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">✅ اعتماد</button>`:''}
+                <button onclick="deleteRun(${r.id})" style="background:#fee2e2;border:none;color:#dc2626;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">🗑️</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  } catch(e) { content.innerHTML = `<div class="empty-state">❌ خطأ في التحميل</div>`; }
+}
+
+function showAddEmployee2(emp=null) {
+  const isEdit = !!emp;
+  openModal(`${isEdit?'✏️ تعديل':'➕ موظف جديد'}`, `
+  <div class="form-row">
+    <div class="form-group"><label>الاسم *</label><input id="eN" class="form-control" value="${isEdit?emp.name:''}" placeholder="اسم الموظف"/></div>
+    <div class="form-group"><label>المسمى الوظيفي</label><input id="eJT" class="form-control" value="${isEdit?emp.job_title||'':''}" placeholder="محاسب / مدير ..."/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>القسم</label><input id="eDept" class="form-control" value="${isEdit?emp.department||'':''}" placeholder="المحاسبة / الإدارة ..."/></div>
+    <div class="form-group"><label>تاريخ التعيين</label><input id="eHD" class="form-control" type="date" value="${isEdit?emp.hire_date||'':''}"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>الراتب الأساسي (ج.م)</label><input id="eSal" class="form-control" type="number" value="${isEdit?emp.base_salary:0}"/></div>
+    <div class="form-group"><label>الرقم القومي</label><input id="eNID" class="form-control" value="${isEdit?emp.national_id||'':''}"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>رقم التأمين</label><input id="eIns" class="form-control" value="${isEdit?emp.insurance_number||'':''}"/></div>
+    <div class="form-group"><label>% تأمين الموظف</label><input id="eIS" class="form-control" type="number" value="${isEdit?emp.insurance_share:11}"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>% تأمين الشركة</label><input id="eCI" class="form-control" type="number" value="${isEdit?emp.company_insurance:18}"/></div>
+    <div class="form-group"><label>التليفون</label><input id="ePh" class="form-control" value="${isEdit?emp.phone||'':''}"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>البنك</label><input id="eBnk" class="form-control" value="${isEdit?emp.bank_name||'':''}"/></div>
+    <div class="form-group"><label>رقم الحساب</label><input id="eBA" class="form-control" value="${isEdit?emp.bank_account||'':''}"/></div>
+  </div>
+  <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="${isEdit?`saveEditEmployee2(${emp.id})`:'saveEmployee2()'}">💾 حفظ</button>
+  `);
+}
+
+async function saveEmployee2() {
+  const body = {name:v('eN'),job_title:v('eJT'),department:v('eDept'),hire_date:v('eHD')||null,base_salary:parseFloat(v('eSal')||0),national_id:v('eNID')||null,insurance_number:v('eIns')||null,insurance_share:parseFloat(v('eIS')||11),company_insurance:parseFloat(v('eCI')||18),phone:v('ePh')||null,bank_name:v('eBnk')||null,bank_account:v('eBA')||null};
+  if(!body.name){alert('الاسم مطلوب');return;}
+  try{await api('/api/payroll/employees','POST',body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
+}
+
+async function showEditEmployee2(id) {
+  const emp = _payrollEmployees.find(e=>e.id===id);
+  if(emp) showAddEmployee2(emp);
+}
+
+async function saveEditEmployee2(id) {
+  const body = {name:v('eN'),job_title:v('eJT'),department:v('eDept'),hire_date:v('eHD')||null,base_salary:parseFloat(v('eSal')||0),national_id:v('eNID')||null,insurance_number:v('eIns')||null,insurance_share:parseFloat(v('eIS')||11),company_insurance:parseFloat(v('eCI')||18),phone:v('ePh')||null,bank_name:v('eBnk')||null,bank_account:v('eBA')||null};
+  try{await api(`/api/payroll/employees/${id}`,'PUT',body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
+}
+
+async function deleteEmployee2(id) {
+  if(!confirm('تأكيد إنهاء خدمة الموظف؟'))return;
+  await api(`/api/payroll/employees/${id}`,'DELETE');
+  loadPayroll();
+}
+
+function showAddPayrollRun() {
+  const months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const now = new Date();
+  openModal('📋 مسير رواتب جديد', `
+  <div class="form-row">
+    <div class="form-group"><label>الشهر</label><select id="prM" class="form-control">${months.map((m,i)=>`<option value="${i+1}" ${i+1===now.getMonth()+1?'selected':''}>${m}</option>`).join('')}</select></div>
+    <div class="form-group"><label>السنة</label><input id="prY" class="form-control" type="number" value="${now.getFullYear()}"/></div>
+  </div>
+  <div style="background:#f8fafc;border-radius:10px;padding:12px;margin:8px 0">
+    <p style="font-size:13px;color:#64748b;margin:0 0 8px">سيتم إنشاء مسير تلقائي بناءً على رواتب الموظفين المسجلة. يمكنك تعديل القيم بعد الإنشاء.</p>
+  </div>
+  <div class="form-group"><label>ملاحظات</label><textarea id="prNotes" class="form-control" rows="2"></textarea></div>
+  <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="savePayrollRun()">⚡ إنشاء المسير</button>
+  `);
+}
+
+async function savePayrollRun() {
+  const emps = await api('/api/payroll/employees?status=active');
+  if(!emps.length){alert('لا يوجد موظفون نشطون');return;}
+  const items = emps.map(e=>({employee_id:e.id,base_salary:e.base_salary,allowances:0,overtime:0,bonus:0,deductions_other:0,advances_deduct:0}));
+  const body = {month:parseInt(v('prM')),year:parseInt(v('prY')),notes:v('prNotes'),items};
+  try{await api('/api/payroll/runs','POST',body);closeModal();await switchPayrollView('runs');await loadPayrollStats();}catch(e){alert('خطأ: '+e.message);}
+}
+
+async function viewPayrollRun(id) {
+  const data = await api(`/api/payroll/runs/${id}`);
+  const months = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  openModal(`📋 مسير ${months[data.run.month]} ${data.run.year}`, `
+  <div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <div style="text-align:center"><div style="font-size:20px;font-weight:800;color:#1a2472">${fmtMoney(data.run.total_gross)}</div><div style="font-size:11px;color:#64748b">إجمالي الرواتب</div></div>
+    <div style="text-align:center"><div style="font-size:20px;font-weight:800;color:#dc2626">${fmtMoney(data.run.total_deduct)}</div><div style="font-size:11px;color:#64748b">إجمالي الخصومات</div></div>
+    <div style="text-align:center"><div style="font-size:20px;font-weight:800;color:#16a34a">${fmtMoney(data.run.total_net)}</div><div style="font-size:11px;color:#64748b">صافي المدفوع</div></div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:right">الموظف</th><th style="padding:8px;text-align:right">إجمالي</th><th style="padding:8px;text-align:right">تأمين</th><th style="padding:8px;text-align:right">ضريبة</th><th style="padding:8px;text-align:right">صافي</th></tr></thead>
+    <tbody>
+      ${data.items.map(i=>`<tr style="border-top:1px solid #f1f5f9">
+        <td style="padding:8px;font-weight:600">${i.employee_name}</td>
+        <td style="padding:8px">${fmtMoney(i.gross_salary)}</td>
+        <td style="padding:8px;color:#f59e0b">${fmtMoney(i.insurance_employee)}</td>
+        <td style="padding:8px;color:#dc2626">${fmtMoney(i.income_tax)}</td>
+        <td style="padding:8px;font-weight:700;color:#16a34a">${fmtMoney(i.net_salary)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  <button class="btn btn-secondary no-print" style="width:100%;margin-top:12px" onclick="window.print()">🖨️ طباعة المسير</button>
+  `);
+}
+
+async function approveRun(id) {
+  if(!confirm('اعتماد هذا المسير؟'))return;
+  await api(`/api/payroll/runs/${id}/approve`,'PUT',{});
+  renderPayrollRuns();
+}
+
+async function deleteRun(id) {
+  if(!confirm('حذف المسير؟'))return;
+  await api(`/api/payroll/runs/${id}`,'DELETE');
+  renderPayrollRuns();
+}
+
+window.loadPayroll=loadPayroll;
+window.switchPayrollView=switchPayrollView;
+window.showAddEmployee2=showAddEmployee2;
+window.saveEmployee2=saveEmployee2;
+window.showEditEmployee2=showEditEmployee2;
+window.saveEditEmployee2=saveEditEmployee2;
+window.deleteEmployee2=deleteEmployee2;
+window.showAddPayrollRun=showAddPayrollRun;
+window.savePayrollRun=savePayrollRun;
+window.viewPayrollRun=viewPayrollRun;
+window.approveRun=approveRun;
+window.deleteRun=deleteRun;
+
+
+// ═══════════════════════════════════════════════════════════════════
+// SECTION: الأصول الثابتة — Fixed Assets
+// ═══════════════════════════════════════════════════════════════════
+
+let _assets = [];
+const _assetCategories = ['عقارات','سيارات','أثاث ومفروشات','أجهزة كمبيوتر','معدات','برامج وتراخيص','أخرى'];
+
+async function loadAssets() {
+  const main = document.getElementById('main');
+  main.innerHTML = `
+  <div class="page">
+    <div class="print-header"><span>MS Accounting</span><span>الأصول الثابتة</span><span>${new Date().toLocaleDateString('ar-EG')}</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2>🏭 الأصول الثابتة</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="assetCatFilter" class="form-control" style="width:auto" onchange="filterAssets()">
+          <option value="">كل الفئات</option>
+          ${_assetCategories.map(c=>`<option>${c}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary" onclick="showAddAsset()">➕ أصل جديد</button>
+        <button class="btn btn-secondary no-print" onclick="exportTableExcel('assetsTable','أصول ثابتة')">📥 Excel</button>
+      </div>
+    </div>
+    <div id="assetsStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px"></div>
+    <div id="assetsContent"></div>
+  </div>`;
+  await loadAssetsData();
+}
+
+async function loadAssetsData() {
+  try {
+    const [assets, stats] = await Promise.all([
+      api('/api/assets'),
+      api('/api/assets/stats')
+    ]);
+    _assets = assets;
+    document.getElementById('assetsStats').innerHTML = `
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:#1a2472">${stats.total_assets}</div>
+        <div style="font-size:12px;color:#64748b">أصل نشط</div>
+      </div>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#7c3aed">${fmtMoney(stats.total_purchase_value)}</div>
+        <div style="font-size:12px;color:#64748b">إجمالي تكلفة الشراء</div>
+      </div>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#0891b2">${fmtMoney(stats.total_book_value)}</div>
+        <div style="font-size:12px;color:#64748b">إجمالي القيمة الدفترية</div>
+      </div>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#dc2626">${fmtMoney(stats.total_accumulated_dep)}</div>
+        <div style="font-size:12px;color:#64748b">مجمع الإهلاك</div>
+      </div>`;
+    renderAssetsTable(_assets);
+  } catch(e) { document.getElementById('assetsContent').innerHTML = '<div class="empty-state">❌ خطأ في التحميل</div>'; }
+}
+
+function filterAssets() {
+  const cat = v('assetCatFilter');
+  renderAssetsTable(cat ? _assets.filter(a=>a.category===cat) : _assets);
+}
+
+const _depPct = a => a.purchase_value > 0 ? Math.round(a.accumulated_dep/a.purchase_value*100) : 0;
+
+function renderAssetsTable(assets) {
+  const c = document.getElementById('assetsContent');
+  if(!assets.length){c.innerHTML='<div class="empty-state">🏭 لا توجد أصول مضافة</div>';return;}
+  const statusMap = {active:{label:'نشط',bg:'#dcfce7',color:'#16a34a'},disposed:{label:'مُستبعد',bg:'#fee2e2',color:'#dc2626'},fully_depreciated:{label:'مهلك بالكامل',bg:'#f3f4f6',color:'#6b7280'},under_maintenance:{label:'صيانة',bg:'#fef3c7',color:'#d97706'}};
+  c.innerHTML = `<div class="card">
+    <table id="assetsTable" style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f8fafc">
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الاسم</th>
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الفئة</th>
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">تاريخ الشراء</th>
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">تكلفة الشراء</th>
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">القيمة الدفترية</th>
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الإهلاك %</th>
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b">الحالة</th>
+        <th style="padding:10px;text-align:right;font-size:12px;color:#64748b" class="no-print">إجراء</th>
+      </tr></thead>
+      <tbody>
+        ${assets.map(a=>{
+          const s=statusMap[a.status]||statusMap.active;
+          const pct=_depPct(a);
+          return `<tr style="border-top:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <td style="padding:10px;font-weight:600">${a.name}</td>
+            <td style="padding:10px;font-size:13px">${a.category||'—'}</td>
+            <td style="padding:10px;font-size:12px">${dateAr(a.purchase_date)}</td>
+            <td style="padding:10px;font-weight:600">${fmtMoney(a.purchase_value)}</td>
+            <td style="padding:10px;font-weight:700;color:#0891b2">${fmtMoney(a.book_value)}</td>
+            <td style="padding:10px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="flex:1;background:#f1f5f9;border-radius:4px;height:6px"><div style="width:${pct}%;background:${pct>80?'#dc2626':'#f59e0b'};height:6px;border-radius:4px"></div></div>
+                <span style="font-size:11px;font-weight:600">${pct}%</span>
+              </div>
+            </td>
+            <td style="padding:10px"><span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${s.bg};color:${s.color}">${s.label}</span></td>
+            <td style="padding:10px" class="no-print">
+              <button onclick="showAssetDepreciation(${a.id})" title="تشغيل الإهلاك" style="background:#fef3c7;border:none;color:#d97706;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">📉</button>
+              <button onclick="showEditAsset(${a.id})" style="background:#eef1fb;border:none;color:#1a2472;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">✏️</button>
+              <button onclick="deleteAsset(${a.id})" style="background:#fee2e2;border:none;color:#dc2626;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">🗑️</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function showAddAsset(asset=null) {
+  const isEdit = !!asset;
+  openModal(`${isEdit?'✏️ تعديل':'🏭 أصل جديد'}`, `
+  <div class="form-row">
+    <div class="form-group"><label>اسم الأصل *</label><input id="asN" class="form-control" value="${isEdit?asset.name:''}" placeholder="سيارة / لاب توب ..."/></div>
+    <div class="form-group"><label>الفئة</label><select id="asCat" class="form-control"><option value="">اختر الفئة</option>${_assetCategories.map(c=>`<option ${isEdit&&asset.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>تاريخ الشراء *</label><input id="asPD" class="form-control" type="date" value="${isEdit?asset.purchase_date:''}"/></div>
+    <div class="form-group"><label>تكلفة الشراء (ج.م)</label><input id="asPV" class="form-control" type="number" value="${isEdit?asset.purchase_value:0}"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>العمر الإنتاجي (سنوات)</label><input id="asUL" class="form-control" type="number" value="${isEdit?asset.useful_life_years:5}" step="0.5"/></div>
+    <div class="form-group"><label>القيمة المتبقية (ج.م)</label><input id="asRV" class="form-control" type="number" value="${isEdit?asset.residual_value:0}"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>طريقة الإهلاك</label><select id="asDM" class="form-control"><option value="straight_line" ${isEdit&&asset.depreciation_method==='straight_line'?'selected':''}>القسط الثابت</option><option value="declining_balance" ${isEdit&&asset.depreciation_method==='declining_balance'?'selected':''}>القسط المتناقص</option></select></div>
+    <div class="form-group"><label>الموقع</label><input id="asLoc" class="form-control" value="${isEdit?asset.location||'':''}" placeholder="المكتب / الفرع ..."/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>المورد</label><input id="asSup" class="form-control" value="${isEdit?asset.supplier||':'':''}" placeholder="اسم المورد"/></div>
+    <div class="form-group"><label>الرقم التسلسلي</label><input id="asSN" class="form-control" value="${isEdit?asset.serial_number||'':''}"/></div>
+  </div>
+  <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="${isEdit?`saveEditAsset(${asset.id})`:'saveAddAsset()'}">💾 حفظ</button>
+  `);
+}
+
+async function saveAddAsset() {
+  const body = {name:v('asN'),category:v('asCat')||null,purchase_date:v('asPD'),purchase_value:parseFloat(v('asPV')||0),useful_life_years:parseFloat(v('asUL')||5),residual_value:parseFloat(v('asRV')||0),depreciation_method:v('asDM'),location:v('asLoc')||null,supplier:v('asSup')||null,serial_number:v('asSN')||null};
+  if(!body.name||!body.purchase_date){alert('الاسم وتاريخ الشراء مطلوبان');return;}
+  try{await api('/api/assets','POST',body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+}
+
+function showEditAsset(id) {
+  const asset = _assets.find(a=>a.id===id);
+  if(asset) showAddAsset(asset);
+}
+
+async function saveEditAsset(id) {
+  const body = {name:v('asN'),category:v('asCat')||null,purchase_date:v('asPD'),purchase_value:parseFloat(v('asPV')||0),useful_life_years:parseFloat(v('asUL')||5),residual_value:parseFloat(v('asRV')||0),depreciation_method:v('asDM'),location:v('asLoc')||null,supplier:v('asSup')||null,serial_number:v('asSN')||null};
+  try{await api(`/api/assets/${id}`,'PUT',body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+}
+
+function showAssetDepreciation(id) {
+  const asset = _assets.find(a=>a.id===id);
+  const now = new Date();
+  openModal('📉 تشغيل الإهلاك', `
+  <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:12px">
+    <p style="margin:0;font-size:13px"><strong>${asset?.name}</strong> — الإهلاك السنوي المقدر: <strong>${fmtMoney(asset?.annual_depreciation||0)}</strong></p>
+    <p style="margin:4px 0 0;font-size:12px;color:#64748b">القيمة الدفترية الحالية: ${fmtMoney(asset?.book_value||0)}</p>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>السنة</label><input id="depY" class="form-control" type="number" value="${now.getFullYear()}"/></div>
+    <div class="form-group"><label>الشهر (اختياري — فارغ = سنوي)</label><input id="depM" class="form-control" type="number" min="1" max="12" placeholder="1-12"/></div>
+  </div>
+  <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="runDepreciation(${id})">⚡ تشغيل الإهلاك</button>
+  `);
+}
+
+async function runDepreciation(id) {
+  const year = parseInt(v('depY'));
+  const month = v('depM') ? parseInt(v('depM')) : null;
+  let url = `/api/assets/${id}/depreciate?year=${year}`;
+  if(month) url += `&month=${month}`;
+  try{const r=await api(url,'POST',{});closeModal();alert(`✅ تم تسجيل إهلاك ${fmtMoney(r.amount)} — القيمة الدفترية الجديدة: ${fmtMoney(r.book_value)}`);loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+}
+
+async function deleteAsset(id) {
+  if(!confirm('حذف هذا الأصل؟'))return;
+  await api(`/api/assets/${id}`,'DELETE');
+  loadAssetsData();
+}
+
+window.loadAssets=loadAssets;
+window.filterAssets=filterAssets;
+window.showAddAsset=showAddAsset;
+window.saveAddAsset=saveAddAsset;
+window.showEditAsset=showEditAsset;
+window.saveEditAsset=saveEditAsset;
+window.showAssetDepreciation=showAssetDepreciation;
+window.runDepreciation=runDepreciation;
+window.deleteAsset=deleteAsset;
+
+
+// ═══════════════════════════════════════════════════════════════════
+// SECTION: التقارير المالية — Financial Reports
+// ═══════════════════════════════════════════════════════════════════
+
+let _finReportView = 'aging';
+
+async function loadFinReports() {
+  const now = new Date();
+  const main = document.getElementById('main');
+  main.innerHTML = `
+  <div class="page">
+    <div class="print-header"><span>MS Accounting</span><span>التقارير المالية</span><span>${new Date().toLocaleDateString('ar-EG')}</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2>📈 التقارير المالية</h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${[['aging','📊 تقادم الديون'],['cashflow','💧 التدفق النقدي'],['summary','📋 الملخص المالي'],['profitability','🏆 ربحية العملاء']].map(([id,label])=>`
+        <button onclick="switchFinReport('${id}')" id="fr_${id}" style="padding:6px 12px;border:1.5px solid #e8edf3;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:white;color:#64748b;transition:all .15s">${label}</button>`).join('')}
+        <button class="btn btn-secondary no-print" onclick="exportTableExcel('finTable','تقرير مالي')">📥 Excel</button>
+        <button class="btn btn-secondary no-print" onclick="window.print()">🖨️ طباعة</button>
+      </div>
+    </div>
+    <div id="finFilters" style="background:white;border-radius:12px;padding:14px;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <div class="form-group" style="margin:0"><label style="font-size:11px">السنة</label><input id="frYear" class="form-control" type="number" value="${now.getFullYear()}" style="width:90px"/></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px">الشهر</label><select id="frMonth" class="form-control" style="width:120px"><option value="">كل السنة</option>${['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'].map((m,i)=>`<option value="${i+1}" ${i+1===now.getMonth()+1?'selected':''}>${m}</option>`).join('')}</select></div>
+      <button class="btn btn-primary" onclick="refreshFinReport()" style="margin-top:16px">🔄 تحديث</button>
+    </div>
+    <div id="finReportContent"></div>
+  </div>`;
+  switchFinReport('aging');
+}
+
+function _activateFinBtn(id) {
+  ['aging','cashflow','summary','profitability'].forEach(k=>{
+    const b = document.getElementById(`fr_${k}`);
+    if(!b) return;
+    if(k===id){b.style.background='#1a2472';b.style.color='white';b.style.borderColor='#1a2472';}
+    else{b.style.background='white';b.style.color='#64748b';b.style.borderColor='#e8edf3';}
+  });
+}
+
+function switchFinReport(view) {
+  _finReportView = view;
+  _activateFinBtn(view);
+  refreshFinReport();
+}
+
+async function refreshFinReport() {
+  const year = parseInt(v('frYear'));
+  const month = v('frMonth') || null;
+  const c = document.getElementById('finReportContent');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  try {
+    if(_finReportView === 'aging') {
+      const data = await api('/api/reports/aging');
+      renderAgingReport(data);
+    } else if(_finReportView === 'cashflow') {
+      let url = `/api/reports/cashflow?year=${year}`;
+      if(month) url += `&month=${month}`;
+      const data = await api(url);
+      renderCashflowReport(data);
+    } else if(_finReportView === 'summary') {
+      let url = `/api/reports/summary?year=${year}`;
+      if(month) url += `&month=${month}`;
+      const data = await api(url);
+      renderSummaryReport(data);
+    } else if(_finReportView === 'profitability') {
+      const url = `/api/reports/clients-profit?year=${year}`;
+      const data = await api(url);
+      renderProfitabilityReport(data);
+    }
+  } catch(e) { c.innerHTML = `<div class="empty-state">❌ خطأ في التحميل: ${e.message}</div>`; }
+}
+
+function renderAgingReport(data) {
+  const c = document.getElementById('finReportContent');
+  const bucketLabels = {current:'أقل من 30 يوم',days_31_60:'31-60 يوم',days_61_90:'61-90 يوم',over_90:'أكثر من 90 يوم'};
+  const bucketColors = {current:'#16a34a',days_31_60:'#f59e0b',days_61_90:'#f97316',over_90:'#dc2626'};
+
+  const statsHtml = Object.entries(data.totals).map(([k,v])=>`
+    <div class="card" style="padding:14px;text-align:center">
+      <div style="font-size:18px;font-weight:800;color:${bucketColors[k]}">${fmtMoney(v)}</div>
+      <div style="font-size:11px;color:#64748b">${bucketLabels[k]}</div>
+    </div>`).join('');
+
+  let rows = '';
+  for(const [bucket, items] of Object.entries(data.buckets)) {
+    for(const row of items) {
+      rows += `<tr style="border-top:1px solid #f1f5f9">
+        <td style="padding:9px;font-weight:600">${row.client_name}</td>
+        <td style="padding:9px;font-size:12px">${row.invoice_number||'—'}</td>
+        <td style="padding:9px;font-size:12px">${row.due_date}</td>
+        <td style="padding:9px"><span style="color:${bucketColors[bucket]};font-weight:700">${row.age_days} يوم</span></td>
+        <td style="padding:9px">${fmtMoney(row.total_amount)}</td>
+        <td style="padding:9px;color:#16a34a">${fmtMoney(row.paid)}</td>
+        <td style="padding:9px;font-weight:700;color:${bucketColors[bucket]}">${fmtMoney(row.remaining)}</td>
+        <td style="padding:9px"><span style="padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:${bucketColors[bucket]}22;color:${bucketColors[bucket]}">${bucketLabels[bucket]}</span></td>
+      </tr>`;
+    }
+  }
+
+  c.innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+    ${statsHtml}
+    <div class="card" style="padding:14px;text-align:center;background:#1a2472">
+      <div style="font-size:18px;font-weight:800;color:white">${fmtMoney(data.grand_total)}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.7)">إجمالي الديون المتأخرة</div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="padding:12px 16px;font-size:13px;font-weight:700;color:#1a2472;border-bottom:1px solid #f1f5f9">📊 تقرير تقادم الديون — حتى ${data.as_of}</div>
+    <table id="finTable" style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f8fafc">
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">العميل</th>
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">رقم الفاتورة</th>
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">تاريخ الاستحقاق</th>
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">العمر</th>
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">الإجمالي</th>
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">المحصّل</th>
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">المتبقي</th>
+        <th style="padding:9px;text-align:right;font-size:11px;color:#64748b">الفئة</th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8">لا توجد ديون متأخرة ✅</td></tr>'}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderCashflowReport(data) {
+  const c = document.getElementById('finReportContent');
+  c.innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+    <div class="card" style="padding:16px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#16a34a">${fmtMoney(data.total_inflows)}</div>
+      <div style="font-size:12px;color:#64748b">إجمالي التدفقات الداخلة</div>
+    </div>
+    <div class="card" style="padding:16px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#dc2626">${fmtMoney(data.total_outflows)}</div>
+      <div style="font-size:12px;color:#64748b">إجمالي التدفقات الخارجة</div>
+    </div>
+    <div class="card" style="padding:16px;text-align:center;background:${data.net_cashflow>=0?'#dcfce7':'#fee2e2'}">
+      <div style="font-size:22px;font-weight:800;color:${data.net_cashflow>=0?'#16a34a':'#dc2626'}">${fmtMoney(data.net_cashflow)}</div>
+      <div style="font-size:12px;color:#64748b">صافي التدفق النقدي</div>
+    </div>
+    <div class="card" style="padding:16px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#1a2472">${fmtMoney(data.invoice_payments_received)}</div>
+      <div style="font-size:12px;color:#64748b">مدفوعات الفواتير</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card">
+      <div style="padding:12px 16px;font-size:13px;font-weight:700;color:#16a34a;border-bottom:1px solid #f1f5f9">⬇️ التدفقات الداخلة</div>
+      <table id="finTable" style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f8fafc"><th style="padding:8px;text-align:right;font-size:11px;color:#64748b">التاريخ</th><th style="padding:8px;text-align:right;font-size:11px;color:#64748b">المبلغ</th><th style="padding:8px;text-align:right;font-size:11px;color:#64748b">البيان</th></tr></thead>
+        <tbody>${data.inflows.map(t=>`<tr style="border-top:1px solid #f1f5f9"><td style="padding:8px;font-size:12px">${t.date}</td><td style="padding:8px;color:#16a34a;font-weight:600">${fmtMoney(t.amount)}</td><td style="padding:8px;font-size:12px">${t.desc||'—'}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;padding:16px;color:#94a3b8">لا توجد تدفقات</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div style="padding:12px 16px;font-size:13px;font-weight:700;color:#dc2626;border-bottom:1px solid #f1f5f9">⬆️ التدفقات الخارجة</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f8fafc"><th style="padding:8px;text-align:right;font-size:11px;color:#64748b">التاريخ</th><th style="padding:8px;text-align:right;font-size:11px;color:#64748b">المبلغ</th><th style="padding:8px;text-align:right;font-size:11px;color:#64748b">البيان</th></tr></thead>
+        <tbody>${data.outflows.map(t=>`<tr style="border-top:1px solid #f1f5f9"><td style="padding:8px;font-size:12px">${t.date}</td><td style="padding:8px;color:#dc2626;font-weight:600">${fmtMoney(t.amount)}</td><td style="padding:8px;font-size:12px">${t.desc||'—'}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;padding:16px;color:#94a3b8">لا توجد تدفقات</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderSummaryReport(data) {
+  const c = document.getElementById('finReportContent');
+  const statusAr = {draft:'مسودة',sent:'مُرسلة',paid:'مدفوعة',overdue:'متأخرة',partial:'جزئي',cancelled:'ملغاة'};
+  const statusColor = {draft:'#94a3b8',sent:'#3b82f6',paid:'#16a34a',overdue:'#dc2626',partial:'#f59e0b',cancelled:'#94a3b8'};
+  c.innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+    <div class="card" style="padding:16px;text-align:center">
+      <div style="font-size:24px;font-weight:800;color:#1a2472">${fmtMoney(data.total_invoiced)}</div>
+      <div style="font-size:12px;color:#64748b">إجمالي الأتعاب المصدرة</div>
+    </div>
+    <div class="card" style="padding:16px;text-align:center">
+      <div style="font-size:24px;font-weight:800;color:#16a34a">${fmtMoney(data.total_collected)}</div>
+      <div style="font-size:12px;color:#64748b">المحصّل فعلياً</div>
+    </div>
+    <div class="card" style="padding:16px;text-align:center">
+      <div style="font-size:24px;font-weight:800;color:#dc2626">${fmtMoney(data.outstanding)}</div>
+      <div style="font-size:12px;color:#64748b">المتبقي غير محصّل</div>
+    </div>
+    <div class="card" style="padding:16px;text-align:center">
+      <div style="font-size:24px;font-weight:800;color:#7c3aed">${data.collection_rate}%</div>
+      <div style="font-size:12px;color:#64748b">نسبة التحصيل</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card" style="padding:16px">
+      <div style="font-size:13px;font-weight:700;color:#1a2472;margin-bottom:12px">📊 توزيع الفواتير</div>
+      <table id="finTable" style="width:100%;border-collapse:collapse">
+        ${Object.entries(data.invoice_status).map(([s,cnt])=>`<tr style="border-top:1px solid #f1f5f9"><td style="padding:8px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor[s]||'#94a3b8'};margin-left:6px"></span>${statusAr[s]||s}</td><td style="padding:8px;font-weight:700;text-align:left">${cnt} فاتورة</td></tr>`).join('')}
+      </table>
+    </div>
+    <div class="card" style="padding:16px">
+      <div style="font-size:13px;font-weight:700;color:#1a2472;margin-bottom:12px">👥 العملاء</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+        <div style="text-align:center"><div style="font-size:28px;font-weight:800;color:#1a2472">${data.total_clients}</div><div style="font-size:12px;color:#64748b">إجمالي العملاء</div></div>
+        <div style="text-align:center"><div style="font-size:28px;font-weight:800;color:#16a34a">${data.active_clients}</div><div style="font-size:12px;color:#64748b">عملاء نشطون</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderProfitabilityReport(data) {
+  const c = document.getElementById('finReportContent');
+  if(!data.length){c.innerHTML='<div class="empty-state">لا توجد بيانات</div>';return;}
+  const max = Math.max(...data.map(d=>d.total_invoiced),1);
+  c.innerHTML = `
+  <div class="card">
+    <div style="padding:12px 16px;font-size:13px;font-weight:700;color:#1a2472;border-bottom:1px solid #f1f5f9">🏆 ربحية العملاء — مرتبة تنازلياً</div>
+    <table id="finTable" style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f8fafc">
+        <th style="padding:10px;text-align:right;font-size:11px;color:#64748b">#</th>
+        <th style="padding:10px;text-align:right;font-size:11px;color:#64748b">العميل</th>
+        <th style="padding:10px;text-align:right;font-size:11px;color:#64748b">إجمالي الأتعاب</th>
+        <th style="padding:10px;text-align:right;font-size:11px;color:#64748b">المحصّل</th>
+        <th style="padding:10px;text-align:right;font-size:11px;color:#64748b">المتبقي</th>
+        <th style="padding:10px;text-align:right;font-size:11px;color:#64748b">نسبة التحصيل</th>
+        <th style="padding:10px;text-align:right;font-size:11px;color:#64748b">عدد الفواتير</th>
+      </tr></thead>
+      <tbody>
+        ${data.filter(d=>d.total_invoiced>0).map((d,i)=>`
+        <tr style="border-top:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+          <td style="padding:10px;font-weight:700;color:#94a3b8">${i+1}</td>
+          <td style="padding:10px">
+            <div style="font-weight:600">${d.client_name}</div>
+            <div style="height:4px;background:#f1f5f9;border-radius:4px;margin-top:4px;width:${Math.round(d.total_invoiced/max*100)}%"><div style="height:4px;background:#1a2472;border-radius:4px;width:100%"></div></div>
+          </td>
+          <td style="padding:10px;font-weight:700;color:#1a2472">${fmtMoney(d.total_invoiced)}</td>
+          <td style="padding:10px;color:#16a34a;font-weight:600">${fmtMoney(d.total_collected)}</td>
+          <td style="padding:10px;color:${d.outstanding>0?'#dc2626':'#16a34a'};font-weight:${d.outstanding>0?'700':'400'}">${fmtMoney(d.outstanding)}</td>
+          <td style="padding:10px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="width:60px;background:#f1f5f9;border-radius:4px;height:6px"><div style="width:${d.collection_rate}%;background:${d.collection_rate>=80?'#16a34a':d.collection_rate>=50?'#f59e0b':'#dc2626'};height:6px;border-radius:4px"></div></div>
+              <span style="font-size:12px;font-weight:700">${d.collection_rate}%</span>
+            </div>
+          </td>
+          <td style="padding:10px;text-align:center">${d.invoice_count}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+window.loadFinReports=loadFinReports;
+window.switchFinReport=switchFinReport;
+window.refreshFinReport=refreshFinReport;
+
+
+// ═══════════════════════════════════════════════════════════════════
+// SECTION: Excel Export — تصدير Excel لأي جدول
+// ═══════════════════════════════════════════════════════════════════
+
+function exportTableExcel(tableId, sheetName='تقرير') {
+  const table = document.getElementById(tableId);
+  if(!table){alert('لا يوجد جدول للتصدير');return;}
+
+  // Build CSV
+  let csv = '﻿'; // BOM for Arabic
+  const rows = table.querySelectorAll('tr');
+  rows.forEach(row=>{
+    const cells = [...row.querySelectorAll('th,td')];
+    csv += cells.map(c=>`"${c.textContent.trim().replace(/"/g,'""')}"`).join(',') + '\n';
+  });
+
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sheetName}_${new Date().toLocaleDateString('ar-EG').replace(/\//g,'-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Global export: find first table in the current page and export it
+function exportCurrentPage() {
+  const table = document.querySelector('#main table');
+  const title = document.getElementById('pageTitle')?.textContent || 'تقرير';
+  if(!table){alert('لا يوجد جدول في هذه الصفحة');return;}
+  const id = table.id || 'exportTable';
+  if(!table.id) table.id = id;
+  exportTableExcel(id, title);
+}
+
+window.exportTableExcel=exportTableExcel;
+window.exportCurrentPage=exportCurrentPage;
+
+// Helper
+function fmtMoney(n){
+  if(!n&&n!==0) return '—';
+  return new Intl.NumberFormat('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:2}).format(n) + ' ج.م';
+}
 </script>
 </body>
 </html>
