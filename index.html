@@ -418,7 +418,6 @@ const navItems = [
   {id:'establishment', icon:'🏗️', label:'تأسيس الشركات'},
   {id:'documents',     icon:'📁', label:'الأرشيف'},
   {id:'tax',           icon:'🧾', label:'الإقرارات'},
-  {id:'accounting',    icon:'📒', label:'المحاسبة'},
   {id:'payroll',       icon:'👔', label:'الرواتب والموظفين'},
   {id:'assets',        icon:'🏭', label:'الأصول الثابتة'},
   {id:'fin_reports',   icon:'📈', label:'التقارير المالية'},
@@ -867,7 +866,7 @@ function navigate(page) {
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,accounting:loadAccounting,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports};
   if(pages[page]) pages[page]();
 }
 
