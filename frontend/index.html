@@ -528,8 +528,15 @@ const navItems = [
   {id:'payroll'      ,icon:'👔',label:'الرواتب والموظفين'},
   {id:'settlements'  ,icon:'👷',label:'تسويات الموظفين'},
   {id:'assets'       ,icon:'🏭',label:'الأصول الثابتة'},
-  {id:'mail'         ,icon:'📧',label:'البريد الإلكتروني'},
-  {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
+  {id:'mail'             ,icon:'📧',label:'البريد الإلكتروني'},
+  {id:'settings'         ,icon:'⚙️',label:'الإعدادات'},
+  // ── New platform modules ──
+  {id:'office_services'  ,icon:'🏢',label:'خدمات المكتب'},
+  {id:'company_docs'     ,icon:'📜',label:'وثائق الشركة'},
+  {id:'folders'          ,icon:'🗂️',label:'إدارة الملفات'},
+  {id:'audit_trail'      ,icon:'🔍',label:'سجل المراجعة'},
+  {id:'client_portal'    ,icon:'🔑',label:'بوابة العملاء'},
+  {id:'permissions'      ,icon:'🛡️',label:'الصلاحيات'},
 ];
 // Grouped navigation for sidebar display
 const navGroups = [
@@ -538,7 +545,8 @@ const navGroups = [
   {label:'المالية', items:['invoices','collections','fin_reports','tax','statements']},
   {label:'التشغيل', items:['tasks','timesheet','obligations','postal','documents','appointments','papers']},
   {label:'الموارد البشرية', items:['payroll','settlements','assets']},
-  {label:'الإدارة', items:['mail','settings']},
+  {label:'إدارة المكتب', items:['office_services','company_docs','folders','audit_trail']},
+  {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
 ];
 
 // ── App Shell ──────────────────────────────────────
@@ -943,7 +951,7 @@ async function _checkConn() {
       setApiStatus(true, 'API متصل');
       toast('✅ تم استعادة الاتصال بالخادم');
       // Refresh current page silently
-      const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings};
+      const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,office_services:loadOfficeServices,company_docs:loadCompanyDocs,folders:loadFolders,audit_trail:loadAuditTrail,client_portal:loadClientPortal,permissions:loadPermissions};
       if(pages[currentPage]) try{ pages[currentPage](); }catch(e){}
     }
 
@@ -1001,13 +1009,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية',accounting:'المحاسبة',payroll:'الرواتب والموظفين',assets:'الأصول الثابتة',fin_reports:'التقارير المالية',postal:'البوسطة',statements:'الميزانيات',timesheet:'التايم شيت'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية',accounting:'المحاسبة',payroll:'الرواتب والموظفين',assets:'الأصول الثابتة',fin_reports:'التقارير المالية',postal:'البوسطة',statements:'الميزانيات',timesheet:'التايم شيت',office_services:'خدمات المكتب',company_docs:'وثائق الشركة',folders:'إدارة الملفات',audit_trail:'سجل المراجعة',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports,postal:loadPostal,statements:loadStatements,timesheet:loadTimesheet};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports,postal:loadPostal,statements:loadStatements,timesheet:loadTimesheet,office_services:loadOfficeServices,company_docs:loadCompanyDocs,folders:loadFolders,audit_trail:loadAuditTrail,client_portal:loadClientPortal,permissions:loadPermissions};
   if(pages[page]) pages[page]();
 }
 
@@ -10620,6 +10628,814 @@ async function deleteTimeEntry(id) {
 window.loadTimesheet=loadTimesheet; window.showAddTimeEntry=showAddTimeEntry; window.saveTimeEntry=saveTimeEntry;
 window.showEditTimeEntry=showEditTimeEntry; window.updateTimeEntry=updateTimeEntry;
 window.deleteTimeEntry=deleteTimeEntry;
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── خدمات المكتب — Office Services
+// ════════════════════════════════════════════════════════════════════════════
+const SERVICE_TYPE_LABELS = {
+  audit:'المراجعة', accounting:'الحسابات', tax:'الضرائب',
+  legal:'الاستشارات القانونية', tax_systems:'منظومات الضرائب',
+  establishment:'تأسيس الشركات', other:'أخرى'
+};
+
+async function loadOfficeServices() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <select id="osSvcFilter" class="input" style="width:auto" onchange="loadOfficeServices()">
+        <option value="">جميع الخدمات</option>
+        ${Object.entries(SERVICE_TYPE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+      </select>
+      <select id="osStatusFilter" class="input" style="width:auto" onchange="loadOfficeServices()">
+        <option value="">جميع الحالات</option>
+        <option value="active">نشط</option>
+        <option value="paused">موقوف</option>
+        <option value="completed">مكتمل</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="showAddOfficeService()">➕ خدمة جديدة</button>
+  </div>
+  <div id="osList">${skeletonTable(4,5)}</div>`;
+
+  const svcType = document.getElementById('osSvcFilter')?.value||'';
+  const status  = document.getElementById('osStatusFilter')?.value||'';
+  let url = '/api/office-services';
+  const params = [];
+  if(svcType) params.push(`service_type=${svcType}`);
+  if(status) params.push(`status=${status}`);
+  if(params.length) url += '?' + params.join('&');
+
+  try {
+    const services = await api('GET', url);
+    const el = document.getElementById('osList');
+    if(!el) return;
+    if(!services.length){
+      el.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:#94a3b8">
+        <div style="font-size:48px;margin-bottom:12px">🏢</div>
+        <div style="font-weight:600">لا توجد خدمات مسجلة بعد</div>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="showAddOfficeService()">➕ أضف أول خدمة</button>
+      </div>`;
+      return;
+    }
+    el.innerHTML = `<div class="card">
+      <table>
+        <thead><tr><th>العميل</th><th>الخدمة</th><th>الحالة</th><th>الرسوم</th><th>الدورية</th><th>المهام</th><th>إجراءات</th></tr></thead>
+        <tbody>${services.map(s=>`
+          <tr>
+            <td><strong>${escH(s.client_name||'-')}</strong></td>
+            <td><span style="display:flex;align-items:center;gap:6px">
+              <span style="background:#eef1fb;color:#1a2472;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600">${escH(s.service_type_label)}</span>
+              ${s.name?`<span>${escH(s.name)}</span>`:''}
+            </span></td>
+            <td>${s.status==='active'?'<span class="badge badge-green">نشط</span>':s.status==='paused'?'<span class="badge badge-yellow">موقوف</span>':'<span class="badge badge-gray">مكتمل</span>'}</td>
+            <td>${s.fee?`${s.fee.toLocaleString('ar-EG')} جنيه`:'—'}</td>
+            <td>${{monthly:'شهري',quarterly:'ربع سنوي',annual:'سنوي',once:'مرة واحدة'}[s.fee_period]||s.fee_period}</td>
+            <td><span class="badge badge-blue">${s.task_count} مهمة</span>${s.pending_tasks?`<span class="badge badge-orange" style="margin-right:4px">${s.pending_tasks} معلق</span>`:''}</td>
+            <td>
+              <button class="btn btn-sm btn-secondary" onclick="showOfficeServiceDetail(${s.id})">تفاصيل</button>
+              <button class="btn btn-sm btn-danger" style="margin-right:4px" onclick="deleteOfficeService(${s.id})">حذف</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function showAddOfficeService() {
+  let clients = [];
+  try { clients = await api('GET','/api/clients?page_size=500'); clients = clients.items||clients; } catch(e){}
+  openModal(`
+  <h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">🏢 إضافة خدمة جديدة</h3>
+  <div style="display:grid;gap:14px">
+    <div><label>العميل *</label>
+      <select id="osSvcClient" class="input">
+        <option value="">اختر عميل</option>
+        ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+      </select></div>
+    <div><label>نوع الخدمة *</label>
+      <select id="osSvcType" class="input">
+        ${Object.entries(SERVICE_TYPE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+      </select></div>
+    <div><label>اسم الخدمة (اختياري)</label><input id="osSvcName" class="input" placeholder="مثال: مراجعة 2024"/></div>
+    <div class="form-row">
+      <div><label>الرسوم</label><input id="osSvcFee" class="input" type="number" min="0" placeholder="0"/></div>
+      <div><label>الدورية</label>
+        <select id="osSvcPeriod" class="input">
+          <option value="monthly">شهري</option>
+          <option value="quarterly">ربع سنوي</option>
+          <option value="annual">سنوي</option>
+          <option value="once">مرة واحدة</option>
+        </select></div>
+    </div>
+    <div><label>ملاحظات</label><textarea id="osSvcNotes" class="input" rows="2"></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveOfficeService()">💾 حفظ</button>
+    </div>
+  </div>`);
+}
+
+async function saveOfficeService() {
+  const client_id = v('osSvcClient');
+  if(!client_id){toast('اختر العميل','error');return;}
+  const body={
+    client_id:+client_id,
+    service_type:v('osSvcType'),
+    name:v('osSvcName')||null,
+    fee:+v('osSvcFee')||0,
+    fee_period:v('osSvcPeriod'),
+    notes:v('osSvcNotes')||null,
+  };
+  try{await api('POST','/api/office-services',body);closeModal();toast('تم إضافة الخدمة');loadOfficeServices();}
+  catch(e){toast(e.message,'error');}
+}
+
+async function showOfficeServiceDetail(id) {
+  let s;
+  try { s = await api('GET',`/api/office-services/${id}`); } catch(e){toast(e.message,'error');return;}
+  openModal(`
+  <h3 style="margin:0 0 14px;font-size:15px;font-weight:800;color:#1e293b">🏢 ${escH(s.name||s.service_type_label)} — ${escH(s.client_name||'')}</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:13px">
+    <div><span style="color:#94a3b8">الحالة:</span> ${s.status==='active'?'<span class="badge badge-green">نشط</span>':s.status==='paused'?'<span class="badge badge-yellow">موقوف</span>':'<span class="badge badge-gray">مكتمل</span>'}</div>
+    <div><span style="color:#94a3b8">الرسوم:</span> ${s.fee?s.fee.toLocaleString('ar-EG')+' جنيه':'—'}</div>
+    ${s.notes?`<div style="grid-column:1/-1"><span style="color:#94a3b8">ملاحظات:</span> ${escH(s.notes)}</div>`:''}
+  </div>
+  <div style="font-weight:700;color:#1a2472;margin-bottom:10px;font-size:14px">المهام (${s.tasks?.length||0})</div>
+  <div id="osSvcTasksList" style="margin-bottom:14px">
+    ${(s.tasks||[]).map(t=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#f8fafc;margin-bottom:6px;border:1px solid #e8edf3">
+        <input type="checkbox" ${t.status==='done'?'checked':''} onchange="updateOsSvcTask(${t.id},this.checked)" style="width:16px;height:16px;accent-color:#1a2472"/>
+        <span style="${t.status==='done'?'text-decoration:line-through;color:#94a3b8':''}">${escH(t.title)}</span>
+        <span style="margin-right:auto;font-size:11px;color:#94a3b8">${t.due_date?t.due_date.slice(0,10):''}</span>
+      </div>`).join('')||'<div style="color:#94a3b8;font-size:13px;text-align:center;padding:10px">لا توجد مهام</div>'}
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input id="newOsTaskTitle" class="input" placeholder="مهمة جديدة..." style="flex:1"/>
+    <button class="btn btn-primary btn-sm" onclick="addOsServiceTask(${id})">➕</button>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary btn-sm" onclick="changeOsStatus(${id},'${s.status}')">تغيير الحالة</button>
+    <button class="btn btn-secondary" onclick="closeModal()">إغلاق</button>
+  </div>`,{wide:true});
+}
+
+async function addOsServiceTask(serviceId) {
+  const title = v('newOsTaskTitle');
+  if(!title){toast('أدخل عنوان المهمة','error');return;}
+  try{await api('POST',`/api/office-services/${serviceId}/tasks`,{title});showOfficeServiceDetail(serviceId);}
+  catch(e){toast(e.message,'error');}
+}
+
+async function updateOsSvcTask(taskId, done) {
+  try{await api('PUT',`/api/office-services/tasks/${taskId}`,{status:done?'done':'pending'});}
+  catch(e){toast(e.message,'error');}
+}
+
+async function changeOsStatus(id, current) {
+  const next = current==='active'?'paused':current==='paused'?'completed':'active';
+  try{await api('PUT',`/api/office-services/${id}`,{status:next});closeModal();toast('تم تغيير الحالة');loadOfficeServices();}
+  catch(e){toast(e.message,'error');}
+}
+
+async function deleteOfficeService(id) {
+  if(!await confirmDlg('حذف هذه الخدمة؟','سيتم حذف الخدمة وجميع مهامها')) return;
+  try{await api('DELETE',`/api/office-services/${id}`);toast('تم الحذف');loadOfficeServices();}
+  catch(e){toast(e.message,'error');}
+}
+
+window.loadOfficeServices=loadOfficeServices;
+window.showAddOfficeService=showAddOfficeService; window.saveOfficeService=saveOfficeService;
+window.showOfficeServiceDetail=showOfficeServiceDetail; window.addOsServiceTask=addOsServiceTask;
+window.updateOsSvcTask=updateOsSvcTask; window.changeOsStatus=changeOsStatus;
+window.deleteOfficeService=deleteOfficeService;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── وثائق الشركة — Company Documents with Expiry Alerts
+// ════════════════════════════════════════════════════════════════════════════
+const DOC_TYPE_LABELS = {
+  tax_card:'البطاقة الضريبية', commercial_reg:'السجل التجاري',
+  vat_cert:'شهادة القيمة المضافة', import_card:'البطاقة الاستيرادية',
+  export_card:'البطاقة التصديرية', power_of_attorney:'التوكيل / التفويض',
+  license:'ترخيص', other:'أخرى'
+};
+
+async function loadCompanyDocs() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+    <div class="stat-card stat-red" onclick="loadCompanyDocs('expired')" style="cursor:pointer">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">مستندات منتهية</div>
+      <div id="cdExpiredCount" style="font-size:26px;font-weight:800;color:#dc2626">—</div>
+    </div>
+    <div class="stat-card stat-purple" onclick="loadCompanyDocs('expiring30')" style="cursor:pointer">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">تنتهي خلال 30 يوم</div>
+      <div id="cdExpiring30Count" style="font-size:26px;font-weight:800;color:#7c3aed">—</div>
+    </div>
+    <div class="stat-card stat-green">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:4px">مستندات سارية</div>
+      <div id="cdActiveCount" style="font-size:26px;font-weight:800;color:#16a34a">—</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="cdClientFilter" class="input" style="width:auto" onchange="loadCompanyDocsForClient()">
+        <option value="">اختر عميل لعرض مستنداته</option>
+      </select>
+      <select id="cdTypeFilter" class="input" style="width:auto" onchange="loadCompanyDocsForClient()">
+        <option value="">جميع الأنواع</option>
+        ${Object.entries(DOC_TYPE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="showAddCompanyDoc()">➕ إضافة مستند</button>
+  </div>
+  <div id="cdAlerts" style="margin-bottom:16px"></div>
+  <div id="cdList">${skeletonTable(5,6)}</div>`;
+
+  // Load clients for filter
+  try {
+    const cls = await api('GET','/api/clients?page_size=500');
+    const items = cls.items||cls;
+    const sel = document.getElementById('cdClientFilter');
+    if(sel) items.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o);});
+  } catch(e){}
+
+  // Load alerts (expired & expiring soon)
+  try {
+    const [expired, expiring] = await Promise.all([
+      api('GET','/api/company-documents/expired').catch(()=>[]),
+      api('GET','/api/company-documents/expiring?days=30').catch(()=>[]),
+    ]);
+    const ec = document.getElementById('cdExpiredCount');
+    const e3 = document.getElementById('cdExpiring30Count');
+    if(ec) ec.textContent = expired.length;
+    if(e3) e3.textContent = expiring.length;
+
+    const alerts = document.getElementById('cdAlerts');
+    if(alerts && (expired.length||expiring.length)) {
+      alerts.innerHTML = `
+        ${expired.length?`<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">⚠️</span>
+          <div><strong style="color:#dc2626">${expired.length} مستند منتهي الصلاحية!</strong>
+          <div style="font-size:12px;color:#991b1b;margin-top:3px">${expired.slice(0,3).map(d=>`${d.client_id?'':''}${escH(d.doc_name||d.doc_type_label)} (انتهى ${d.expiry_date})`).join(' — ')}</div></div>
+        </div>`:''}
+        ${expiring.length?`<div style="background:#fef9c3;border:1px solid #fde047;border-radius:10px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">🔔</span>
+          <div><strong style="color:#a16207">${expiring.length} مستند ينتهي خلال 30 يوم</strong>
+          <div style="font-size:12px;color:#854d0e;margin-top:3px">${expiring.slice(0,3).map(d=>`${escH(d.doc_name||d.doc_type_label)} (${d.days_until_expiry} يوم)`).join(' — ')}</div></div>
+        </div>`:''} `;
+    }
+  } catch(e){}
+
+  loadCompanyDocsForClient();
+}
+
+async function loadCompanyDocsForClient() {
+  const clientId = document.getElementById('cdClientFilter')?.value;
+  const docType  = document.getElementById('cdTypeFilter')?.value||'';
+  const el = document.getElementById('cdList');
+  if(!el) return;
+
+  if(!clientId) {
+    el.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:#94a3b8">
+      <div style="font-size:48px;margin-bottom:12px">📜</div>
+      <div>اختر عميلاً من القائمة أعلاه لعرض مستنداته</div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = skeletonTable(4,5);
+  try {
+    let docs = await api('GET',`/api/company-documents/client/${clientId}`);
+    if(docType) docs = docs.filter(d=>d.doc_type===docType);
+    if(!docs.length){
+      el.innerHTML=`<div class="card" style="padding:30px;text-align:center;color:#94a3b8">لا توجد مستندات لهذا العميل</div>`;
+      return;
+    }
+    el.innerHTML=`<div class="card"><table>
+      <thead><tr><th>النوع</th><th>الرقم</th><th>تاريخ الإصدار</th><th>تاريخ الانتهاء</th><th>الحالة</th><th>الأيام المتبقية</th><th>إجراءات</th></tr></thead>
+      <tbody>${docs.map(d=>`
+        <tr>
+          <td><strong>${escH(d.doc_type_label)}</strong>${d.doc_name&&d.doc_name!==d.doc_type_label?`<br><span style="font-size:11px;color:#94a3b8">${escH(d.doc_name)}</span>`:''}</td>
+          <td>${d.doc_number||'—'}</td>
+          <td>${d.issue_date||'—'}</td>
+          <td>${d.expiry_date||'—'}</td>
+          <td>${d.status==='expired'?'<span class="badge badge-red">منتهي</span>':d.status==='expiring_soon'?'<span class="badge badge-yellow">ينتهي قريباً</span>':'<span class="badge badge-green">ساري</span>'}</td>
+          <td>${d.days_until_expiry!=null?`<span style="color:${d.days_until_expiry<0?'#dc2626':d.days_until_expiry<=30?'#d97706':'#16a34a'};font-weight:600">${d.days_until_expiry<0?`منذ ${-d.days_until_expiry} يوم`:d.days_until_expiry+' يوم'}</span>`:'—'}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="deleteCompanyDoc(${d.id})">حذف</button></td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+  } catch(e){toast(e.message,'error');}
+}
+
+async function showAddCompanyDoc() {
+  let clients = [];
+  try { const r=await api('GET','/api/clients?page_size=500'); clients=r.items||r; } catch(e){}
+  openModal(`
+  <h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">📜 إضافة مستند</h3>
+  <div style="display:grid;gap:14px">
+    <div><label>العميل *</label>
+      <select id="cdAddClient" class="input">
+        <option value="">اختر عميل</option>
+        ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+      </select></div>
+    <div><label>نوع المستند *</label>
+      <select id="cdAddType" class="input">
+        ${Object.entries(DOC_TYPE_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+      </select></div>
+    <div><label>رقم المستند</label><input id="cdAddNum" class="input" placeholder="مثال: 123456"/></div>
+    <div class="form-row">
+      <div><label>تاريخ الإصدار</label><input id="cdAddIssue" class="input" type="date"/></div>
+      <div><label>تاريخ الانتهاء</label><input id="cdAddExpiry" class="input" type="date"/></div>
+    </div>
+    <div><label>ملاحظات</label><textarea id="cdAddNotes" class="input" rows="2"></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveCompanyDoc()">💾 حفظ</button>
+    </div>
+  </div>`);
+}
+
+async function saveCompanyDoc() {
+  const clientId = v('cdAddClient');
+  if(!clientId){toast('اختر العميل','error');return;}
+  const fd = new FormData();
+  fd.append('doc_type', v('cdAddType'));
+  fd.append('doc_number', v('cdAddNum'));
+  if(v('cdAddIssue'))  fd.append('issue_date',  v('cdAddIssue'));
+  if(v('cdAddExpiry')) fd.append('expiry_date', v('cdAddExpiry'));
+  if(v('cdAddNotes'))  fd.append('notes',        v('cdAddNotes'));
+  try {
+    await fetchWithAuth(`/api/company-documents/client/${clientId}`, {method:'POST', body:fd});
+    closeModal(); toast('تم إضافة المستند'); loadCompanyDocs();
+  } catch(e){toast(e.message,'error');}
+}
+
+async function deleteCompanyDoc(id) {
+  if(!await confirmDlg('حذف هذا المستند؟','')) return;
+  try{await api('DELETE',`/api/company-documents/${id}`);toast('تم الحذف');loadCompanyDocsForClient();}
+  catch(e){toast(e.message,'error');}
+}
+
+// Helper for multipart fetch
+function fetchWithAuth(url, opts={}) {
+  const base = window.API_BASE || (window.__MS_DESKTOP_PORT ? `http://127.0.0.1:${window.__MS_DESKTOP_PORT}` : '');
+  const headers = {'Authorization':`Bearer ${token}`};
+  if(opts.body instanceof FormData) { /* let browser set content-type */ }
+  else { headers['Content-Type']='application/json'; }
+  return fetch(base+url, {...opts, headers:{...headers,...(opts.headers||{})}})
+    .then(async r=>{if(!r.ok){const e=await r.json().catch(()=>({detail:r.statusText}));throw new Error(e.detail||r.statusText);}return r.json();});
+}
+
+window.loadCompanyDocs=loadCompanyDocs; window.loadCompanyDocsForClient=loadCompanyDocsForClient;
+window.showAddCompanyDoc=showAddCompanyDoc; window.saveCompanyDoc=saveCompanyDoc;
+window.deleteCompanyDoc=deleteCompanyDoc;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── إدارة الملفات والمجلدات — File & Folder Manager
+// ════════════════════════════════════════════════════════════════════════════
+let _folderStack = []; // breadcrumb stack
+
+async function loadFolders(parentId=null, clientId=null) {
+  const main = document.getElementById('main');
+  main.className = 'page';
+
+  if(parentId===null && clientId===null) {
+    _folderStack = [];
+  }
+
+  const params = [];
+  if(clientId) params.push(`client_id=${clientId}`);
+  if(parentId) params.push(`parent_id=${parentId}`);
+  else params.push('parent_id=null');
+
+  main.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-secondary btn-sm" onclick="loadFolders(null,null)">🏠 الرئيسية</button>
+      ${_folderStack.map((f,i)=>`<span style="color:#94a3b8">›</span><button class="btn btn-secondary btn-sm" onclick="loadFolders(${f.id},null)">${escH(f.name)}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="showCreateFolder(${parentId||'null'})">📁 مجلد جديد</button>
+      <button class="btn btn-primary btn-sm" onclick="showUploadFile(${parentId||'null'})">⬆️ رفع ملف</button>
+    </div>
+  </div>
+  <div id="folderGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px">${skeletonTable(2,3)}</div>
+  <div style="font-weight:700;color:#1a2472;margin-bottom:10px">الملفات</div>
+  <div id="fileList" class="card">${skeletonTable(3,4)}</div>`;
+
+  try {
+    const url = `/api/folders?${params.join('&')}`;
+    const folders = await api('GET', url);
+    const grid = document.getElementById('folderGrid');
+    if(grid) {
+      grid.innerHTML = folders.length ? folders.map(f=>`
+        <div onclick="drillIntoFolder(${f.id},'${escH(f.name)}')" style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:18px;cursor:pointer;text-align:center;transition:all .15s;box-shadow:0 1px 4px rgba(0,0,0,.05)" onmouseover="this.style.borderColor='#1a2472';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#e8edf3';this.style.transform=''">
+          <div style="font-size:40px;margin-bottom:8px">📁</div>
+          <div style="font-weight:600;font-size:13px;color:#1e293b">${escH(f.name)}</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px">${f.file_count} ملف</div>
+          <button onclick="event.stopPropagation();deleteFolderItem(${f.id})" style="margin-top:8px;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:11px">🗑️ حذف</button>
+        </div>`).join('') : '<div style="color:#94a3b8;text-align:center;padding:30px;grid-column:1/-1">لا توجد مجلدات فرعية</div>';
+    }
+  } catch(e){}
+
+  try {
+    const filesUrl = `/api/folders/files/list${parentId?`?folder_id=${parentId}`:''}`;
+    const files = await api('GET', filesUrl);
+    const el = document.getElementById('fileList');
+    if(el) {
+      el.innerHTML = files.length ? `<table>
+        <thead><tr><th>الاسم</th><th>الحجم</th><th>النوع</th><th>رُفع بواسطة</th><th>التاريخ</th><th>إجراءات</th></tr></thead>
+        <tbody>${files.map(f=>`
+          <tr>
+            <td>📄 ${escH(f.original_name||f.name)}</td>
+            <td>${f.file_size?Math.round(f.file_size/1024)+' KB':'—'}</td>
+            <td><span style="font-size:11px;background:#f3f4f6;padding:2px 8px;border-radius:6px">${f.mime_type||'—'}</span></td>
+            <td>${escH(f.uploader_name||'—')}</td>
+            <td>${f.created_at?f.created_at.slice(0,10):'—'}</td>
+            <td><button class="btn btn-sm btn-danger" onclick="deleteFileItem(${f.id})">🗑️</button></td>
+          </tr>`).join('')}
+        </tbody></table>` : `<div style="padding:30px;text-align:center;color:#94a3b8">لا توجد ملفات في هذا المجلد</div>`;
+    }
+  } catch(e){}
+}
+
+function drillIntoFolder(folderId, folderName) {
+  _folderStack.push({id:folderId,name:folderName});
+  loadFolders(folderId, null);
+}
+
+function showCreateFolder(parentId) {
+  openModal(`
+  <h3 style="margin:0 0 16px;font-size:15px;font-weight:800;color:#1e293b">📁 مجلد جديد</h3>
+  <div style="margin-bottom:14px"><label>اسم المجلد *</label><input id="newFolderName" class="input" placeholder="مثال: عقود 2024"/></div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="createFolder(${parentId||'null'})">💾 إنشاء</button>
+  </div>`);
+}
+
+async function createFolder(parentId) {
+  const name = v('newFolderName');
+  if(!name){toast('أدخل اسم المجلد','error');return;}
+  try{
+    await api('POST','/api/folders',{name, parent_id:parentId||null});
+    closeModal(); toast('تم إنشاء المجلد');
+    loadFolders(parentId,null);
+  }catch(e){toast(e.message,'error');}
+}
+
+function showUploadFile(folderId) {
+  openModal(`
+  <h3 style="margin:0 0 16px;font-size:15px;font-weight:800;color:#1e293b">⬆️ رفع ملف</h3>
+  <div style="margin-bottom:14px">
+    <label>الملف *</label>
+    <input id="uploadFileInput" class="input" type="file"/>
+  </div>
+  <div style="margin-bottom:14px"><label>وصف (اختياري)</label><input id="uploadFileDesc" class="input" placeholder="وصف الملف"/></div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="uploadFileToFolder(${folderId||'null'})">⬆️ رفع</button>
+  </div>`);
+}
+
+async function uploadFileToFolder(folderId) {
+  const input = document.getElementById('uploadFileInput');
+  if(!input?.files?.length){toast('اختر ملفاً','error');return;}
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  const desc = v('uploadFileDesc');
+  if(desc) fd.append('description',desc);
+  try{
+    const url = folderId ? `/api/folders/${folderId}/upload` : '/api/folders/upload';
+    await fetchWithAuth(url,{method:'POST',body:fd});
+    closeModal(); toast('تم رفع الملف');
+    loadFolders(folderId,null);
+  }catch(e){toast(e.message,'error');}
+}
+
+async function deleteFolderItem(id) {
+  if(!await confirmDlg('حذف هذا المجلد؟','سيتم حذف المجلد وجميع محتوياته')) return;
+  try{await api('DELETE',`/api/folders/${id}`);toast('تم الحذف');const p=_folderStack[_folderStack.length-2];loadFolders(p?.id||null,null);}
+  catch(e){toast(e.message,'error');}
+}
+
+async function deleteFileItem(id) {
+  if(!await confirmDlg('حذف هذا الملف؟','')) return;
+  try{await api('DELETE',`/api/folders/files/${id}`);toast('تم الحذف');const p=_folderStack[_folderStack.length-1];loadFolders(p?.id||null,null);}
+  catch(e){toast(e.message,'error');}
+}
+
+window.loadFolders=loadFolders; window.drillIntoFolder=drillIntoFolder;
+window.showCreateFolder=showCreateFolder; window.createFolder=createFolder;
+window.showUploadFile=showUploadFile; window.uploadFileToFolder=uploadFileToFolder;
+window.deleteFolderItem=deleteFolderItem; window.deleteFileItem=deleteFileItem;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── سجل المراجعة — Audit Trail
+// ════════════════════════════════════════════════════════════════════════════
+async function loadAuditTrail() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <select id="atModule" class="input" style="width:auto" onchange="fetchAuditLogs()">
+      <option value="">جميع الوحدات</option>
+      ${['clients','invoices','tasks','documents','company_documents','folders','office_services','permissions','client_portal'].map(m=>`<option value="${m}">${m}</option>`).join('')}
+    </select>
+    <select id="atAction" class="input" style="width:auto" onchange="fetchAuditLogs()">
+      <option value="">جميع الإجراءات</option>
+      <option value="create">إنشاء</option>
+      <option value="update">تعديل</option>
+      <option value="delete">حذف</option>
+      <option value="view">عرض</option>
+      <option value="export">تصدير</option>
+    </select>
+    <button class="btn btn-secondary btn-sm" onclick="fetchAuditLogs()">🔄 تحديث</button>
+  </div>
+  <div id="auditList" class="card">${skeletonTable(5,6)}</div>`;
+  fetchAuditLogs();
+}
+
+async function fetchAuditLogs() {
+  const module = document.getElementById('atModule')?.value||'';
+  const action = document.getElementById('atAction')?.value||'';
+  let url='/api/audit-logs?page_size=100';
+  if(module) url+=`&module=${module}`;
+  if(action) url+=`&action=${action}`;
+  const el=document.getElementById('auditList');
+  if(!el) return;
+  try{
+    const {items,total}=await api('GET',url);
+    const ACTION_ICONS={create:'➕',update:'✏️',delete:'🗑️',view:'👁️',export:'📤',approve:'✅'};
+    el.innerHTML=`<table>
+      <thead><tr><th>التاريخ والوقت</th><th>المستخدم</th><th>الإجراء</th><th>الوحدة</th><th>السجل</th><th>IP</th></tr></thead>
+      <tbody>${(items||[]).map(l=>`
+        <tr>
+          <td style="white-space:nowrap;font-size:12px">${l.created_at?l.created_at.replace('T',' ').slice(0,19):''}</td>
+          <td>${escH(l.user_name||'النظام')}</td>
+          <td><span style="display:flex;align-items:center;gap:4px">${ACTION_ICONS[l.action]||'•'} ${l.action}</span></td>
+          <td><span style="background:#eef1fb;color:#1a2472;padding:2px 8px;border-radius:6px;font-size:12px">${l.module}</span></td>
+          <td>${escH(l.record_name||String(l.record_id||'—'))}</td>
+          <td style="font-size:11px;color:#94a3b8">${l.ip_address||'—'}</td>
+        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:30px">لا توجد سجلات</td></tr>'}
+      </tbody></table>
+      <div style="padding:12px 16px;font-size:12px;color:#94a3b8;border-top:1px solid #f3f4f6">إجمالي: ${total||0} سجل</div>`;
+  }catch(e){el.innerHTML=`<div style="padding:30px;text-align:center;color:#94a3b8">تعذر تحميل السجلات: ${e.message}</div>`;}
+}
+
+window.loadAuditTrail=loadAuditTrail; window.fetchAuditLogs=fetchAuditLogs;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── بوابة العملاء — Client Portal Management
+// ════════════════════════════════════════════════════════════════════════════
+async function loadClientPortal() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `
+  <div style="background:linear-gradient(135deg,#0f172a,#1a2472);border-radius:16px;padding:24px;color:white;margin-bottom:20px">
+    <div style="font-size:32px;margin-bottom:8px">🔑</div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:4px">بوابة العملاء</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.6)">أنشئ حسابات دخول للعملاء لمتابعة ملفاتهم ومستحقاتهم</div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <button class="btn btn-primary" onclick="showCreatePortalUser()">➕ إنشاء حساب عميل</button>
+  </div>
+  <div id="portalList" class="card">${skeletonTable(5,5)}</div>`;
+  fetchPortalUsers();
+}
+
+async function fetchPortalUsers() {
+  const el = document.getElementById('portalList');
+  if(!el) return;
+  try{
+    const users = await api('GET','/api/portal/users');
+    if(!users.length){
+      el.innerHTML=`<div style="padding:40px;text-align:center;color:#94a3b8">
+        <div style="font-size:48px;margin-bottom:12px">🔑</div>
+        <div>لا توجد حسابات بوابة بعد</div>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="showCreatePortalUser()">➕ إنشاء أول حساب</button>
+      </div>`;
+      return;
+    }
+    el.innerHTML=`<table>
+      <thead><tr><th>العميل</th><th>اسم المستخدم</th><th>الحالة</th><th>الصلاحيات</th><th>آخر دخول</th><th>إجراءات</th></tr></thead>
+      <tbody>${users.map(u=>`
+        <tr>
+          <td><strong>${escH(u.client_name||'—')}</strong></td>
+          <td><code style="background:#f3f4f6;padding:2px 8px;border-radius:6px;font-size:13px">${escH(u.username)}</code></td>
+          <td>${u.is_active?'<span class="badge badge-green">نشط</span>':'<span class="badge badge-red">معطل</span>'}</td>
+          <td style="font-size:12px">
+            ${u.can_see_invoices?'💳 ':''} ${u.can_see_files?'📁 ':''}${u.can_see_obligations?'📋 ':''}${u.can_see_tasks?'✅ ':''}${u.can_see_reports?'📊 ':''}
+          </td>
+          <td style="font-size:12px;color:#94a3b8">${u.last_login?u.last_login.slice(0,16).replace('T',' '):'لم يدخل بعد'}</td>
+          <td>
+            <button class="btn btn-sm btn-secondary" onclick="showEditPortalUser(${u.id})">تعديل</button>
+            <button class="btn btn-sm btn-danger" style="margin-right:4px" onclick="togglePortalUser(${u.id},${!u.is_active})">${u.is_active?'تعطيل':'تفعيل'}</button>
+            <button class="btn btn-sm btn-danger" style="margin-right:4px" onclick="deletePortalUser(${u.id})">حذف</button>
+          </td>
+        </tr>`).join('')}
+      </tbody></table>`;
+  }catch(e){el.innerHTML=`<div style="padding:30px;text-align:center;color:#94a3b8">خطأ: ${e.message}</div>`;}
+}
+
+async function showCreatePortalUser() {
+  let clients=[];
+  try{const r=await api('GET','/api/clients?page_size=500');clients=r.items||r;}catch(e){}
+  openModal(`
+  <h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">🔑 إنشاء حساب عميل</h3>
+  <div style="display:grid;gap:14px">
+    <div><label>العميل *</label>
+      <select id="puClient" class="input"><option value="">اختر عميل</option>
+        ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+      </select></div>
+    <div><label>اسم المستخدم *</label><input id="puUsername" class="input" placeholder="مثال: client_abc"/></div>
+    <div><label>كلمة المرور *</label><input id="puPassword" class="input" type="password" placeholder="كلمة مرور قوية"/></div>
+    <div style="border:1px solid #e8edf3;border-radius:10px;padding:14px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:10px">الصلاحيات</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:6px"><input id="puFil" type="checkbox" checked/> رؤية الملفات</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="puInv" type="checkbox" checked/> رؤية الفواتير</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="puObl" type="checkbox" checked/> رؤية الالتزامات</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="puRep" type="checkbox" checked/> رؤية التقارير</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="puTsk" type="checkbox"/> رؤية المهام</label>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="savePortalUser()">💾 إنشاء</button>
+    </div>
+  </div>`);
+}
+
+async function savePortalUser() {
+  const client_id=v('puClient');
+  const username=v('puUsername');
+  const password=v('puPassword');
+  if(!client_id||!username||!password){toast('يجب ملء جميع الحقول الإلزامية','error');return;}
+  const body={
+    client_id:+client_id, username, password,
+    can_see_files: document.getElementById('puFil')?.checked,
+    can_see_invoices: document.getElementById('puInv')?.checked,
+    can_see_obligations: document.getElementById('puObl')?.checked,
+    can_see_reports: document.getElementById('puRep')?.checked,
+    can_see_tasks: document.getElementById('puTsk')?.checked,
+  };
+  try{await api('POST','/api/portal/users',body);closeModal();toast('تم إنشاء الحساب');fetchPortalUsers();}
+  catch(e){toast(e.message,'error');}
+}
+
+async function showEditPortalUser(id) {
+  openModal(`
+  <h3 style="margin:0 0 16px;font-size:15px;font-weight:800;color:#1e293b">✏️ تعديل حساب البوابة</h3>
+  <div style="display:grid;gap:14px">
+    <div><label>كلمة مرور جديدة (اتركها فارغة لعدم التغيير)</label><input id="epuPass" class="input" type="password" placeholder="كلمة مرور جديدة..."/></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="updatePortalUser(${id})">💾 حفظ</button>
+    </div>
+  </div>`);
+}
+
+async function updatePortalUser(id) {
+  const pwd=v('epuPass');
+  if(!pwd){closeModal();return;}
+  try{await api('PUT',`/api/portal/users/${id}`,{password:pwd});closeModal();toast('تم تحديث كلمة المرور');}
+  catch(e){toast(e.message,'error');}
+}
+
+async function togglePortalUser(id, isActive) {
+  try{await api('PUT',`/api/portal/users/${id}`,{is_active:isActive});toast(isActive?'تم التفعيل':'تم التعطيل');fetchPortalUsers();}
+  catch(e){toast(e.message,'error');}
+}
+
+async function deletePortalUser(id) {
+  if(!await confirmDlg('حذف هذا الحساب؟','')) return;
+  try{await api('DELETE',`/api/portal/users/${id}`);toast('تم الحذف');fetchPortalUsers();}
+  catch(e){toast(e.message,'error');}
+}
+
+window.loadClientPortal=loadClientPortal; window.fetchPortalUsers=fetchPortalUsers;
+window.showCreatePortalUser=showCreatePortalUser; window.savePortalUser=savePortalUser;
+window.showEditPortalUser=showEditPortalUser; window.updatePortalUser=updatePortalUser;
+window.togglePortalUser=togglePortalUser; window.deletePortalUser=deletePortalUser;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── إدارة الصلاحيات — Permissions Management
+// ════════════════════════════════════════════════════════════════════════════
+const MODULE_LABELS = {
+  dashboard:'الرئيسية', clients:'العملاء', invoices:'الفواتير',
+  tasks:'المهام', documents:'الأرشيف', tax:'الضرائب',
+  accounting:'المحاسبة', payroll:'الرواتب', fixed_assets:'الأصول',
+  reports:'التقارير', leads:'العملاء المحتملين', quotations:'عروض الأسعار',
+  obligations:'الالتزامات', collection:'التحصيلات', postal:'البوسطة',
+  statements:'الميزانيات', timesheet:'التايم شيت', settlements:'التسويات',
+  eta:'منظومة الضرائب', users:'المستخدمين', settings:'الإعدادات',
+  company_documents:'وثائق الشركة', office_services:'خدمات المكتب',
+  folders:'الملفات', audit_logs:'سجل المراجعة', client_portal:'بوابة العملاء'
+};
+
+async function loadPermissions() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `
+  <div style="background:#fef9c3;border:1px solid #fde047;border-radius:12px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#854d0e;display:flex;align-items:center;gap:10px">
+    <span style="font-size:18px">🛡️</span>
+    <div>هذه الصفحة لإدارة صلاحيات المستخدمين لكل وحدة. المدير يملك صلاحيات كاملة دائماً ولا يمكن تقييده.</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <label style="font-weight:600;font-size:13px">اختر مستخدم:</label>
+    <select id="permUserSelect" class="input" style="width:auto;min-width:200px" onchange="loadUserPermissions()">
+      <option value="">اختر...</option>
+    </select>
+  </div>
+  <div id="permMatrix"></div>`;
+
+  try{
+    const users=await api('GET','/api/users');
+    const sel=document.getElementById('permUserSelect');
+    if(sel)(users.items||users).filter(u=>u.role!=='admin').forEach(u=>{
+      const o=document.createElement('option');
+      o.value=u.id; o.textContent=`${u.name} (${u.role})`;
+      sel.appendChild(o);
+    });
+  }catch(e){}
+}
+
+async function loadUserPermissions() {
+  const userId = document.getElementById('permUserSelect')?.value;
+  const el = document.getElementById('permMatrix');
+  if(!el) return;
+  if(!userId){el.innerHTML='';return;}
+
+  el.innerHTML = `<div style="text-align:center;padding:30px"><div class="spinner" style="margin:0 auto"></div></div>`;
+
+  try{
+    const perms = await api('GET',`/api/permissions/user/${userId}`);
+    const modules = await api('GET','/api/permissions/modules');
+    const permMap = Object.fromEntries((perms||[]).map(p=>[p.module,p]));
+
+    const cols = ['can_view','can_add','can_edit','can_delete','can_export','can_approve'];
+    const colLabels = {can_view:'عرض',can_add:'إضافة',can_edit:'تعديل',can_delete:'حذف',can_export:'تصدير',can_approve:'اعتماد'};
+
+    el.innerHTML = `
+    <div class="card" style="overflow-x:auto">
+      <table id="permTable">
+        <thead><tr>
+          <th>الوحدة</th>
+          ${cols.map(c=>`<th style="text-align:center">${colLabels[c]}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${(modules.modules||[]).map(m=>{
+            const p = permMap[m]||{};
+            return `<tr>
+              <td><strong>${MODULE_LABELS[m]||m}</strong><br><span style="font-size:11px;color:#94a3b8">${m}</span></td>
+              ${cols.map(c=>`<td style="text-align:center">
+                <input type="checkbox" data-module="${m}" data-perm="${c}" ${p[c]?'checked':''} style="width:16px;height:16px;accent-color:#1a2472" onchange="permCheckChange(this)"/>
+              </td>`).join('')}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-primary" onclick="savePermissions(${userId})">💾 حفظ الصلاحيات</button>
+    </div>`;
+  }catch(e){el.innerHTML=`<div style="padding:30px;text-align:center;color:#94a3b8">خطأ: ${e.message}</div>`;}
+}
+
+function permCheckChange(cb) {
+  // If checking any action, also check "view"
+  if(cb.dataset.perm!=='can_view' && cb.checked) {
+    const viewCb = document.querySelector(`input[data-module="${cb.dataset.module}"][data-perm="can_view"]`);
+    if(viewCb) viewCb.checked = true;
+  }
+}
+
+async function savePermissions(userId) {
+  const cbs = document.querySelectorAll('#permTable input[type=checkbox]');
+  const permMap = {};
+  cbs.forEach(cb=>{
+    if(!permMap[cb.dataset.module]) permMap[cb.dataset.module]={module:cb.dataset.module};
+    permMap[cb.dataset.module][cb.dataset.perm]=cb.checked;
+  });
+  const permissions = Object.values(permMap);
+  try{
+    await api('POST','/api/permissions/bulk',{user_id:+userId,permissions});
+    toast('✅ تم حفظ الصلاحيات');
+  }catch(e){toast(e.message,'error');}
+}
+
+window.loadPermissions=loadPermissions; window.loadUserPermissions=loadUserPermissions;
+window.permCheckChange=permCheckChange; window.savePermissions=savePermissions;
 </script>
 </body>
 </html>
