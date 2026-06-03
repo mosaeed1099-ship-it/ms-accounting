@@ -286,9 +286,9 @@ const API = (() => {
   // Direct file:// open or MS_DESKTOP_PORT injected by Electron main process
   if (window.location.protocol === 'file:' || window.__MS_DESKTOP_PORT)
     return `http://127.0.0.1:${window.__MS_DESKTOP_PORT || 8765}`;
-  // localhost dev server
+  // Served by backend directly (desktop /app route) or localhost dev
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    return `http://${window.location.hostname}:8000`;
+    return `http://${window.location.hostname}:${window.location.port || 8765}`;
   // production: api.domain.com
   return `https://${window.location.hostname.replace(/^[^.]+\./, 'api.')}`;
 })();
