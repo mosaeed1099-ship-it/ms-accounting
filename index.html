@@ -291,6 +291,7 @@ let chartInstances = {};
 // ── Utilities ──────────────────────────────────────
 const $ = (s,c=document) => c.querySelector(s);
 const $$ = (s,c=document) => [...c.querySelectorAll(s)];
+const v = id => (document.getElementById(id)||{}).value||'';
 
 async function api(method, path, body=null, {retries=1, retryDelay=1500}={}) {
   const opts = {
@@ -1356,7 +1357,7 @@ async function loadClients() {
   const main=document.getElementById('main');
   if(main&&!clientsData.length){main.className='page';main.innerHTML=skeletonTable(5,7);}
   try {
-    const p = new URLSearchParams({limit:'100'});
+    const p = new URLSearchParams({page_size:'100'});
     if(clientFilter && clientFilter!=='all') p.append('status', clientFilter);
     if(clientSearch) p.append('q', clientSearch);
     const data = await api('GET',`/api/clients?${p}`);
@@ -1794,7 +1795,7 @@ async function loadInvoices() {
   const main=document.getElementById('main');
   if(main&&!invoicesData.length){main.className='page';main.innerHTML=skeletonTable(5,8);}
   try {
-    const p = new URLSearchParams({limit:'100'});
+    const p = new URLSearchParams({page_size:'100'});
     if(invoiceFilter && invoiceFilter!=='all') p.append('status', invoiceFilter);
     const data=await api('GET',`/api/invoices?${p}`);
     if(!data) return;
@@ -1866,7 +1867,7 @@ function renderInvoices() {
 async function showInvoiceModal(id=null, preClientId=null) {
   let inv=null, clients=[];
   try {
-    clients=(await api('GET','/api/clients?limit=200'))?.items||[];
+    clients=(await api('GET','/api/clients?page_size=200'))?.items||[];
     if(id) inv=invoicesData.find(x=>x.id===id);
   } catch(e){toast(e.message,'error');return}
 
@@ -2018,7 +2019,7 @@ async function loadTasks() {
   main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
   try {
     const [taskRes, userRes] = await Promise.all([
-      api('GET', '/api/tasks?limit=200'),
+      api('GET', '/api/tasks?page_size=200'),
       api('GET', '/api/users').catch(() => []),
     ]);
     tasksData       = taskRes?.items || [];
@@ -2135,8 +2136,8 @@ async function openEmployeeTasks(empId, empName) {
   main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
   try {
     const res = empId
-      ? await api('GET', `/api/tasks?assigned_to=${empId}&limit=200`)
-      : await api('GET', '/api/tasks?limit=200');
+      ? await api('GET', `/api/tasks?assigned_to=${empId}&page_size=200`)
+      : await api('GET', '/api/tasks?page_size=200');
     tasksData = (res?.items || []).filter(t => empId === 0 ? !t.assigned_to : true);
     renderEmployeeTasks();
   } catch(e) { toast(e.message, 'error'); }
@@ -2299,7 +2300,7 @@ async function showTaskModal(id=null) {
   const defaultAssignee = _taskEmpFilter?.id || null;
 
   let clients=[];
-  try { clients=(await api('GET','/api/clients?limit=200'))?.items||[]; } catch(e){}
+  try { clients=(await api('GET','/api/clients?page_size=200'))?.items||[]; } catch(e){}
   const users = tasksUsersData;
 
   const overlay=document.createElement('div');
@@ -2829,7 +2830,7 @@ window.driveShowStep=driveShowStep;
 
 async function showUploadModal(preClientId=null) {
   let clients=[];
-  try { const d=await api('GET','/api/clients?limit=200'); clients=d?.items||[]; } catch(e){}
+  try { const d=await api('GET','/api/clients?page_size=200'); clients=d?.items||[]; } catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.innerHTML=`<div class="modal" style="max-width:460px">
@@ -2918,7 +2919,7 @@ let taxData=[];
 
 async function loadTax() {
   try {
-    const data=await api('GET','/api/tax?limit=100');
+    const data=await api('GET','/api/tax?page_size=100');
     if(!data) return;
     taxData=data.items||[];
     renderTax();
@@ -2972,7 +2973,7 @@ async function submitTaxReturn(id) {
 function showTaxModal(id=null) {
   const t=id?taxData.find(x=>x.id===id):null;
   let clients=[];
-  api('GET','/api/clients?limit=200').then(d=>clients=d?.items||[]).catch(()=>{});
+  api('GET','/api/clients?page_size=200').then(d=>clients=d?.items||[]).catch(()=>{});
   setTimeout(()=>{
     const overlay=document.createElement('div');
     overlay.className='modal-overlay';
@@ -4032,7 +4033,7 @@ async function deactivateEmployee(userId) {
 
 async function showAssignTaskModal(userId, userName) {
   let clients=[];
-  try{const r=await api('GET','/api/clients?limit=200');clients=Array.isArray(r)?r:(r.items||[]);}catch(e){}
+  try{const r=await api('GET','/api/clients?page_size=200');clients=Array.isArray(r)?r:(r.items||[]);}catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
@@ -4198,7 +4199,7 @@ function renderCollections(summary) {
 
 async function showCollectionModal(type='establishment') {
   let clients=[];
-  try{const d=await api('GET','/api/clients?limit=200');clients=d?.items||[];}catch(e){}
+  try{const d=await api('GET','/api/clients?page_size=200');clients=d?.items||[];}catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.innerHTML=`<div class="modal" style="max-width:560px">
@@ -8474,12 +8475,12 @@ async function saveNewEmployee() {
   const name = document.getElementById('empNameInp')?.value?.trim();
   const balance = parseFloat(document.getElementById('empBalInp')?.value || '0');
   const notes = document.getElementById('empNoteInp')?.value?.trim();
-  if (!name) { alert('ادخل اسم الموظف'); return; }
+  if (!name) { toast('ادخل اسم الموظف','error'); return; }
   try {
     await api('POST', '/api/settlements/employees', {employee_name:name, amount:balance, notes});
     closeModal();
     loadSettlements();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 function showCustodyTopup(empName) {
@@ -8509,12 +8510,12 @@ async function saveCustodyTopup() {
   const empName = document.getElementById('topupEmpName')?.value;
   const amount = parseFloat(document.getElementById('topupAmt')?.value || '0');
   const notes = document.getElementById('topupNote')?.value?.trim();
-  if (!amount || amount <= 0) { alert('ادخل مبلغ صحيح'); return; }
+  if (!amount || amount <= 0) { toast('ادخل مبلغ صحيح','error'); return; }
   try {
     await api('POST', '/api/settlements/custody/topup', {employee_name:empName, amount, notes});
     closeModal();
     if (_settleEmp) renderEmpSettlements(); else loadSettlements();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 function showAddSettlement() {
@@ -8629,7 +8630,7 @@ async function showEditSettlement(id) {
     (s.expense_items || []).forEach(item => addStlItem(item.description, item.amount));
     if (!s.expense_items || s.expense_items.length === 0) addStlItem();
     calcStlTotal();
-  } catch(e) { alert('خطأ في تحميل التسوية: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 async function saveEditSettlement(id) {
@@ -8637,7 +8638,7 @@ async function saveEditSettlement(id) {
   const reason  = document.getElementById('stlReason')?.value?.trim();
   const custody = parseFloat(document.getElementById('stlCustody')?.value||0);
   const notes   = document.getElementById('stlNotes')?.value?.trim();
-  if (!date) { alert('اختر التاريخ'); return; }
+  if (!date) { toast('اختر التاريخ','error'); return; }
 
   const expense_items = [];
   document.getElementById('stlItemsList')?.querySelectorAll('div[id^="stlItem_"]').forEach(row => {
@@ -8646,7 +8647,7 @@ async function saveEditSettlement(id) {
     const amount = parseFloat(inputs[1]?.value||0);
     if (desc || amount > 0) expense_items.push({description: desc||'—', amount});
   });
-  if (expense_items.length === 0) { alert('أضف بند واحد على الأقل'); return; }
+  if (expense_items.length === 0) { toast('أضف بند واحد على الأقل','error'); return; }
 
   try {
     await api('PUT', `/api/settlements/${id}`, {
@@ -8655,7 +8656,7 @@ async function saveEditSettlement(id) {
     });
     closeModal();
     renderEmpSettlements();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 let _stlItemCount = 0;
@@ -8702,7 +8703,7 @@ async function saveSettlement() {
   const reason  = document.getElementById('stlReason')?.value?.trim();
   const custody = parseFloat(document.getElementById('stlCustody')?.value||0);
   const notes   = document.getElementById('stlNotes')?.value?.trim();
-  if (!date) { alert('اختر التاريخ'); return; }
+  if (!date) { toast('اختر التاريخ','error'); return; }
 
   // اجمع البنود من الصفوف الديناميكية
   const expense_items = [];
@@ -8715,7 +8716,7 @@ async function saveSettlement() {
       if (desc || amount > 0) expense_items.push({description: desc || '—', amount});
     });
   }
-  if (expense_items.length === 0) { alert('أضف بند واحد على الأقل'); return; }
+  if (expense_items.length === 0) { toast('أضف بند واحد على الأقل','error'); return; }
   try {
     await api('POST', '/api/settlements', {
       employee_name: _settleEmp.name,
@@ -8723,7 +8724,7 @@ async function saveSettlement() {
     });
     closeModal();
     renderEmpSettlements();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 async function deleteSettlement(id) {
@@ -8731,7 +8732,7 @@ async function deleteSettlement(id) {
   try {
     await api('DELETE', `/api/settlements/${id}`);
     renderEmpSettlements();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -8833,7 +8834,7 @@ async function renderAppointments() {
 
 async function showAddAppointment() {
   let clients = [];
-  try { clients = await api('GET','/api/clients?limit=200'); } catch(e){}
+  try { clients = await api('GET','/api/clients?page_size=200'); } catch(e){}
   const today = new Date().toISOString().split('T')[0];
   const html = `
   <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
@@ -8891,19 +8892,19 @@ async function saveAppointment() {
   const emp      = document.getElementById('apptEmp')?.value?.trim();
   const loc      = document.getElementById('apptLoc')?.value?.trim();
   const desc     = document.getElementById('apptDesc')?.value?.trim();
-  if (!title||!date) { alert('ادخل العنوان والتاريخ'); return; }
+  if (!title||!date) { toast('ادخل العنوان والتاريخ','error'); return; }
   try {
     await api('POST', '/api/appointments', {title, client_id:clientId?+clientId:null, client_name:clientName||null, appt_date:date, appt_time:time||null, employee_name:emp||null, location:loc||null, description:desc||null});
     closeModal();
     renderAppointments();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 async function updateApptStatus(id, status) {
   try {
     await api('PATCH', `/api/appointments/${id}/status`, {status});
     renderAppointments();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 async function deleteAppt(id) {
@@ -8911,7 +8912,7 @@ async function deleteAppt(id) {
   try {
     await api('DELETE', `/api/appointments/${id}`);
     renderAppointments();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -9054,7 +9055,7 @@ async function renderGovernmentPapers() {
 
 async function showAddPaper(existingPaper) {
   let clients = [];
-  try { clients = await api('GET','/api/clients?limit=200'); } catch(e){}
+  try { clients = await api('GET','/api/clients?page_size=200'); } catch(e){}
   const clientArr = Array.isArray(clients)?clients:clients.clients||[];
   const paperTypes = ['بطاقة ضريبية','سجل تجاري','شهادة ض.ق.م','بطاقة رقم قومي','عقد إيجار','ترخيص تجاري','بيان قيد','ختم الشركة','توكيل رسمي','عقد شركة','شهادة استثمار','أخرى'];
   const p = existingPaper || {};
@@ -9123,7 +9124,7 @@ async function showEditPaper(id) {
     const papers = await api('GET', '/api/government-papers');
     const p = papers.find(x=>x.id===id);
     if (p) showAddPaper(p);
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 async function savePaper(existingId) {
@@ -9135,7 +9136,7 @@ async function savePaper(existingId) {
   const expiry    = document.getElementById('paperExpiry')?.value;
   const hasCopy   = document.getElementById('paperHasCopy')?.checked;
   const notes     = document.getElementById('paperNotes')?.value?.trim();
-  if (!clientId) { alert('اختر العميل'); return; }
+  if (!clientId) { toast('اختر العميل','error'); return; }
   const clientEl2 = document.getElementById('paperClient');
   const clientNameVal = clientEl2?.options[clientEl2.selectedIndex]?.text || null;
   const body = {client_id:+clientId, client_name:clientNameVal, paper_type:paperType, paper_number:paperNum||null, status, issue_date:issue||null, expiry_date:expiry||null, has_copy:hasCopy, notes:notes||null};
@@ -9147,7 +9148,7 @@ async function savePaper(existingId) {
     }
     closeModal();
     renderGovernmentPapers();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 async function deletePaper(id) {
@@ -9155,7 +9156,7 @@ async function deletePaper(id) {
   try {
     await api('DELETE', `/api/government-papers/${id}`);
     renderGovernmentPapers();
-  } catch(e) { alert('خطأ: ' + e.message); }
+  } catch(e) { toast(e.message,'error'); }
 }
 
 window.openClientAccounting = openClientAccounting;
@@ -9426,8 +9427,8 @@ function showAddEmployee2(emp=null) {
 
 async function saveEmployee2() {
   const body = {name:v('eN'),job_title:v('eJT'),department:v('eDept'),hire_date:v('eHD')||null,base_salary:parseFloat(v('eSal')||0),national_id:v('eNID')||null,insurance_number:v('eIns')||null,insurance_share:parseFloat(v('eIS')||11),company_insurance:parseFloat(v('eCI')||18),phone:v('ePh')||null,bank_name:v('eBnk')||null,bank_account:v('eBA')||null};
-  if(!body.name){alert('الاسم مطلوب');return;}
-  try{await api('POST','/api/payroll/employees',body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
+  if(!body.name){toast('الاسم مطلوب','error');return;}
+  try{await api('POST','/api/payroll/employees',body);closeModal();toast('تم الحفظ');loadPayroll();}catch(e){toast(e.message,'error');}
 }
 
 async function showEditEmployee2(id) {
@@ -9437,7 +9438,7 @@ async function showEditEmployee2(id) {
 
 async function saveEditEmployee2(id) {
   const body = {name:v('eN'),job_title:v('eJT'),department:v('eDept'),hire_date:v('eHD')||null,base_salary:parseFloat(v('eSal')||0),national_id:v('eNID')||null,insurance_number:v('eIns')||null,insurance_share:parseFloat(v('eIS')||11),company_insurance:parseFloat(v('eCI')||18),phone:v('ePh')||null,bank_name:v('eBnk')||null,bank_account:v('eBA')||null};
-  try{await api('PUT',`/api/payroll/employees/${id}`,body);closeModal();loadPayroll();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('PUT',`/api/payroll/employees/${id}`,body);closeModal();toast('تم التحديث');loadPayroll();}catch(e){toast(e.message,'error');}
 }
 
 async function deleteEmployee2(id) {
@@ -9464,10 +9465,10 @@ function showAddPayrollRun() {
 
 async function savePayrollRun() {
   const emps = await api('GET', '/api/payroll/employees?status=active');
-  if(!emps.length){alert('لا يوجد موظفون نشطون');return;}
+  if(!emps.length){toast('لا يوجد موظفون نشطون','error');return;}
   const items = emps.map(e=>({employee_id:e.id,base_salary:e.base_salary,allowances:0,overtime:0,bonus:0,deductions_other:0,advances_deduct:0}));
   const body = {month:parseInt(v('prM')),year:parseInt(v('prY')),notes:v('prNotes'),items};
-  try{await api('POST','/api/payroll/runs',body);closeModal();await switchPayrollView('runs');await loadPayrollStats();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('POST','/api/payroll/runs',body);closeModal();toast('تم إنشاء مسير الرواتب');await switchPayrollView('runs');await loadPayrollStats();}catch(e){toast(e.message,'error');}
 }
 
 async function viewPayrollRun(id) {
@@ -9659,8 +9660,8 @@ function showAddAsset(asset=null) {
 
 async function saveAddAsset() {
   const body = {name:v('asN'),category:v('asCat')||null,purchase_date:v('asPD'),purchase_value:parseFloat(v('asPV')||0),useful_life_years:parseFloat(v('asUL')||5),residual_value:parseFloat(v('asRV')||0),depreciation_method:v('asDM'),location:v('asLoc')||null,supplier:v('asSup')||null,serial_number:v('asSN')||null};
-  if(!body.name||!body.purchase_date){alert('الاسم وتاريخ الشراء مطلوبان');return;}
-  try{await api('POST','/api/assets',body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+  if(!body.name||!body.purchase_date){toast('الاسم وتاريخ الشراء مطلوبان','error');return;}
+  try{await api('POST','/api/assets',body);closeModal();toast('تم الحفظ');loadAssetsData();}catch(e){toast(e.message,'error');}
 }
 
 function showEditAsset(id) {
@@ -9670,7 +9671,7 @@ function showEditAsset(id) {
 
 async function saveEditAsset(id) {
   const body = {name:v('asN'),category:v('asCat')||null,purchase_date:v('asPD'),purchase_value:parseFloat(v('asPV')||0),useful_life_years:parseFloat(v('asUL')||5),residual_value:parseFloat(v('asRV')||0),depreciation_method:v('asDM'),location:v('asLoc')||null,supplier:v('asSup')||null,serial_number:v('asSN')||null};
-  try{await api('PUT',`/api/assets/${id}`,body);closeModal();loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+  try{await api('PUT',`/api/assets/${id}`,body);closeModal();toast('تم التحديث');loadAssetsData();}catch(e){toast(e.message,'error');}
 }
 
 function showAssetDepreciation(id) {
@@ -9694,7 +9695,7 @@ async function runDepreciation(id) {
   const month = v('depM') ? parseInt(v('depM')) : null;
   let url = `/api/assets/${id}/depreciate?year=${year}`;
   if(month) url += `&month=${month}`;
-  try{const r=await api('POST',url,{});closeModal();alert(`✅ تم تسجيل إهلاك ${fmtMoney(r.amount)} — القيمة الدفترية الجديدة: ${fmtMoney(r.book_value)}`);loadAssetsData();}catch(e){alert('خطأ: '+e.message);}
+  try{const r=await api('POST',url,{});closeModal();toast(`✅ تم تسجيل إهلاك ${fmtMoney(r.amount)} — القيمة الدفترية: ${fmtMoney(r.book_value)}`,'success');loadAssetsData();}catch(e){toast(e.message,'error');}
 }
 
 async function deleteAsset(id) {
@@ -9972,7 +9973,7 @@ window.refreshFinReport=refreshFinReport;
 
 function exportTableExcel(tableId, sheetName='تقرير') {
   const table = document.getElementById(tableId);
-  if(!table){alert('لا يوجد جدول للتصدير');return;}
+  if(!table){toast('لا يوجد جدول للتصدير','error');return;}
 
   // Build CSV
   let csv = '﻿'; // BOM for Arabic
@@ -9995,7 +9996,7 @@ function exportTableExcel(tableId, sheetName='تقرير') {
 function exportCurrentPage() {
   const table = document.querySelector('#main table');
   const title = document.getElementById('pageTitle')?.textContent || 'تقرير';
-  if(!table){alert('لا يوجد جدول في هذه الصفحة');return;}
+  if(!table){toast('لا يوجد جدول في هذه الصفحة','error');return;}
   const id = table.id || 'exportTable';
   if(!table.id) table.id = id;
   exportTableExcel(id, title);
@@ -10088,7 +10089,7 @@ function renderPostal(counts) {
 
 async function showAddPostal() {
   let clients=[];
-  try{ const d=await api('GET','/api/clients?limit=200'); clients=d.items||[]; }catch{}
+  try{ const d=await api('GET','/api/clients?page_size=200'); clients=d.items||[]; }catch{}
   let users=[];
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   const types=['أوراق تأسيس','سجل تجاري','بطاقة ضريبية','عقد عمل','ميزانية','إقرار ضريبي','فاتورة','مستند آخر'];
@@ -10130,7 +10131,7 @@ async function showAddPostal() {
 async function savePostal() {
   const title=v('ptTitle').trim();
   if(!title){toast('أدخل الموضوع','error');return;}
-  const body={title,document_type:v('ptType'),client_id:v('ptClient')||null,from_person:v('ptFrom'),assigned_to:v('ptAssign')||null,received_date:v('ptDate'),notes:v('ptNotes')};
+  const body={title,document_type:v('ptType'),client_id:+v('ptClient')||null,from_person:v('ptFrom'),assigned_to:+v('ptAssign')||null,received_date:v('ptDate'),notes:v('ptNotes')};
   try{await api('POST','/api/postal',body);closeModal();toast('تم الحفظ');loadPostal();}catch(e){toast(e.message,'error');}
 }
 
@@ -10138,7 +10139,7 @@ async function showEditPostal(id) {
   const m=_postalData.find(x=>x.id===id);
   if(!m) return;
   let clients=[];
-  try{ const d=await api('GET','/api/clients?limit=200'); clients=d.items||[]; }catch{}
+  try{ const d=await api('GET','/api/clients?page_size=200'); clients=d.items||[]; }catch{}
   let users=[];
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   const types=['أوراق تأسيس','سجل تجاري','بطاقة ضريبية','عقد عمل','ميزانية','إقرار ضريبي','فاتورة','مستند آخر'];
@@ -10178,7 +10179,7 @@ async function showEditPostal(id) {
 }
 
 async function updatePostal(id) {
-  const body={title:v('ptTitle').trim(),document_type:v('ptType'),client_id:v('ptClient')||null,from_person:v('ptFrom'),assigned_to:v('ptAssign')||null,received_date:v('ptDate'),notes:v('ptNotes')};
+  const body={title:v('ptTitle').trim(),document_type:v('ptType'),client_id:+v('ptClient')||null,from_person:v('ptFrom'),assigned_to:+v('ptAssign')||null,received_date:v('ptDate'),notes:v('ptNotes')};
   try{await api('PUT',`/api/postal/${id}`,body);closeModal();toast('تم التحديث');loadPostal();}catch(e){toast(e.message,'error');}
 }
 
@@ -10320,7 +10321,7 @@ async function toggleStage(id, stage, val) {
 
 async function showAddStatement() {
   let clients=[];
-  try{ const d=await api('GET','/api/clients?limit=200&status=active'); clients=d.items||[]; }catch{}
+  try{ const d=await api('GET','/api/clients?page_size=200&status=active'); clients=d.items||[]; }catch{}
   let users=[];
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">📑 ميزانية جديدة</h3>
@@ -10535,8 +10536,8 @@ function renderTimesheet(totalHours, stats) {
 
 async function showAddTimeEntry() {
   let tasks=[], clients=[], users=[];
-  try{ const d=await api('GET','/api/tasks?limit=100&status=open'); tasks=d.items||[]; }catch{}
-  try{ const d=await api('GET','/api/clients?limit=200'); clients=d.items||[]; }catch{}
+  try{ const d=await api('GET','/api/tasks?page_size=100&status=open'); tasks=d.items||[]; }catch{}
+  try{ const d=await api('GET','/api/clients?page_size=200'); clients=d.items||[]; }catch{}
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">⏱️ تسجيل ساعات عمل</h3>
   <div class="form-row" style="margin-bottom:14px">
@@ -10576,7 +10577,7 @@ async function saveTimeEntry() {
   const emp=v('tsEmp'), hrs=v('tsHours');
   if(!emp){toast('اختر الموظف','error');return;}
   if(!hrs||+hrs<=0){toast('أدخل الساعات','error');return;}
-  const body={employee_id:+emp,task_id:v('tsTask')||null,client_id:v('tsClient')||null,date:v('tsDate'),hours:+hrs,description:v('tsDesc')};
+  const body={employee_id:+emp,task_id:+v('tsTask')||null,client_id:+v('tsClient')||null,date:v('tsDate'),hours:+hrs,description:v('tsDesc')};
   try{await api('POST','/api/timesheet',body);closeModal();toast('تم التسجيل');loadTimesheet();}catch(e){toast(e.message,'error');}
 }
 
