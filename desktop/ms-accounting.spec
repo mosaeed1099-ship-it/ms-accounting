@@ -3,29 +3,26 @@
 # Run from project root:  pyinstaller desktop/ms-accounting.spec
 
 import os, sys
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 project_root = os.path.dirname(SPECPATH)
 desktop_dir  = os.path.join(project_root, 'desktop')
 backend_dir  = os.path.join(project_root, 'backend')
 
+# ── Collect entire packages that PyInstaller often misses submodules for ──────
+passlib_datas, passlib_bins, passlib_hidden = collect_all('passlib')
+uvicorn_datas, uvicorn_bins, uvicorn_hidden = collect_all('uvicorn')
+
 a = Analysis(
     [os.path.join(desktop_dir, 'launcher.py')],
     pathex=[backend_dir],
-    binaries=[],
-    datas=[
+    binaries=passlib_bins + uvicorn_bins,
+    datas=passlib_datas + uvicorn_datas + [
         # Bundle the entire backend directory inside the executable
         (backend_dir, 'backend'),
     ],
-    hiddenimports=[
-        # Uvicorn internals
-        'uvicorn.logging',
-        'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.loops.asyncio', 'uvicorn.loops.uvloop',
-        'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
-        'uvicorn.protocols.http.h11_impl', 'uvicorn.protocols.http.httptools_impl',
-        'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto',
-        'uvicorn.protocols.websockets.websockets_impl',
-        'uvicorn.lifespan', 'uvicorn.lifespan.on', 'uvicorn.lifespan.off',
-        # SQLAlchemy dialects
+    hiddenimports=passlib_hidden + uvicorn_hidden + [
+        # SQLAlchemy
         'sqlalchemy.dialects.sqlite',
         'sqlalchemy.dialects.postgresql',
         'sqlalchemy.ext.declarative',
@@ -35,16 +32,16 @@ a = Analysis(
         'fastapi.staticfiles', 'fastapi.responses',
         'pydantic', 'pydantic_settings',
         # Security
-        'passlib.handlers.bcrypt', 'passlib.handlers.sha2_crypt',
-        'jose', 'jose.jwt', 'jose.exceptions',
-        'cryptography',
+        'jose', 'jose.jwt', 'jose.exceptions', 'jose.constants',
+        'cryptography', 'cryptography.fernet',
+        'cryptography.hazmat.primitives', 'cryptography.hazmat.backends',
         # Email
         'email.mime', 'email.mime.text', 'email.mime.multipart', 'email.mime.base',
         # Scheduler
         'apscheduler', 'apscheduler.schedulers.background',
         'apscheduler.triggers.interval', 'apscheduler.triggers.cron',
         # App modules (ensure all routers and models are included)
-        'app.models', 'app.routers', 'app.core', 'app.database', 'app.config',
+        'app', 'app.models', 'app.routers', 'app.core', 'app.database', 'app.config',
         'app.models.user', 'app.models.client', 'app.models.invoice',
         'app.models.task', 'app.models.document', 'app.models.tax',
         'app.models.activity', 'app.models.lead', 'app.models.quotation',
@@ -52,14 +49,18 @@ a = Analysis(
         'app.models.accounting', 'app.models.eta', 'app.models.settlement',
         'app.models.payroll', 'app.models.fixed_asset', 'app.models.postal',
         'app.models.statement', 'app.models.timesheet', 'app.models.client_contact',
-        # Other
-        'multipart', 'aiofiles', 'resend', 'openpyxl', 'pandas', 'PIL', 'reportlab',
+        # Other deps
+        'multipart', 'aiofiles', 'openpyxl', 'pandas', 'PIL', 'reportlab',
         'requests', 'httpx',
+        # stdlib helpers sometimes missed
+        'email.mime.nonmultipart', 'email.encoders',
+        'multiprocessing.resource_tracker', 'multiprocessing.popen_fork',
+        'multiprocessing.popen_spawn_posix',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'scipy', 'IPython', 'notebook'],
+    excludes=['tkinter', 'matplotlib', 'scipy', 'IPython', 'notebook', 'resend'],
     noarchive=False,
 )
 
@@ -75,7 +76,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,   # No terminal window (set True for debugging)
+    console=False,   # No terminal window (logs go to server.log via launcher.py)
     icon=os.path.join(desktop_dir, 'electron', 'assets', 'icon.ico'),
 )
 

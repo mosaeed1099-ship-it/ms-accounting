@@ -6,6 +6,7 @@ Sets up paths, SQLite DB, and starts FastAPI server.
 import sys
 import os
 import multiprocessing
+import logging
 
 # Required for PyInstaller on Windows
 multiprocessing.freeze_support()
@@ -46,18 +47,46 @@ os.environ.setdefault('DEBUG',         'false')
 
 PORT = int(os.environ.get('PORT', '8765'))
 
+# ─── File logging (critical for PyInstaller bundles with console=False) ────────
+LOG_FILE = os.path.join(DATA_DIR, 'server.log')
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.DEBUG,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+)
+_log = logging.getLogger('launcher')
+
+def _redirect_stdio():
+    """Redirect stdout/stderr to log file (needed with console=False)."""
+    try:
+        import io
+        log_fh = open(LOG_FILE, 'a', buffering=1, encoding='utf-8')
+        sys.stdout = log_fh
+        sys.stderr = log_fh
+    except Exception:
+        pass
 
 def main():
-    import uvicorn
-    print(f"[MS Accounting] Starting on http://127.0.0.1:{PORT}")
-    print(f"[MS Accounting] Database: {DB_PATH}")
-    uvicorn.run(
-        'main:app',
-        host='127.0.0.1',
-        port=PORT,
-        log_level='warning',
-        access_log=False,
-    )
+    _redirect_stdio()
+    _log.info(f"Launcher started. BACKEND_DIR={BACKEND_DIR}")
+    _log.info(f"sys.path[0]={sys.path[0]}")
+    _log.info(f"Starting server on http://127.0.0.1:{PORT}")
+    _log.info(f"Database: {DB_PATH}")
+    try:
+        import uvicorn
+        _log.info("uvicorn imported OK")
+        print(f"[MS Accounting] Starting on http://127.0.0.1:{PORT}")
+        print(f"[MS Accounting] Database: {DB_PATH}")
+        uvicorn.run(
+            'main:app',
+            host='127.0.0.1',
+            port=PORT,
+            log_level='info',
+            access_log=False,
+        )
+    except Exception as e:
+        _log.exception(f"Server crashed: {e}")
+        raise
 
 
 if __name__ == '__main__':
