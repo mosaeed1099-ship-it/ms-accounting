@@ -196,11 +196,35 @@ app.include_router(timesheet_router.router)
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
+# ── Desktop mode: serve the frontend from the backend ────────────────────────
+# When DESKTOP_MODE=1, the backend also serves frontend/index.html at /app
+_DESKTOP_MODE = os.environ.get("DESKTOP_MODE") == "1"
+_FRONTEND_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "frontend")
+)
+
+if _DESKTOP_MODE and os.path.exists(_FRONTEND_DIR):
+    from fastapi.responses import FileResponse as _FileResponse
+    from fastapi.staticfiles import StaticFiles as _SF
+
+    @app.get("/app", include_in_schema=False)
+    async def serve_frontend():
+        return _FileResponse(os.path.join(_FRONTEND_DIR, "index.html"))
+
+    # Serve assets (logo, etc.)
+    if os.path.exists(os.path.join(_FRONTEND_DIR, "assets")):
+        app.mount("/assets", _SF(directory=os.path.join(_FRONTEND_DIR, "assets")), name="frontend_assets")
+
+    logger.info(f"🖥️  Desktop mode: frontend served at http://127.0.0.1/app")
+
 
 # ── Core endpoints ────────────────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
+    if _DESKTOP_MODE:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/app")
     return {"message": "MS Accounting API", "version": settings.APP_VERSION, "status": "running"}
 
 
