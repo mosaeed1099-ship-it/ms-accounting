@@ -281,15 +281,17 @@
 // ── API URL detection ─────────────────────────────────────────────────────────
 // Priority: 1) Electron desktop injection  2) localhost dev  3) production subdomain
 const API = (() => {
-  // Electron desktop mode: preload exposes window.__msDesktop
+  // 1) config.js sets window.MS_API_BASE — always wins on production
+  if (window.MS_API_BASE) return window.MS_API_BASE;
+  // 2) Electron desktop mode: preload exposes window.__msDesktop
   if (window.__msDesktop?.isDesktop) return window.__msDesktop.getApiUrl();
-  // Direct file:// open or MS_DESKTOP_PORT injected by Electron main process
+  // 3) Direct file:// open or MS_DESKTOP_PORT injected by Electron main process
   if (window.location.protocol === 'file:' || window.__MS_DESKTOP_PORT)
     return `http://127.0.0.1:${window.__MS_DESKTOP_PORT || 8765}`;
-  // Served by backend directly (desktop /app route) or localhost dev
+  // 4) localhost dev
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     return `http://${window.location.hostname}:${window.location.port || 8765}`;
-  // production: api.domain.com
+  // 5) fallback: api.domain.com
   return `https://${window.location.hostname.replace(/^[^.]+\./, 'api.')}`;
 })();
 let token = localStorage.getItem('ms_token');
@@ -11124,7 +11126,7 @@ async function deleteCompanyDoc(id) {
 
 // Helper for multipart fetch
 function fetchWithAuth(url, opts={}) {
-  const base = window.API_BASE || (window.__MS_DESKTOP_PORT ? `http://127.0.0.1:${window.__MS_DESKTOP_PORT}` : '');
+  const base = API; // Uses the module-level API constant (which checks window.MS_API_BASE first)
   const headers = {'Authorization':`Bearer ${token}`};
   if(opts.body instanceof FormData) { /* let browser set content-type */ }
   else { headers['Content-Type']='application/json'; }
