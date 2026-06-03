@@ -196,6 +196,13 @@ def _run_migrations_pg():
         "ALTER TABLE financial_statements ADD COLUMN IF NOT EXISTS period VARCHAR(50) DEFAULT 'annual'",
         # ── التايم شيت (Time Entries) ─────────────────────────────────────────
         "ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
+        # ── Client extended profile (Point 4) ────────────────────────────────
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS trade_name VARCHAR(200)",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS legal_entity VARCHAR(100)",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS company_status VARCHAR(30) DEFAULT 'active'",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS activity_start_date DATE",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS activity_end_date DATE",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferred_lang VARCHAR(5) DEFAULT 'ar'",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -227,6 +234,13 @@ def _run_migrations_sqlite():
         ("documents", "gdrive_thumb_url", "TEXT"),
         ("documents", "gdrive_mime_type", "TEXT"),
         ("documents", "gdrive_folder_path", "TEXT"),
+        # ── Client extended profile ───────────────────────────────────────────
+        ("clients", "trade_name", "TEXT"),
+        ("clients", "legal_entity", "TEXT"),
+        ("clients", "company_status", "TEXT DEFAULT 'active'"),
+        ("clients", "activity_start_date", "TEXT"),
+        ("clients", "activity_end_date", "TEXT"),
+        ("clients", "preferred_lang", "TEXT DEFAULT 'ar'"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:

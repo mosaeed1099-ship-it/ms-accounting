@@ -32,3 +32,4 @@ class User(Base):
     tasks_assigned = relationship("Task", back_populates="assigned_to_user", foreign_keys="Task.assigned_to")
     tasks_created = relationship("Task", back_populates="created_by_user", foreign_keys="Task.created_by")
     activities = relationship("ActivityLog", back_populates="user")
+    permissions = relationship("UserPermission", back_populates="user", cascade="all, delete-orphan")

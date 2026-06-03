@@ -24,9 +24,22 @@ from app.routers import reports as reports_router
 from app.routers import postal as postal_router
 from app.routers import statements as statements_router
 from app.routers import timesheet as timesheet_router
+from app.routers import permissions as permissions_router
+from app.routers import company_documents as company_documents_router
+from app.routers import audit_logs as audit_logs_router
+from app.routers import folders as folders_router
+from app.routers import client_portal as client_portal_router
+from app.routers import office_services as office_services_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
+# Import new models so create_all registers their tables
+import app.models.permission          # noqa: F401
+import app.models.company_document    # noqa: F401
+import app.models.audit_log           # noqa: F401
+import app.models.folder              # noqa: F401
+import app.models.client_portal       # noqa: F401
+import app.models.office_service      # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +205,12 @@ app.include_router(reports_router.router)
 app.include_router(postal_router.router)
 app.include_router(statements_router.router)
 app.include_router(timesheet_router.router)
+app.include_router(permissions_router.router)
+app.include_router(company_documents_router.router)
+app.include_router(audit_logs_router.router)
+app.include_router(folders_router.router)
+app.include_router(client_portal_router.router)
+app.include_router(office_services_router.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

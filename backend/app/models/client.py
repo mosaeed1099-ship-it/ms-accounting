@@ -99,6 +99,15 @@ class Client(Base):
     contract_end = Column(Date)
     contract_renewal_date = Column(Date)
 
+    # Extended Company Profile (Point 4)
+    trade_name          = Column(String(200))          # السمة التجارية
+    legal_entity        = Column(String(100))          # الكيان القانوني
+    company_status      = Column(String(30), default="active")  # active|inactive|under_establishment
+    activity_start_date = Column(Date)
+    activity_end_date   = Column(Date)
+    # language preference for this client
+    preferred_lang      = Column(String(5), default="ar")
+
     # System
     notes = Column(Text)
     tags = Column(String(500))
@@ -117,3 +126,6 @@ class Client(Base):
     contacts = relationship("ClientContact", back_populates="client")
     activities = relationship("ActivityLog", back_populates="client")
     collections = relationship("CollectionContract", back_populates="client", cascade="all, delete-orphan")
+    company_documents = relationship("CompanyDocument", back_populates="client", cascade="all, delete-orphan")
+    office_services   = relationship("OfficeService", back_populates="client", cascade="all, delete-orphan")
+    portal_user       = relationship("ClientPortalUser", back_populates="client", uselist=False, cascade="all, delete-orphan")
