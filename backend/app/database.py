@@ -188,6 +188,14 @@ def _run_migrations_pg():
         "ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
         "ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS depreciation_method VARCHAR(30) DEFAULT 'straight_line'",
         "ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS last_dep_date DATE",
+        # ── البوسطة (Internal Mail) ───────────────────────────────────────────
+        "ALTER TABLE internal_mails ADD COLUMN IF NOT EXISTS document_type VARCHAR(100)",
+        "ALTER TABLE internal_mails ADD COLUMN IF NOT EXISTS from_person VARCHAR(200)",
+        # ── الميزانيات (Financial Statements) ────────────────────────────────
+        "ALTER TABLE financial_statements ADD COLUMN IF NOT EXISTS statement_type VARCHAR(50) DEFAULT 'balance'",
+        "ALTER TABLE financial_statements ADD COLUMN IF NOT EXISTS period VARCHAR(50) DEFAULT 'annual'",
+        # ── التايم شيت (Time Entries) ─────────────────────────────────────────
+        "ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

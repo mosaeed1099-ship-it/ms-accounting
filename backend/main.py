@@ -21,6 +21,9 @@ from app.routers.settlements import router as settlements_router, appt_router, p
 from app.routers import payroll as payroll_router
 from app.routers import fixed_assets as assets_router
 from app.routers import reports as reports_router
+from app.routers import postal as postal_router
+from app.routers import statements as statements_router
+from app.routers import timesheet as timesheet_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -186,6 +189,9 @@ app.include_router(papers_router)
 app.include_router(payroll_router.router)
 app.include_router(assets_router.router)
 app.include_router(reports_router.router)
+app.include_router(postal_router.router)
+app.include_router(statements_router.router)
+app.include_router(timesheet_router.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

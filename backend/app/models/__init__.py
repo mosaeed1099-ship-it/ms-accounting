@@ -20,6 +20,9 @@ from app.models.eta import ETACredential, ETADocument
 from app.models.settlement import EmployeeCustody, EmployeeSettlement, Appointment, GovernmentPaper
 from app.models.payroll import Employee, PayrollRun, PayrollItem
 from app.models.fixed_asset import FixedAsset, AssetDepreciation
+from app.models.postal import InternalMail
+from app.models.statement import FinancialStatement
+from app.models.timesheet import TimeEntry
 
 __all__ = [
     "User", "UserRole",

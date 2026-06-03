@@ -508,7 +508,10 @@ const navItems = [
   {id:'fin_reports'  ,icon:'📈',label:'التقارير المالية'},
   {id:'tax'          ,icon:'🧾',label:'الإقرارات'},
   {id:'tasks'        ,icon:'✅',label:'المهام'},
+  {id:'timesheet'    ,icon:'⏱️',label:'التايم شيت'},
   {id:'obligations'  ,icon:'🔔',label:'الالتزامات الضريبية'},
+  {id:'statements'   ,icon:'📑',label:'الميزانيات'},
+  {id:'postal'       ,icon:'📬',label:'البوسطة'},
   {id:'documents'    ,icon:'📁',label:'الأرشيف'},
   {id:'appointments' ,icon:'📅',label:'المواعيد'},
   {id:'papers'       ,icon:'📄',label:'الأوراق الحكومية'},
@@ -522,8 +525,8 @@ const navItems = [
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
   {label:'CRM & المبيعات', items:['clients','leads','quotations','establishment']},
-  {label:'المالية', items:['invoices','collections','fin_reports','tax']},
-  {label:'التشغيل', items:['tasks','obligations','documents','appointments','papers']},
+  {label:'المالية', items:['invoices','collections','fin_reports','tax','statements']},
+  {label:'التشغيل', items:['tasks','timesheet','obligations','postal','documents','appointments','papers']},
   {label:'الموارد البشرية', items:['payroll','settlements','assets']},
   {label:'الإدارة', items:['mail','settings']},
 ];
@@ -988,13 +991,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية',accounting:'المحاسبة',payroll:'الرواتب والموظفين',assets:'الأصول الثابتة',fin_reports:'التقارير المالية'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية',accounting:'المحاسبة',payroll:'الرواتب والموظفين',assets:'الأصول الثابتة',fin_reports:'التقارير المالية',postal:'البوسطة',statements:'الميزانيات',timesheet:'التايم شيت'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports,postal:loadPostal,statements:loadStatements,timesheet:loadTimesheet};
   if(pages[page]) pages[page]();
 }
 
@@ -10006,6 +10009,607 @@ function fmtMoney(n){
   if(!n&&n!==0) return '—';
   return new Intl.NumberFormat('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:2}).format(n) + ' ج.م';
 }
+
+// ══════════════════════════════════════════════════════
+// ── 📬 البوسطة (Internal Mail Tracker) ────────────────
+// ══════════════════════════════════════════════════════
+let _postalData=[], _postalStatus='all';
+
+async function loadPostal() {
+  const main=document.getElementById('main');
+  main.className='page';
+  main.innerHTML=skeletonTable(4,5);
+  try {
+    const p = _postalStatus!=='all' ? `?status=${_postalStatus}` : '';
+    const data = await api('GET', `/api/postal${p}`);
+    _postalData = data.items||[];
+    const counts = data.counts||{open:0,within:0,closed:0};
+    renderPostal(counts);
+  } catch(e){ toast(e.message,'error'); }
+}
+
+function renderPostal(counts) {
+  const main=document.getElementById('main');
+  const statusLabel={open:'مفتوح',within:'استُلم',closed:'مغلق'};
+  const statusBadge={open:'badge-blue',within:'badge-yellow',closed:'badge-green'};
+  const statusColor={open:'#1a2472',within:'#d97706',closed:'#16a34a'};
+  main.innerHTML=`
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+    ${[['open','📬','مفتوح','#eef1fb','#1a2472'],['within','📩','استُلم','#fffbeb','#d97706'],['closed','✅','مغلق','#f0fdf4','#16a34a']].map(([s,ic,lb,bg,cl])=>`
+    <div onclick="_postalStatus='${s}';loadPostal()" style="background:${bg};border-radius:14px;padding:16px 20px;cursor:pointer;border:2px solid ${_postalStatus===s?cl:'transparent'};transition:all .15s">
+      <div style="font-size:24px;margin-bottom:4px">${ic}</div>
+      <div style="font-size:22px;font-weight:800;color:${cl}">${counts[s]||0}</div>
+      <div style="font-size:12px;color:#64748b">${lb}</div>
+    </div>`).join('')}
+  </div>
+  <!-- Toolbar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:8px">
+      ${['all','open','within','closed'].map(s=>`<button onclick="_postalStatus='${s}';loadPostal()" class="btn btn-sm ${_postalStatus===s?'btn-primary':'btn-secondary'}">${{all:'الكل',open:'مفتوح',within:'استُلم',closed:'مغلق'}[s]}</button>`).join('')}
+    </div>
+    <button class="btn btn-primary" onclick="showAddPostal()">+ بوسطة جديدة</button>
+  </div>
+  <!-- Table -->
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>الموضوع</th><th>نوع المستند</th><th>العميل</th><th>من</th><th>مكلف لـ</th><th>تاريخ الاستلام</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+      <tbody>
+        ${_postalData.length===0?`<tr><td colspan="8" style="text-align:center;padding:50px;color:#94a3b8">
+          <div style="font-size:40px;margin-bottom:10px">📬</div>
+          <div style="font-weight:700;color:#475569;margin-bottom:6px">لا توجد بوسطة</div>
+          <div style="font-size:12px">اضغط "+ بوسطة جديدة" لتسجيل أوراق جديدة</div>
+        </td></tr>`:_postalData.map(m=>`
+        <tr>
+          <td style="font-weight:600;color:#1e293b">${escH(m.title)}</td>
+          <td><span class="badge badge-gray">${m.document_type||'—'}</span></td>
+          <td style="color:#374151">${m.client_name||'—'}</td>
+          <td style="color:#374151">${escH(m.from_person||'—')}</td>
+          <td style="color:#374151">${m.assignee_name||'—'}</td>
+          <td style="color:#374151">${m.received_date||'—'}</td>
+          <td>
+            <select onchange="changePostalStatus(${m.id},this.value)" class="input" style="padding:4px 8px;font-size:12px;width:auto;border-color:${statusColor[m.status]||'#d1d5db'}">
+              <option value="open" ${m.status==='open'?'selected':''}>📬 مفتوح</option>
+              <option value="within" ${m.status==='within'?'selected':''}>📩 استُلم</option>
+              <option value="closed" ${m.status==='closed'?'selected':''}>✅ مغلق</option>
+            </select>
+          </td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm" onclick="showEditPostal(${m.id})" title="تعديل">✏️</button>
+              <button class="btn btn-danger btn-sm" onclick="deletePostal(${m.id})" title="حذف">🗑️</button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+async function showAddPostal() {
+  let clients=[];
+  try{ const d=await api('GET','/api/clients?limit=200'); clients=d.items||[]; }catch{}
+  let users=[];
+  try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
+  const types=['أوراق تأسيس','سجل تجاري','بطاقة ضريبية','عقد عمل','ميزانية','إقرار ضريبي','فاتورة','مستند آخر'];
+  openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">📬 بوسطة جديدة</h3>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>الموضوع / الوصف *</label><input id="ptTitle" class="input" placeholder="مثال: أوراق تأسيس شركة XYZ"/></div>
+    <div class="form-group"><label>نوع المستند</label>
+      <select id="ptType" class="input">
+        <option value="">-- اختر --</option>
+        ${types.map(t=>`<option>${t}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>العميل</label>
+      <select id="ptClient" class="input">
+        <option value="">-- اختر --</option>
+        ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>من (صاحب الأوراق)</label><input id="ptFrom" class="input" placeholder="اسم الشخص أو الجهة"/></div>
+  </div>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>مكلف لـ</label>
+      <select id="ptAssign" class="input">
+        <option value="">-- اختر --</option>
+        ${users.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>تاريخ الاستلام</label><input id="ptDate" class="input" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+  </div>
+  <div style="margin-bottom:18px"><label>ملاحظات</label><textarea id="ptNotes" class="input" rows="2" placeholder="أي ملاحظات إضافية..."></textarea></div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="savePostal()">💾 حفظ</button>
+  </div>`);
+}
+
+async function savePostal() {
+  const title=v('ptTitle').trim();
+  if(!title){toast('أدخل الموضوع','error');return;}
+  const body={title,document_type:v('ptType'),client_id:v('ptClient')||null,from_person:v('ptFrom'),assigned_to:v('ptAssign')||null,received_date:v('ptDate'),notes:v('ptNotes')};
+  try{await api('POST','/api/postal',body);closeModal();toast('تم الحفظ');loadPostal();}catch(e){toast(e.message,'error');}
+}
+
+async function showEditPostal(id) {
+  const m=_postalData.find(x=>x.id===id);
+  if(!m) return;
+  let clients=[];
+  try{ const d=await api('GET','/api/clients?limit=200'); clients=d.items||[]; }catch{}
+  let users=[];
+  try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
+  const types=['أوراق تأسيس','سجل تجاري','بطاقة ضريبية','عقد عمل','ميزانية','إقرار ضريبي','فاتورة','مستند آخر'];
+  openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">✏️ تعديل البوسطة</h3>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>الموضوع *</label><input id="ptTitle" class="input" value="${escH(m.title)}"/></div>
+    <div class="form-group"><label>نوع المستند</label>
+      <select id="ptType" class="input">
+        <option value="">-- اختر --</option>
+        ${types.map(t=>`<option ${m.document_type===t?'selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>العميل</label>
+      <select id="ptClient" class="input">
+        <option value="">-- اختر --</option>
+        ${clients.map(c=>`<option value="${c.id}" ${m.client_id===c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>من</label><input id="ptFrom" class="input" value="${escH(m.from_person||'')}"/></div>
+  </div>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>مكلف لـ</label>
+      <select id="ptAssign" class="input">
+        <option value="">-- اختر --</option>
+        ${users.map(u=>`<option value="${u.id}" ${m.assigned_to===u.id?'selected':''}>${escH(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>تاريخ الاستلام</label><input id="ptDate" class="input" type="date" value="${m.received_date||''}"/></div>
+  </div>
+  <div style="margin-bottom:18px"><label>ملاحظات</label><textarea id="ptNotes" class="input" rows="2">${escH(m.notes||'')}</textarea></div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="updatePostal(${id})">💾 حفظ</button>
+  </div>`);
+}
+
+async function updatePostal(id) {
+  const body={title:v('ptTitle').trim(),document_type:v('ptType'),client_id:v('ptClient')||null,from_person:v('ptFrom'),assigned_to:v('ptAssign')||null,received_date:v('ptDate'),notes:v('ptNotes')};
+  try{await api('PUT',`/api/postal/${id}`,body);closeModal();toast('تم التحديث');loadPostal();}catch(e){toast(e.message,'error');}
+}
+
+async function changePostalStatus(id, newStatus) {
+  try{await api('PUT',`/api/postal/${id}`,{status:newStatus});toast('تم تحديث الحالة');loadPostal();}catch(e){toast(e.message,'error');}
+}
+
+async function deletePostal(id) {
+  if(!await confirmDlg('حذف هذه البوسطة نهائياً؟','تأكيد الحذف')) return;
+  try{await api('DELETE',`/api/postal/${id}`);toast('تم الحذف');loadPostal();}catch(e){toast(e.message,'error');}
+}
+
+window.loadPostal=loadPostal; window.showAddPostal=showAddPostal; window.savePostal=savePostal;
+window.showEditPostal=showEditPostal; window.updatePostal=updatePostal;
+window.changePostalStatus=changePostalStatus; window.deletePostal=deletePostal;
+
+
+// ══════════════════════════════════════════════════════
+// ── 📑 الميزانيات (Financial Statements Tracker) ──────
+// ══════════════════════════════════════════════════════
+let _stmtData=[], _stmtYear=new Date().getFullYear();
+
+async function loadStatements() {
+  const main=document.getElementById('main');
+  main.className='page';
+  main.innerHTML=skeletonTable(5,6);
+  try {
+    const data = await api('GET',`/api/statements?year=${_stmtYear}`);
+    _stmtData = data.items||[];
+    renderStatements(data.summary||{});
+  } catch(e){ toast(e.message,'error'); }
+}
+
+function renderStatements(summary) {
+  const main=document.getElementById('main');
+  const pct = summary.total>0 ? Math.round(summary.done/summary.total*100) : 0;
+  const stages=[
+    {key:'is_printed', label:'طُبعت', icon:'🖨️', color:'#1a2472'},
+    {key:'is_sent',    label:'ذهبت للشركة', icon:'📤', color:'#d97706'},
+    {key:'is_signed',  label:'رجعت موقعة', icon:'✍️', color:'#7c3aed'},
+    {key:'is_archived',label:'نزلت الأرشيف', icon:'📁', color:'#16a34a'},
+  ];
+  main.innerHTML=`
+  <!-- Progress Banner -->
+  <div style="background:linear-gradient(135deg,#0f172a,#1a2472);border-radius:18px;padding:22px 28px;margin-bottom:20px;color:white">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:4px">إجمالي الميزانيات</div>
+        <div style="font-size:28px;font-weight:800">${summary.total||0} ميزانية</div>
+      </div>
+      <div style="display:flex;gap:16px">
+        <div style="text-align:center;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);padding:10px 18px;border-radius:12px">
+          <div style="font-size:22px;font-weight:800;color:#4ade80">${summary.done||0}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6)">مكتمل</div>
+        </div>
+        <div style="text-align:center;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.25);padding:10px 18px;border-radius:12px">
+          <div style="font-size:22px;font-weight:800;color:#fde68a">${summary.remaining||0}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6)">باقي</div>
+        </div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.12);border-radius:99px;height:8px;overflow:hidden;margin-bottom:6px">
+      <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#4ade80,#22c55e);border-radius:99px;transition:width 1s ease"></div>
+    </div>
+    <div style="font-size:12px;color:rgba(255,255,255,.5);text-align:left">${pct}% مكتمل</div>
+  </div>
+
+  <!-- Toolbar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <label style="font-size:13px;font-weight:600;color:#374151">السنة:</label>
+      <select onchange="_stmtYear=+this.value;loadStatements()" class="input" style="width:100px">
+        ${[new Date().getFullYear(),new Date().getFullYear()-1,new Date().getFullYear()-2].map(y=>`<option ${_stmtYear===y?'selected':''}>${y}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="showAddStatement()">+ ميزانية جديدة</button>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr>
+        <th>العميل</th><th>السنة</th><th>النوع</th>
+        <th style="text-align:center">🖨️ طُبعت</th>
+        <th style="text-align:center">📤 ذهبت</th>
+        <th style="text-align:center">✍️ رجعت</th>
+        <th style="text-align:center">📁 أُرشفت</th>
+        <th>التقدم</th><th>إجراءات</th>
+      </tr></thead>
+      <tbody>
+        ${_stmtData.length===0?`<tr><td colspan="9" style="text-align:center;padding:50px;color:#94a3b8">
+          <div style="font-size:40px;margin-bottom:10px">📑</div>
+          <div style="font-weight:700;color:#475569;margin-bottom:6px">لا توجد ميزانيات</div>
+          <div style="font-size:12px">اضغط "+ ميزانية جديدة" للبدء</div>
+        </td></tr>`:_stmtData.map(s=>{
+          const done=s.stages_done;
+          const pctS=Math.round(done/4*100);
+          const pctColor=done===4?'#16a34a':done>=2?'#d97706':'#dc2626';
+          return `<tr>
+            <td style="font-weight:600;color:#1e293b">${escH(s.client_name||'—')}</td>
+            <td style="font-weight:700;color:#1a2472">${s.year}</td>
+            <td><span class="badge badge-blue">${{balance:'ميزانية',tax:'إقرار ضريبي',other:'أخرى'}[s.statement_type]||s.statement_type}</span></td>
+            ${stages.map(st=>`
+            <td style="text-align:center">
+              <button onclick="toggleStage(${s.id},'${st.key}',${!s[st.key]})" style="background:${s[st.key]?'#dcfce7':'#f1f5f9'};border:none;cursor:pointer;border-radius:8px;padding:6px 10px;font-size:16px;transition:all .15s" title="${st.label}">
+                ${s[st.key]?'✅':'⬜'}
+              </button>
+            </td>`).join('')}
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;background:#f1f5f9;border-radius:99px;height:6px;min-width:60px">
+                  <div style="height:100%;width:${pctS}%;background:${pctColor};border-radius:99px;transition:width .5s"></div>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:${pctColor}">${done}/4</span>
+              </div>
+            </td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-secondary btn-sm" onclick="showEditStatement(${s.id})" title="تعديل">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteStatement(${s.id})" title="حذف">🗑️</button>
+              </div>
+            </td>
+          </tr>`;}).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+async function toggleStage(id, stage, val) {
+  try {
+    const s = await api('PUT',`/api/statements/${id}/stage`,{stage,value:val});
+    const idx=_stmtData.findIndex(x=>x.id===id);
+    if(idx>=0) _stmtData[idx]=s;
+    // re-render summary
+    const done=_stmtData.filter(x=>x.is_archived).length;
+    renderStatements({total:_stmtData.length,done,remaining:_stmtData.length-done});
+  } catch(e){toast(e.message,'error');}
+}
+
+async function showAddStatement() {
+  let clients=[];
+  try{ const d=await api('GET','/api/clients?limit=200&status=active'); clients=d.items||[]; }catch{}
+  let users=[];
+  try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
+  openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">📑 ميزانية جديدة</h3>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>العميل *</label>
+      <select id="stClient" class="input">
+        <option value="">-- اختر العميل --</option>
+        ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>السنة *</label>
+      <select id="stYear" class="input">
+        ${[new Date().getFullYear(),new Date().getFullYear()-1,new Date().getFullYear()-2].map(y=>`<option ${y===_stmtYear?'selected':''}>${y}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>النوع</label>
+      <select id="stType" class="input">
+        <option value="balance">ميزانية</option>
+        <option value="tax">إقرار ضريبي</option>
+        <option value="other">أخرى</option>
+      </select>
+    </div>
+    <div class="form-group"><label>الفترة</label>
+      <select id="stPeriod" class="input">
+        <option value="annual">سنوي</option>
+        <option value="semi">نصف سنوي</option>
+        <option value="quarterly">ربع سنوي</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-row" style="margin-bottom:18px">
+    <div class="form-group"><label>مكلف لـ</label>
+      <select id="stAssign" class="input">
+        <option value="">-- اختر --</option>
+        ${users.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>ملاحظات</label><input id="stNotes" class="input" placeholder="اختياري"/></div>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="saveStatement()">💾 حفظ</button>
+  </div>`);
+}
+
+async function saveStatement() {
+  const client_id=v('stClient');
+  if(!client_id){toast('اختر العميل','error');return;}
+  const body={client_id:+client_id,year:+v('stYear'),statement_type:v('stType'),period:v('stPeriod'),assigned_to:v('stAssign')||null,notes:v('stNotes')};
+  try{await api('POST','/api/statements',body);closeModal();toast('تم الحفظ');loadStatements();}catch(e){toast(e.message,'error');}
+}
+
+async function showEditStatement(id) {
+  const s=_stmtData.find(x=>x.id===id);
+  if(!s) return;
+  let users=[];
+  try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
+  openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">✏️ تعديل الميزانية — ${escH(s.client_name)}</h3>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>السنة</label>
+      <select id="stYear" class="input">
+        ${[new Date().getFullYear(),new Date().getFullYear()-1,new Date().getFullYear()-2].map(y=>`<option ${s.year===y?'selected':''}>${y}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>النوع</label>
+      <select id="stType" class="input">
+        <option value="balance" ${s.statement_type==='balance'?'selected':''}>ميزانية</option>
+        <option value="tax" ${s.statement_type==='tax'?'selected':''}>إقرار ضريبي</option>
+        <option value="other" ${s.statement_type==='other'?'selected':''}>أخرى</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-row" style="margin-bottom:18px">
+    <div class="form-group"><label>مكلف لـ</label>
+      <select id="stAssign" class="input">
+        <option value="">-- اختر --</option>
+        ${users.map(u=>`<option value="${u.id}" ${s.assigned_to===u.id?'selected':''}>${escH(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>ملاحظات</label><input id="stNotes" class="input" value="${escH(s.notes||'')}"/></div>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="updateStatement(${id})">💾 حفظ</button>
+  </div>`);
+}
+
+async function updateStatement(id) {
+  const body={year:+v('stYear'),statement_type:v('stType'),assigned_to:v('stAssign')||null,notes:v('stNotes')};
+  try{await api('PUT',`/api/statements/${id}`,body);closeModal();toast('تم التحديث');loadStatements();}catch(e){toast(e.message,'error');}
+}
+
+async function deleteStatement(id) {
+  if(!await confirmDlg('حذف هذه الميزانية نهائياً؟','تأكيد الحذف')) return;
+  try{await api('DELETE',`/api/statements/${id}`);toast('تم الحذف');loadStatements();}catch(e){toast(e.message,'error');}
+}
+
+window.loadStatements=loadStatements; window.showAddStatement=showAddStatement; window.saveStatement=saveStatement;
+window.showEditStatement=showEditStatement; window.updateStatement=updateStatement;
+window.toggleStage=toggleStage; window.deleteStatement=deleteStatement;
+
+
+// ══════════════════════════════════════════════════════
+// ── ⏱️ التايم شيت (Timesheet) ─────────────────────────
+// ══════════════════════════════════════════════════════
+let _tsEntries=[], _tsDateFrom='', _tsDateTo='';
+
+async function loadTimesheet() {
+  const main=document.getElementById('main');
+  main.className='page';
+  // default: current week
+  if(!_tsDateFrom) {
+    const now=new Date();
+    const mon=new Date(now); mon.setDate(now.getDate()-now.getDay()+1);
+    _tsDateFrom=mon.toISOString().split('T')[0];
+    _tsDateTo=now.toISOString().split('T')[0];
+  }
+  main.innerHTML=skeletonTable(5,5);
+  try {
+    const [entries, stats] = await Promise.all([
+      api('GET',`/api/timesheet?date_from=${_tsDateFrom}&date_to=${_tsDateTo}`),
+      api('GET',`/api/timesheet/stats?date_from=${_tsDateFrom}&date_to=${_tsDateTo}`).catch(()=>[]),
+    ]);
+    _tsEntries=entries.items||[];
+    renderTimesheet(entries.total_hours||0, stats||[]);
+  } catch(e){ toast(e.message,'error'); }
+}
+
+function renderTimesheet(totalHours, stats) {
+  const main=document.getElementById('main');
+  main.innerHTML=`
+  <!-- Top Stats -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px">
+    <div class="card" style="padding:18px;display:flex;align-items:center;gap:14px">
+      <div style="width:46px;height:46px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">⏱️</div>
+      <div><div style="font-size:22px;font-weight:800;color:#1e293b">${totalHours.toFixed(1)}h</div><div style="font-size:12px;color:#64748b">إجمالي الساعات</div></div>
+    </div>
+    <div class="card" style="padding:18px;display:flex;align-items:center;gap:14px">
+      <div style="width:46px;height:46px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">👥</div>
+      <div><div style="font-size:22px;font-weight:800;color:#16a34a">${stats.length}</div><div style="font-size:12px;color:#64748b">موظفين نشطين</div></div>
+    </div>
+    <div class="card" style="padding:18px;display:flex;align-items:center;gap:14px">
+      <div style="width:46px;height:46px;border-radius:12px;background:#fff1f2;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📋</div>
+      <div><div style="font-size:22px;font-weight:800;color:#dc2626">${_tsEntries.length}</div><div style="font-size:12px;color:#64748b">إدخالات</div></div>
+    </div>
+  </div>
+
+  <!-- Date Filter & Add -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="font-size:13px;font-weight:600;color:#374151">من:</label>
+      <input type="date" class="input" style="width:150px" value="${_tsDateFrom}" oninput="_tsDateFrom=this.value"/>
+      <label style="font-size:13px;font-weight:600;color:#374151">إلى:</label>
+      <input type="date" class="input" style="width:150px" value="${_tsDateTo}" oninput="_tsDateTo=this.value"/>
+      <button class="btn btn-secondary" onclick="loadTimesheet()">🔍 بحث</button>
+    </div>
+    <button class="btn btn-primary" onclick="showAddTimeEntry()">+ تسجيل ساعات</button>
+  </div>
+
+  <!-- Employee Summary Cards -->
+  ${stats.length>0?`
+  <div class="card" style="padding:20px;margin-bottom:20px">
+    <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:14px">📊 ملخص الموظفين</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${stats.map(st=>{
+        const maxH=Math.max(...stats.map(x=>x.total_hours),1);
+        const pct=Math.round(st.total_hours/maxH*100);
+        return `<div style="display:flex;align-items:center;gap:12px">
+          <div style="width:130px;font-size:13px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(st.employee_name)}</div>
+          <div style="flex:1;background:#f1f5f9;border-radius:99px;height:8px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#1a2472,#2563eb);border-radius:99px"></div>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:#1a2472;width:60px;text-align:left">${st.total_hours.toFixed(1)}h</div>
+          <div style="font-size:11px;color:#94a3b8">${st.entries} إدخال</div>
+        </div>`;}).join('')}
+    </div>
+  </div>`:''
+  }
+
+  <!-- Entries Table -->
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>الموظف</th><th>التاريخ</th><th>المهمة</th><th>العميل</th><th>الساعات</th><th>الوصف</th><th>إجراءات</th></tr></thead>
+      <tbody>
+        ${_tsEntries.length===0?`<tr><td colspan="7" style="text-align:center;padding:50px;color:#94a3b8">
+          <div style="font-size:40px;margin-bottom:10px">⏱️</div>
+          <div style="font-weight:700;color:#475569;margin-bottom:6px">لا توجد إدخالات في هذه الفترة</div>
+          <div style="font-size:12px">اضغط "+ تسجيل ساعات" للبدء</div>
+        </td></tr>`:_tsEntries.map(e=>`
+        <tr>
+          <td style="font-weight:600;color:#1e293b">${escH(e.employee_name||'—')}</td>
+          <td style="color:#374151">${dateAr(e.date)}</td>
+          <td style="color:#374151;font-size:12px">${e.task_title?escH(e.task_title):'—'}</td>
+          <td style="color:#374151;font-size:12px">${e.client_name?escH(e.client_name):'—'}</td>
+          <td>
+            <span style="background:#eef1fb;color:#1a2472;font-weight:800;padding:4px 12px;border-radius:99px;font-size:13px">${e.hours}h</span>
+          </td>
+          <td style="color:#374151;font-size:12px;max-width:200px">${e.description?escH(e.description):'—'}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm" onclick="showEditTimeEntry(${e.id})" title="تعديل">✏️</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteTimeEntry(${e.id})" title="حذف">🗑️</button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+async function showAddTimeEntry() {
+  let tasks=[], clients=[], users=[];
+  try{ const d=await api('GET','/api/tasks?limit=100&status=open'); tasks=d.items||[]; }catch{}
+  try{ const d=await api('GET','/api/clients?limit=200'); clients=d.items||[]; }catch{}
+  try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
+  openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">⏱️ تسجيل ساعات عمل</h3>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>الموظف *</label>
+      <select id="tsEmp" class="input">
+        <option value="">-- اختر --</option>
+        ${users.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>التاريخ *</label><input id="tsDate" class="input" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+  </div>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>المهمة</label>
+      <select id="tsTask" class="input">
+        <option value="">-- اختر مهمة --</option>
+        ${tasks.map(t=>`<option value="${t.id}">${escH(t.title)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>العميل</label>
+      <select id="tsClient" class="input">
+        <option value="">-- اختر عميل --</option>
+        ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>الساعات *</label><input id="tsHours" class="input" type="number" min="0.5" max="24" step="0.5" placeholder="مثال: 2.5"/></div>
+    <div class="form-group"><label>وصف العمل</label><input id="tsDesc" class="input" placeholder="ماذا عملت؟"/></div>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="saveTimeEntry()">💾 حفظ</button>
+  </div>`);
+}
+
+async function saveTimeEntry() {
+  const emp=v('tsEmp'), hrs=v('tsHours');
+  if(!emp){toast('اختر الموظف','error');return;}
+  if(!hrs||+hrs<=0){toast('أدخل الساعات','error');return;}
+  const body={employee_id:+emp,task_id:v('tsTask')||null,client_id:v('tsClient')||null,date:v('tsDate'),hours:+hrs,description:v('tsDesc')};
+  try{await api('POST','/api/timesheet',body);closeModal();toast('تم التسجيل');loadTimesheet();}catch(e){toast(e.message,'error');}
+}
+
+async function showEditTimeEntry(id) {
+  const e=_tsEntries.find(x=>x.id===id);
+  if(!e) return;
+  openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">✏️ تعديل الإدخال</h3>
+  <div class="form-row" style="margin-bottom:14px">
+    <div class="form-group"><label>التاريخ</label><input id="tsDate" class="input" type="date" value="${e.date||''}"/></div>
+    <div class="form-group"><label>الساعات *</label><input id="tsHours" class="input" type="number" min="0.5" max="24" step="0.5" value="${e.hours}"/></div>
+  </div>
+  <div style="margin-bottom:18px"><label>وصف العمل</label><input id="tsDesc" class="input" value="${escH(e.description||'')}"/></div>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+    <button class="btn btn-primary" onclick="updateTimeEntry(${id})">💾 حفظ</button>
+  </div>`);
+}
+
+async function updateTimeEntry(id) {
+  const hrs=v('tsHours');
+  if(!hrs||+hrs<=0){toast('أدخل الساعات','error');return;}
+  const body={hours:+hrs,description:v('tsDesc'),date:v('tsDate')};
+  try{await api('PUT',`/api/timesheet/${id}`,body);closeModal();toast('تم التحديث');loadTimesheet();}catch(e){toast(e.message,'error');}
+}
+
+async function deleteTimeEntry(id) {
+  if(!await confirmDlg('حذف هذا الإدخال؟','تأكيد الحذف')) return;
+  try{await api('DELETE',`/api/timesheet/${id}`);toast('تم الحذف');loadTimesheet();}catch(e){toast(e.message,'error');}
+}
+
+window.loadTimesheet=loadTimesheet; window.showAddTimeEntry=showAddTimeEntry; window.saveTimeEntry=saveTimeEntry;
+window.showEditTimeEntry=showEditTimeEntry; window.updateTimeEntry=updateTimeEntry;
+window.deleteTimeEntry=deleteTimeEntry;
 </script>
 </body>
 </html>
