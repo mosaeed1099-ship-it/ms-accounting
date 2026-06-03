@@ -1,0 +1,27 @@
+# DMG artifacts
+dist/
+*.dmg
+*.dmg.blockmap
+
+# Desktop build artifacts
+desktop/backend-dist/
+desktop/build-tmp/
+desktop/electron/node_modules/
+
+# Python artifacts
+backend/venv/
+backend/__pycache__/
+backend/backups/
+backend/desktop_test.db
+backend/uploads/
+backend/{app/
+__pycache__/
+*.pyc
+*.pyo
+
+# Other
+.git/
+.monitor/
+tmp_test2.db
+node_modules/
+frontend/node_modules/
