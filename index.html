@@ -624,6 +624,11 @@ function renderApp() {
               <span id="searchPlaceholder" style="font-size:12px;color:#94a3b8;white-space:nowrap">بحث... (Ctrl+K)</span>
             </div>
           </div>
+          <!-- Language toggle -->
+          <button id="langToggleBtn" onclick="toggleLanguage()" title="تبديل اللغة / Switch Language" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;padding:0 10px;height:38px;cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:#374151;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
+            <span id="langToggleIcon">🌐</span>
+            <span id="langToggleLabel">EN</span>
+          </button>
           <!-- Print button -->
           <button onclick="printCurrentPage()" title="طباعة الصفحة الحالية" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">🖨️</button>
           <!-- Quick compose email button -->
@@ -1504,6 +1509,9 @@ async function showClientDetail(id) {
         ['🔢 الرقم الضريبي',c.tax_number||'—'],['🏢 السجل التجاري',c.commercial_register||'—'],
         ['⚙️ النشاط',c.activity||'—'],['💳 نوع الضريبة',c.tax_type||'—'],
         ['💰 قيمة العقد',c.contract_value?money(c.contract_value):'—'],['✅ الحالة',statusLabel[c.status]||c.status],
+        ...(c.trade_name?[['🏷️ السمة التجارية',c.trade_name]]:[] ),
+        ...(c.legal_entity?[['⚖️ الكيان القانوني',c.legal_entity]]:[] ),
+        ...(c.company_status&&c.company_status!=='active'?[['🏭 حالة الشركة',{active:'نشطة',inactive:'غير نشطة',under_establishment:'قيد التأسيس'}[c.company_status]||c.company_status]]:[] ),
       ].map(([k,v])=>`<div><div style="font-size:10px;color:#94a3b8;font-weight:700;margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px">${k}</div><div style="font-size:13px;color:#1e293b;font-weight:600">${escH(String(v))}</div></div>`).join('')}
     </div>
     ${c.tax_obligations&&c.tax_obligations.length?`
@@ -1524,6 +1532,8 @@ async function showClientDetail(id) {
       <button class="btn btn-secondary btn-sm" onclick="showClientTimeline(${c.id},'${escH(c.name)}')">🕐 Timeline</button>
       ${c.tax_obligations&&c.tax_obligations.length?`<button class="btn btn-sm" style="background:#eef1fb;color:#1a2472;border:1.5px solid #b3c4e8" onclick="autoGenClientObligations(${c.id})">⚙️ Auto-Generate</button>`:''}
       <button class="btn btn-sm" style="background:linear-gradient(135deg,#1e3a8a,#1a2472);color:white;border:none;font-weight:700" onclick="this.closest('.modal-overlay').remove();openClientAccounting(${c.id},'${escH(c.name)}')">🏛️ الحسابات</button>
+      <button class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac;font-weight:700" onclick="this.closest('.modal-overlay').remove();navigate('company_docs');setTimeout(()=>{document.getElementById('cdClientFilter')&&(document.getElementById('cdClientFilter').value='${c.id}')&&loadCompanyDocsForClient()},500)">📜 وثائق</button>
+      <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;border:1.5px solid #fed7aa;font-weight:700" onclick="this.closest('.modal-overlay').remove();navigate('office_services');setTimeout(()=>{document.getElementById('osSvcFilter')&&(document.getElementById('osSvcFilter').value='')},500)">🏢 خدمات</button>
       <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
     </div>
   </div>`;
@@ -1712,6 +1722,35 @@ function showClientModal(id=null) {
         <input id="cEmail" class="input" type="email" value="${c?.email||''}" placeholder="client@example.com"/>
         <div style="font-size:11px;color:#94a3b8;margin-top:3px">يُستخدم لإرسال التذكيرات والإشعارات للعميل مباشرةً</div>
       </div>
+      <!-- ── Extended Profile ── -->
+      <div style="border:1px solid #e8edf3;border-radius:10px;padding:14px;margin-bottom:14px;background:#fafbff">
+        <div style="font-size:11px;font-weight:700;color:#1a2472;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">البيانات التوسعية للشركة</div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">السمة التجارية</label>
+            <input id="cTradeName" class="input" value="${c?.trade_name||''}" placeholder="الاسم التجاري إن وجد"/></div>
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الكيان القانوني</label>
+            <input id="cLegalEntity" class="input" value="${c?.legal_entity||''}" placeholder="مثال: شركة مساهمة مصرية"/></div>
+        </div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">حالة الشركة</label>
+            <select id="cCompanyStatus" class="input">
+              <option value="active" ${(c?.company_status||'active')==='active'?'selected':''}>نشطة</option>
+              <option value="inactive" ${c?.company_status==='inactive'?'selected':''}>غير نشطة</option>
+              <option value="under_establishment" ${c?.company_status==='under_establishment'?'selected':''}>قيد التأسيس</option>
+            </select></div>
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">اللغة المفضلة</label>
+            <select id="cPrefLang" class="input">
+              <option value="ar" ${(c?.preferred_lang||'ar')==='ar'?'selected':''}>العربية</option>
+              <option value="en" ${c?.preferred_lang==='en'?'selected':''}>English</option>
+            </select></div>
+        </div>
+        <div class="form-row">
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ بدء النشاط</label>
+            <input id="cActivityStart" class="input" type="date" value="${c?.activity_start_date||''}"/></div>
+          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ انتهاء النشاط</label>
+            <input id="cActivityEnd" class="input" type="date" value="${c?.activity_end_date||''}"/></div>
+        </div>
+      </div>
       <div style="margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <label style="font-size:12px;font-weight:600;color:#374151">الالتزامات الضريبية</label>
@@ -1783,6 +1822,12 @@ function showClientModal(id=null) {
         monthly_fee:parseFloat($('#cMonthlyFee',overlay).value)||0,
         email:$('#cEmail',overlay).value.trim()||null,
         tax_obligations:selectedObls,
+        trade_name:$('#cTradeName',overlay)?.value.trim()||null,
+        legal_entity:$('#cLegalEntity',overlay)?.value.trim()||null,
+        company_status:$('#cCompanyStatus',overlay)?.value||'active',
+        preferred_lang:$('#cPrefLang',overlay)?.value||'ar',
+        activity_start_date:$('#cActivityStart',overlay)?.value||null,
+        activity_end_date:$('#cActivityEnd',overlay)?.value||null,
       };
       if(!body.name){toast('الاسم مطلوب','error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`;return}
       if(c) await api('PUT',`/api/clients/${c.id}`,body);
@@ -6219,6 +6264,10 @@ window.collectionsTab='establishment';
 
 // ── Boot ───────────────────────────────────────────
 renderApp();
+// Apply saved language after app renders
+setTimeout(()=>{
+  if(localStorage.getItem('ms_lang')==='en') toggleLanguage();
+}, 300);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 🏛️ ACCOUNTING MODULE — نظام الحسابات الكامل لكل شركة
@@ -11436,6 +11485,90 @@ async function savePermissions(userId) {
 
 window.loadPermissions=loadPermissions; window.loadUserPermissions=loadUserPermissions;
 window.permCheckChange=permCheckChange; window.savePermissions=savePermissions;
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── i18n — Arabic / English Language Toggle
+// ════════════════════════════════════════════════════════════════════════════
+const I18N = {
+  ar: {
+    dashboard:'الرئيسية', clients:'العملاء', leads:'العملاء المحتملين',
+    invoices:'أتعاب الحسابات', tasks:'المهام', documents:'الأرشيف',
+    settings:'الإعدادات', search:'بحث...', logout:'خروج',
+    save:'حفظ', cancel:'إلغاء', delete:'حذف', edit:'تعديل',
+    add:'إضافة', close:'إغلاق', name:'الاسم', phone:'الهاتف',
+    status:'الحالة', date:'التاريخ', notes:'ملاحظات',
+    active:'نشط', inactive:'غير نشط',
+    tax:'الضرائب', accounting:'المحاسبة', reports:'التقارير',
+    office_services:'خدمات المكتب', company_docs:'وثائق الشركة',
+    folders:'إدارة الملفات', audit_trail:'سجل المراجعة',
+    client_portal:'بوابة العملاء', permissions:'الصلاحيات',
+  },
+  en: {
+    dashboard:'Dashboard', clients:'Clients', leads:'Leads',
+    invoices:'Invoices', tasks:'Tasks', documents:'Documents',
+    settings:'Settings', search:'Search...', logout:'Logout',
+    save:'Save', cancel:'Cancel', delete:'Delete', edit:'Edit',
+    add:'Add', close:'Close', name:'Name', phone:'Phone',
+    status:'Status', date:'Date', notes:'Notes',
+    active:'Active', inactive:'Inactive',
+    tax:'Tax', accounting:'Accounting', reports:'Reports',
+    office_services:'Office Services', company_docs:'Company Docs',
+    folders:'File Manager', audit_trail:'Audit Trail',
+    client_portal:'Client Portal', permissions:'Permissions',
+  }
+};
+
+let _currentLang = localStorage.getItem('ms_lang') || 'ar';
+
+function t(key) {
+  return I18N[_currentLang]?.[key] || I18N.ar[key] || key;
+}
+
+function toggleLanguage() {
+  _currentLang = _currentLang === 'ar' ? 'en' : 'ar';
+  localStorage.setItem('ms_lang', _currentLang);
+  const isEn = _currentLang === 'en';
+
+  // Update HTML dir & lang
+  document.documentElement.lang = _currentLang;
+  document.documentElement.dir = isEn ? 'ltr' : 'rtl';
+
+  // Update toggle button
+  const btn = document.getElementById('langToggleBtn');
+  const lbl = document.getElementById('langToggleLabel');
+  if(lbl) lbl.textContent = isEn ? 'AR' : 'EN';
+  if(btn) btn.title = isEn ? 'Switch to Arabic / تحويل للعربية' : 'Switch to English';
+
+  // Update nav item labels
+  const navItemMap = Object.fromEntries(navItems.map(i=>[i.id,i]));
+  document.querySelectorAll('.sidebar-link[data-nav-id]').forEach(el=>{
+    const id = el.dataset.navId;
+    const translated = I18N[_currentLang]?.[id];
+    const labelEl = el.querySelector('span:last-child');
+    if(labelEl && translated) labelEl.textContent = translated;
+  });
+
+  // Update page title
+  const titleEl = document.getElementById('pageTitle');
+  if(titleEl && currentPage) {
+    const translated = I18N[_currentLang]?.[currentPage];
+    if(translated) titleEl.textContent = translated;
+  }
+
+  // Search placeholder
+  const sp = document.getElementById('searchPlaceholder');
+  if(sp) sp.textContent = isEn ? 'Search... (Ctrl+K)' : 'بحث... (Ctrl+K)';
+
+  toast(isEn ? '🌐 Switched to English' : '🌐 تم التحويل للعربية');
+}
+
+// Apply saved language on load
+window.addEventListener('ms-app-ready', ()=>{
+  if(_currentLang === 'en') toggleLanguage();
+});
+
+window.toggleLanguage = toggleLanguage;
+window.t = t;
 </script>
 </body>
 </html>
