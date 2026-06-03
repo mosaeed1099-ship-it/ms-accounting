@@ -363,6 +363,37 @@ function closeModal() {
   document.getElementById('modal')?.remove();
 }
 
+/**
+ * openModal(content, opts)          — single-arg: full HTML is modal body
+ * openModal(title, content, opts)   — two-arg: title in header + content
+ * opts: { wide: bool }
+ */
+function openModal(titleOrContent, bodyOrOpts, opts={}) {
+  closeModal(); // close any existing modal
+  let title = null, body = '';
+  if (typeof bodyOrOpts === 'string') {
+    title = titleOrContent;
+    body  = bodyOrOpts;
+    if (typeof opts !== 'object') opts = {};
+  } else {
+    body = titleOrContent;
+    opts = bodyOrOpts || {};
+  }
+  const maxW = opts.wide ? '720px' : '560px';
+  const el = document.createElement('div');
+  el.className = 'modal-overlay';
+  el.id = 'modal';
+  el.innerHTML = `<div class="modal" style="max-width:${maxW}">
+    ${title ? `<div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">${title}</h3>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;line-height:1">✕</button>
+    </div>` : ''}
+    <div style="padding:${title?'18px 22px':'20px 24px'};overflow-y:auto;max-height:82vh">${body}</div>
+  </div>`;
+  document.body.append(el);
+  el.onclick = e => { if (e.target === el) closeModal(); };
+}
+
 // ── Styled Confirm Dialog ──────────────────────────────
 function confirmDlg(msg, title='هل أنت متأكد؟', dangerLabel='تأكيد', isDanger=true) {
   return new Promise(resolve => {

@@ -213,9 +213,11 @@ def portal_my_invoices(
             "invoice_number": inv.invoice_number,
             "issue_date": inv.issue_date.isoformat() if inv.issue_date else None,
             "due_date": inv.due_date.isoformat() if inv.due_date else None,
-            "amount": inv.amount,
+            "subtotal": inv.subtotal,
             "tax_amount": inv.tax_amount,
-            "total_amount": inv.total_amount,
+            "total": inv.total,
+            "paid_amount": inv.paid_amount,
+            "remaining": inv.remaining,
             "status": inv.status,
         }
         for inv in invoices

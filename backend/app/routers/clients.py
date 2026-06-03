@@ -43,6 +43,13 @@ class ClientCreate(BaseModel):
     notes: Optional[str] = None
     tags: Optional[str] = None
     assigned_accountant_id: Optional[int] = None
+    # Extended profile
+    trade_name: Optional[str] = None
+    legal_entity: Optional[str] = None
+    company_status: Optional[str] = None
+    activity_start_date: Optional[date] = None
+    activity_end_date: Optional[date] = None
+    preferred_lang: Optional[str] = None
 
 
 class ClientUpdate(BaseModel):
@@ -73,6 +80,13 @@ class ClientUpdate(BaseModel):
     notes: Optional[str] = None
     tags: Optional[str] = None
     assigned_accountant_id: Optional[int] = None
+    # Extended profile
+    trade_name: Optional[str] = None
+    legal_entity: Optional[str] = None
+    company_status: Optional[str] = None
+    activity_start_date: Optional[date] = None
+    activity_end_date: Optional[date] = None
+    preferred_lang: Optional[str] = None
 
 
 def generate_client_code(db: Session) -> str:
@@ -116,6 +130,13 @@ def client_to_dict(client: Client) -> dict:
         "assigned_accountant": client.assigned_accountant.name if client.assigned_accountant else None,
         "created_at": client.created_at,
         "updated_at": client.updated_at,
+        # Extended profile
+        "trade_name": client.trade_name,
+        "legal_entity": client.legal_entity,
+        "company_status": client.company_status,
+        "activity_start_date": client.activity_start_date,
+        "activity_end_date": client.activity_end_date,
+        "preferred_lang": client.preferred_lang,
     }
 
 

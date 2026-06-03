@@ -24,6 +24,14 @@ from app.models.postal import InternalMail
 from app.models.statement import FinancialStatement
 from app.models.timesheet import TimeEntry
 
+# New 2026-06-03 models
+from app.models.permission import UserPermission
+from app.models.company_document import CompanyDocument
+from app.models.audit_log import AuditLog
+from app.models.folder import Folder, FileItem
+from app.models.client_portal import ClientPortalUser
+from app.models.office_service import OfficeService, OfficeServiceTask
+
 __all__ = [
     "User", "UserRole",
     "Client", "ClientType", "ClientStatus", "TaxType",
