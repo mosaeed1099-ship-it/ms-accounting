@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Cache-bust: 2026-06-03
+ARG CACHEBUST=2026-06-03
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
