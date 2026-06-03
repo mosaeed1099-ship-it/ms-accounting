@@ -1,0 +1,4 @@
+# Extra Python dependencies for building the desktop app
+pyinstaller>=6.0.0
+pyinstaller-hooks-contrib>=2024.0
+pillow>=10.0.0

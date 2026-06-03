@@ -1,0 +1,85 @@
+{
+  "name": "ms-accounting",
+  "version": "2.0.0",
+  "description": "نظام إدارة مكتب المحاسبة - MS",
+  "main": "main.js",
+  "author": "MS Accounting",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start":      "electron .",
+    "build:win":  "electron-builder --win --x64",
+    "build:mac":  "electron-builder --mac",
+    "build:linux":"electron-builder --linux",
+    "build:all":  "electron-builder --win --mac --linux"
+  },
+  "build": {
+    "appId":       "com.msaccounting.desktop",
+    "productName": "MS Accounting",
+    "copyright":   "Copyright © 2024 MS Accounting",
+    "directories": {
+      "output": "../../dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../../frontend",
+        "to":   "frontend",
+        "filter": ["**/*", "!**/*.map"]
+      },
+      {
+        "from": "../../desktop/backend-dist/ms_accounting_server",
+        "to":   "backend/ms_accounting_server"
+      }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MS Accounting",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "displayLanguageSelector": false,
+      "language": "1025"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.finance",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "MS Accounting ${version}",
+      "background": "assets/dmg-background.png",
+      "icon": "assets/icon.icns",
+      "iconSize": 80,
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "linux": {
+      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "icon": "assets/icon.png",
+      "category": "Office"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  }
+}

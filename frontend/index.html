@@ -278,11 +278,20 @@
 <div id="toasts" class="toasts"></div>
 
 <script type="module">
-const API = window.MS_API_BASE || (
-  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? `http://${window.location.hostname}:8000`
-    : `https://${window.location.hostname.replace(/^[^.]+\./, 'api.')}`
-);
+// ── API URL detection ─────────────────────────────────────────────────────────
+// Priority: 1) Electron desktop injection  2) localhost dev  3) production subdomain
+const API = (() => {
+  // Electron desktop mode: preload exposes window.__msDesktop
+  if (window.__msDesktop?.isDesktop) return window.__msDesktop.getApiUrl();
+  // Direct file:// open or MS_DESKTOP_PORT injected by Electron main process
+  if (window.location.protocol === 'file:' || window.__MS_DESKTOP_PORT)
+    return `http://127.0.0.1:${window.__MS_DESKTOP_PORT || 8765}`;
+  // localhost dev server
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    return `http://${window.location.hostname}:8000`;
+  // production: api.domain.com
+  return `https://${window.location.hostname.replace(/^[^.]+\./, 'api.')}`;
+})();
 let token = localStorage.getItem('ms_token');
 let currentUser = JSON.parse(localStorage.getItem('ms_user') || 'null');
 let currentPage = 'dashboard';
