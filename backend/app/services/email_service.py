@@ -4,8 +4,10 @@ Supports: task assignment, task deadline, invoice reminders, obligation alerts
 """
 import smtplib
 import ssl
+import uuid
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
 from datetime import datetime
 from typing import Optional
 import logging
@@ -371,6 +373,17 @@ def test_email_template(sent_to: str) -> tuple[str, str]:
 
 
 # ── Core Sender ─────────────────────────────────────────────────────────────
+def _html_to_plain(html: str) -> str:
+    """Convert HTML to plain text for multipart/alternative."""
+    import re
+    text = html.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
+    text = text.replace('</p>', '\n\n').replace('</div>', '\n').replace('</li>', '\n')
+    text = text.replace('</tr>', '\n').replace('</td>', '  ')
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 def _send_via_sendgrid(to_email: str, subject: str, html_body: str, cfg: EmailConfig) -> bool:
     """Send via SendGrid HTTP API — verified single sender, no domain needed."""
     import os, requests as req
@@ -384,8 +397,12 @@ def _send_via_sendgrid(to_email: str, subject: str, html_body: str, cfg: EmailCo
         json={
             "personalizations": [{"to": [{"email": to_email}]}],
             "from": {"email": sender_email, "name": cfg.from_name},
+            "reply_to": {"email": sender_email, "name": cfg.from_name},
             "subject": subject,
-            "content": [{"type": "text/html", "value": html_body}],
+            "content": [
+                {"type": "text/plain", "value": _html_to_plain(html_body)},
+                {"type": "text/html", "value": html_body},
+            ],
         },
         timeout=20,
     )
@@ -407,8 +424,10 @@ def _send_via_brevo(to_email: str, subject: str, html_body: str, cfg: EmailConfi
         headers={"api-key": api_key, "Content-Type": "application/json"},
         json={
             "sender": {"name": cfg.from_name, "email": sender_email},
+            "replyTo": {"name": cfg.from_name, "email": sender_email},
             "to": [{"email": to_email}],
             "subject": subject,
+            "textContent": _html_to_plain(html_body),
             "htmlContent": html_body,
         },
         timeout=20,
@@ -438,7 +457,14 @@ def _send_via_resend(to_email: str, subject: str, html_body: str, cfg: EmailConf
     resp = req.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"from": from_addr, "to": [to_email], "subject": subject, "html": html_body},
+        json={
+            "from": from_addr,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+            "text": _html_to_plain(html_body),
+            "reply_to": from_addr,
+        },
         timeout=20,
     )
     if resp.status_code not in (200, 201):
@@ -453,6 +479,16 @@ def _send_via_smtp(to_email: str, subject: str, html_body: str, cfg: EmailConfig
     msg['Subject'] = subject
     msg['From'] = f"{cfg.from_name} <{cfg.from_email}>"
     msg['To'] = to_email
+    msg['Date'] = formatdate(localtime=True)
+    msg['Message-ID'] = make_msgid(domain=cfg.from_email.split('@')[-1] if '@' in cfg.from_email else 'ms-accounting.com')
+    msg['Reply-To'] = f"{cfg.from_name} <{cfg.from_email}>"
+    msg['X-Mailer'] = 'MS-Accounting-Mailer/2.0'
+    msg['List-Unsubscribe'] = f"<mailto:{cfg.from_email}?subject=unsubscribe>"
+    # Plain text fallback (helps deliverability)
+    plain = html_body.replace('<br>', '\n').replace('</p>', '\n').replace('</div>', '\n')
+    import re
+    plain = re.sub(r'<[^>]+>', '', plain)
+    msg.attach(MIMEText(plain, 'plain', 'utf-8'))
     msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
     try:

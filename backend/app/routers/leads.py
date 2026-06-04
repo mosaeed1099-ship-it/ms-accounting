@@ -358,58 +358,106 @@ async def send_lead_quote_email(
         raise HTTPException(400, "لا يوجد بريد إلكتروني للعميل.")
 
     import json as _json
-    services = []
-    try:
-        services = _json.loads(lead.quote_services or "[]")
-    except Exception:
-        pass
-    req_docs = []
-    try:
-        req_docs = _json.loads(lead.quote_required_docs or "[]")
-    except Exception:
-        pass
 
-    cap_fmt   = f"{lead.quote_capital:,.0f} جنيه"   if lead.quote_capital         else "—"
-    total_fmt = f"{lead.quote_expenses_total:,.0f} جنيه" if lead.quote_expenses_total else "—"
+    # ── Map fields: use lead data directly (new design) ──────────────────────
+    CT_FULL = {
+        'llc': 'شركة ذات مسؤولية محدودة',
+        'jsc': 'شركة مساهمة',
+        'sole': 'مؤسسة فردية',
+        'ngo': 'جمعية',
+        'branch': 'فرع',
+        'rep': 'مكتب تمثيلي',
+        'other': 'أخرى',
+    }
+    legal_entity  = CT_FULL.get(lead.company_type or '', '') or lead.quote_legal_entity or ''
+    activity      = lead.company_activities or lead.quote_activity or ''
+    location      = lead.governorate or lead.quote_location or ''
+    capital       = lead.estimated_capital or lead.quote_capital or None
+    total         = lead.quote_expenses_total or None
 
-    services_rows = "".join(
-        f"<tr><td style='padding:6px 12px;font-size:13px;color:#374151'>{s.get('name','')}</td>"
-        f"<td style='padding:6px 12px;font-size:13px;text-align:left;color:#1a2472;font-weight:700'>{float(s.get('price',0)):,.0f} جنيه</td></tr>"
-        for s in services
-    ) if services else ""
-    docs_html = "".join(f"<li style='margin:4px 0'>{d}</li>" for d in req_docs)
+    # ── Parse deliver docs [{name, checked}] or legacy [string] ──────────────
+    def _parse_docs(raw_json):
+        items = []
+        try:
+            raw = _json.loads(raw_json or '[]')
+            for d in raw:
+                if isinstance(d, dict):
+                    if d.get('checked', True) and d.get('name', '').strip():
+                        items.append(d['name'].strip())
+                elif isinstance(d, str) and d.strip():
+                    items.append(d.strip())
+        except Exception:
+            pass
+        return items
+
+    deliver_docs = _parse_docs(lead.quote_deliver_docs)
+    req_docs     = _parse_docs(lead.quote_required_docs)
+
+    # ── Build HTML sections ───────────────────────────────────────────────────
+    info_rows = ""
+    if legal_entity:
+        info_rows += f"<tr><td style='padding:7px 0;color:#64748b;font-size:13px;width:42%'>الكيان القانوني</td><td style='padding:7px 0;font-size:13px;font-weight:600;color:#1e293b'>{legal_entity}</td></tr>"
+    if location:
+        info_rows += f"<tr><td style='padding:7px 0;color:#64748b;font-size:13px'>المقر</td><td style='padding:7px 0;font-size:13px;font-weight:600;color:#1e293b'>{location}</td></tr>"
+    if activity:
+        info_rows += f"<tr><td style='padding:7px 0;color:#64748b;font-size:13px'>النشاط</td><td style='padding:7px 0;font-size:13px;font-weight:600;color:#1e293b'>{activity}</td></tr>"
+    if capital:
+        info_rows += f"<tr><td style='padding:7px 0;color:#64748b;font-size:13px'>رأس المال</td><td style='padding:7px 0;font-size:13px;font-weight:600;color:#1e293b'>{capital:,.0f} جنيه</td></tr>"
+
+    deliver_html = "".join(
+        f"<li style='margin:6px 0;font-size:13px;color:#374151'>{d}</li>"
+        for d in deliver_docs
+    )
+    req_html = "".join(
+        f"<li style='margin:6px 0;font-size:13px;color:#374151'>{d}</li>"
+        for d in req_docs
+    )
+
+    total_section = ""
+    if total:
+        total_section = f"""
+      <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:10px;padding:16px 22px;margin:0 0 22px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:12px;color:#15803d;font-weight:600;margin-bottom:6px">اجمالي مصاريف واتعاب التاسيس</div>
+          <div style="font-size:26px;font-weight:800;color:#15803d">{total:,.0f} جنيه</div>
+        </div>
+      </div>"""
+
+    deliver_section = ""
+    if deliver_html:
+        deliver_section = f"""
+      <div style="margin:0 0 20px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0">
+        <div style="background:#1a2472;color:white;padding:10px 18px;font-size:13px;font-weight:700">المستندات التي ستتسلمها من المكتب</div>
+        <div style="padding:14px 20px"><ul style="margin:0;padding-right:22px;line-height:1.9">{deliver_html}</ul></div>
+      </div>"""
+
+    req_section = ""
+    if req_html:
+        req_section = f"""
+      <div style="margin:0 0 20px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0">
+        <div style="background:#d97706;color:white;padding:10px 18px;font-size:13px;font-weight:700">المستندات المطلوبة منك</div>
+        <div style="padding:14px 20px"><ul style="margin:0;padding-right:22px;line-height:1.9">{req_html}</ul></div>
+      </div>"""
 
     content = f"""
-      <p style="color:#374151;font-size:15px;font-weight:500;margin:0 0 4px">مساء الخير،</p>
-      <p style="color:#64748b;font-size:13px;margin:0 0 20px">مع حضرتك / {lead.name}</p>
+      <p style="color:#374151;font-size:15px;font-weight:600;margin:0 0 4px">السلام عليكم،</p>
+      <p style="color:#64748b;font-size:13px;margin:0 0 22px">مع حضرتك / <strong>{lead.name}</strong></p>
 
-      <div style="background:#eef1fb;border-right:4px solid #1a2472;border-radius:8px;padding:16px 20px;margin:0 0 20px">
-        <h2 style="color:#1a2472;font-size:16px;font-weight:700;margin:0 0 14px">📋 عرض السعر — {lead.code or ''}</h2>
-        <table style="width:100%;border-collapse:collapse">
-          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b;width:40%'>الكيان القانوني:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+lead.quote_legal_entity+"</td></tr>" if lead.quote_legal_entity else ""}
-          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b'>النشاط:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+lead.quote_activity+"</td></tr>" if lead.quote_activity else ""}
-          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b'>مقر النشاط:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+lead.quote_location+"</td></tr>" if lead.quote_location else ""}
-          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b'>رأس المال:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+cap_fmt+"</td></tr>"}
-        </table>
-      </div>
+      {"<div style='background:#eef1fb;border:1.5px solid #c7d2fe;border-radius:10px;padding:16px 20px;margin:0 0 20px'><table style='width:100%;border-collapse:collapse'>" + info_rows + "</table></div>" if info_rows else ""}
 
-      {"<div style='background:#f8fafc;border-radius:8px;margin:0 0 20px;overflow:hidden'><table style='width:100%;border-collapse:collapse;font-family:inherit'><thead><tr style='background:#1a2472;color:white'><th style='padding:8px 12px;text-align:right;font-size:12px'>الخدمة</th><th style='padding:8px 12px;text-align:left;font-size:12px'>السعر</th></tr></thead><tbody>"+services_rows+"</tbody></table></div>" if services_rows else ""}
+      {total_section}
 
-      <div style="background:#f0fdf4;border-right:4px solid #16a34a;border-radius:8px;padding:16px 20px;margin:0 0 20px">
-        <h3 style="color:#15803d;font-size:14px;font-weight:700;margin:0 0 10px">✅ إجمالي المصاريف والأتعاب</h3>
-        <div style="font-size:24px;font-weight:800;color:#15803d">{total_fmt}</div>
-        {"<div style='font-size:12px;color:#6b7280;margin-top:4px'>رسوم حكومية: "+f"{lead.quote_government_fees:,.0f} جنيه"+" — أتعاب المكتب: "+f"{lead.quote_total_fees:,.0f} جنيه"+"</div>" if (lead.quote_government_fees or lead.quote_total_fees) else ""}
-      </div>
+      {deliver_section}
 
-      {"<h3 style='color:#1e293b;font-size:14px;font-weight:700;margin:18px 0 8px'>📌 المطلوب من حضرتكم</h3><ul style='margin:0;padding-right:20px;color:#374151;font-size:13px;line-height:1.8'>"+docs_html+"</ul>" if docs_html else ""}
-      {"<div style='background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-top:18px;font-size:13px;color:#92400e'><strong>ملاحظات:</strong> "+lead.quote_notes+"</div>" if lead.quote_notes else ""}
+      {req_section}
 
-      <div style="margin-top:24px;padding-top:16px;border-top:1px solid #f1f5f9;font-size:13px;color:#374151">
-        <strong>التوقيع:</strong><br>المستشار / عمرو شعبان
+      <div style="margin-top:24px;padding-top:16px;border-top:2px solid #f1f5f9;font-size:13px;color:#374151">
+        <strong>عمرو شعبان</strong><br>
+        <span style="color:#64748b">المستشار الضريبي — مكتب MS Accounting</span>
       </div>
     """
 
-    subject = f"عرض سعر تأسيس شركة — {lead.code or ''} — {lead.name}"
+    subject = f"عرض سعر تاسيس شركة — {lead.name}"
     html_body = _base_template(content, subject)
 
     try:
@@ -417,7 +465,7 @@ async def send_lead_quote_email(
         db.add(LeadActivity(lead_id=lead_id, user_id=current_user.id,
                             action="quote_sent", description=f"تم إرسال عرض السعر إلى {to_email}"))
         db.commit()
-        return {"success": True, "message": f"✅ تم إرسال عرض السعر إلى {to_email}"}
+        return {"success": True, "message": f"تم إرسال عرض السعر بنجاح إلى {to_email}"}
     except Exception as e:
         raise HTTPException(500, f"فشل الإرسال: {str(e)}")
 
