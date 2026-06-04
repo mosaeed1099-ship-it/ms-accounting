@@ -523,8 +523,13 @@ def _send_via_smtp(to_email: str, subject: str, html_body: str, cfg: EmailConfig
 def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
     """
     Send email synchronously.
-    Priority: Brevo → Resend → SMTP
-    Brevo & Resend use HTTPS (no port blocking on Railway).
+    Priority: Gmail SMTP first (proper DKIM signing) → API fallbacks.
+
+    WHY SMTP FIRST:
+    When the FROM address is @gmail.com, only Gmail's own SMTP servers produce
+    a valid DKIM signature for gmail.com. Sending via SendGrid/Resend/Brevo
+    with a @gmail.com From causes SPF/DKIM failure → email goes to spam.
+    Gmail SMTP on port 587 (STARTTLS) is confirmed to work on Railway.
     """
     import os
     cfg = get_config()
@@ -532,12 +537,12 @@ def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
     brevo_key    = os.environ.get('BREVO_API_KEY', '')
     resend_key   = os.environ.get('RESEND_API_KEY', '')
 
-    # 1. SendGrid — verified single sender, sends to anyone
-    if sendgrid_key:
+    # 1. Gmail SMTP — correct DKIM for @gmail.com sender → inbox not spam
+    if cfg.smtp_user and cfg.smtp_pass:
         try:
-            return _send_via_sendgrid(to_email, subject, html_body, cfg)
+            return _send_via_smtp(to_email, subject, html_body, cfg)
         except Exception as e:
-            logger.warning(f"SendGrid failed: {e}")
+            logger.warning(f"SMTP failed: {e} — trying API providers")
 
     # 2. Brevo fallback
     if brevo_key:
@@ -546,18 +551,21 @@ def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
         except Exception as e:
             logger.warning(f"Brevo failed: {e}")
 
-    # 3. Resend fallback (requires verified domain)
+    # 3. Resend fallback
     if resend_key:
         try:
             return _send_via_resend(to_email, subject, html_body, cfg)
         except Exception as e:
             logger.warning(f"Resend failed: {e}")
 
-    # 4. SMTP last resort
-    if cfg.smtp_user and cfg.smtp_pass:
-        return _send_via_smtp(to_email, subject, html_body, cfg)
+    # 4. SendGrid last resort (poor deliverability with @gmail.com from)
+    if sendgrid_key:
+        try:
+            return _send_via_sendgrid(to_email, subject, html_body, cfg)
+        except Exception as e:
+            logger.warning(f"SendGrid failed: {e}")
 
-    raise Exception("لم يتم تكوين البريد الإلكتروني. أضف SENDGRID_API_KEY في Railway.")
+    raise Exception("لم يتم تكوين البريد الإلكتروني. تحقق من إعدادات SMTP في Railway.")
 
 
 async def send_email_async(to_email: str, subject: str, html_body: str) -> bool:
