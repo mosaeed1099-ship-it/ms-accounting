@@ -34,6 +34,21 @@ class LeadCreate(BaseModel):
     meeting_date: Optional[str] = None
     company_activities: Optional[str] = None
     suggested_name: Optional[str] = None
+    # New CRM fields
+    follow_up_date: Optional[str] = None
+    has_existing_companies: Optional[bool] = False
+    proposed_names: Optional[str] = None
+    # Embedded quote fields
+    quote_legal_entity: Optional[str] = None
+    quote_activity: Optional[str] = None
+    quote_location: Optional[str] = None
+    quote_capital: Optional[float] = None
+    quote_total_fees: Optional[float] = None
+    quote_government_fees: Optional[float] = None
+    quote_expenses_total: Optional[float] = None
+    quote_services: Optional[str] = None
+    quote_required_docs: Optional[str] = None
+    quote_notes: Optional[str] = None
 
 class LeadUpdate(LeadCreate):
     name: Optional[str] = None
@@ -97,6 +112,21 @@ def lead_to_dict(lead: Lead) -> dict:
         "company_activities": lead.company_activities,
         "suggested_name": lead.suggested_name,
         "converted_client_id": lead.converted_client_id,
+        # New CRM fields
+        "follow_up_date": lead.follow_up_date.isoformat() if lead.follow_up_date else None,
+        "has_existing_companies": bool(lead.has_existing_companies) if lead.has_existing_companies is not None else False,
+        "proposed_names": lead.proposed_names,
+        # Embedded quote fields
+        "quote_legal_entity": lead.quote_legal_entity,
+        "quote_activity": lead.quote_activity,
+        "quote_location": lead.quote_location,
+        "quote_capital": lead.quote_capital,
+        "quote_total_fees": lead.quote_total_fees,
+        "quote_government_fees": lead.quote_government_fees,
+        "quote_expenses_total": lead.quote_expenses_total,
+        "quote_services": lead.quote_services,
+        "quote_required_docs": lead.quote_required_docs,
+        "quote_notes": lead.quote_notes,
         "created_at": lead.created_at.isoformat() if lead.created_at else None,
         "updated_at": lead.updated_at.isoformat() if lead.updated_at else None,
     }
@@ -172,11 +202,12 @@ def get_stats(db: Session = Depends(get_db), current_user: User = Depends(get_cu
 def create_lead(body: LeadCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     count = db.query(func.count(Lead.id)).scalar()
     data = body.dict()
-    if data.get("meeting_date"):
-        try:
-            data["meeting_date"] = datetime.fromisoformat(data["meeting_date"])
-        except Exception:
-            data["meeting_date"] = None
+    for date_field in ("meeting_date", "follow_up_date"):
+        if data.get(date_field):
+            try:
+                data[date_field] = datetime.fromisoformat(data[date_field])
+            except Exception:
+                data[date_field] = None
     lead = Lead(**data, code=f"LDR-{str(count+1).zfill(4)}", created_by=current_user.id)
     db.add(lead)
     db.flush()
@@ -234,7 +265,7 @@ def update_lead(
 
     old_status = lead.status
     for k, v in body.dict(exclude_none=True).items():
-        if k == "meeting_date" and v:
+        if k in ("meeting_date", "follow_up_date") and v:
             try:
                 setattr(lead, k, datetime.fromisoformat(v))
             except Exception:
@@ -297,6 +328,96 @@ def _ensure_client_archive(lead: Lead, db, user_id: int):
         db.commit()
     except Exception as e:
         pass  # Don't break the main flow
+
+
+class QuoteSendEmailRequest(BaseModel):
+    to_email: Optional[str] = None
+
+@router.post("/{lead_id}/quote/send-email")
+async def send_lead_quote_email(
+    lead_id: int,
+    req: QuoteSendEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send the embedded lead quote as an HTML email."""
+    from app.services.email_service import get_config, send_email_sync, _base_template
+
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(404, "Lead غير موجود")
+
+    cfg = get_config()
+    if not cfg.enabled:
+        raise HTTPException(400, "البريد الإلكتروني غير مُفعَّل. أضف بيانات SMTP في الإعدادات.")
+
+    to_email = req.to_email or lead.email
+    if not to_email:
+        raise HTTPException(400, "لا يوجد بريد إلكتروني للعميل.")
+
+    import json as _json
+    services = []
+    try:
+        services = _json.loads(lead.quote_services or "[]")
+    except Exception:
+        pass
+    req_docs = []
+    try:
+        req_docs = _json.loads(lead.quote_required_docs or "[]")
+    except Exception:
+        pass
+
+    cap_fmt   = f"{lead.quote_capital:,.0f} جنيه"   if lead.quote_capital         else "—"
+    total_fmt = f"{lead.quote_expenses_total:,.0f} جنيه" if lead.quote_expenses_total else "—"
+
+    services_rows = "".join(
+        f"<tr><td style='padding:6px 12px;font-size:13px;color:#374151'>{s.get('name','')}</td>"
+        f"<td style='padding:6px 12px;font-size:13px;text-align:left;color:#1a2472;font-weight:700'>{float(s.get('price',0)):,.0f} جنيه</td></tr>"
+        for s in services
+    ) if services else ""
+    docs_html = "".join(f"<li style='margin:4px 0'>{d}</li>" for d in req_docs)
+
+    content = f"""
+      <p style="color:#374151;font-size:15px;font-weight:500;margin:0 0 4px">مساء الخير،</p>
+      <p style="color:#64748b;font-size:13px;margin:0 0 20px">مع حضرتك / {lead.name}</p>
+
+      <div style="background:#eef1fb;border-right:4px solid #1a2472;border-radius:8px;padding:16px 20px;margin:0 0 20px">
+        <h2 style="color:#1a2472;font-size:16px;font-weight:700;margin:0 0 14px">📋 عرض السعر — {lead.code or ''}</h2>
+        <table style="width:100%;border-collapse:collapse">
+          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b;width:40%'>الكيان القانوني:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+lead.quote_legal_entity+"</td></tr>" if lead.quote_legal_entity else ""}
+          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b'>النشاط:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+lead.quote_activity+"</td></tr>" if lead.quote_activity else ""}
+          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b'>مقر النشاط:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+lead.quote_location+"</td></tr>" if lead.quote_location else ""}
+          {"<tr><td style='padding:6px 0;font-size:13px;color:#64748b'>رأس المال:</td><td style='padding:6px 0;font-size:13px;font-weight:600;color:#1e293b'>"+cap_fmt+"</td></tr>"}
+        </table>
+      </div>
+
+      {"<div style='background:#f8fafc;border-radius:8px;margin:0 0 20px;overflow:hidden'><table style='width:100%;border-collapse:collapse;font-family:inherit'><thead><tr style='background:#1a2472;color:white'><th style='padding:8px 12px;text-align:right;font-size:12px'>الخدمة</th><th style='padding:8px 12px;text-align:left;font-size:12px'>السعر</th></tr></thead><tbody>"+services_rows+"</tbody></table></div>" if services_rows else ""}
+
+      <div style="background:#f0fdf4;border-right:4px solid #16a34a;border-radius:8px;padding:16px 20px;margin:0 0 20px">
+        <h3 style="color:#15803d;font-size:14px;font-weight:700;margin:0 0 10px">✅ إجمالي المصاريف والأتعاب</h3>
+        <div style="font-size:24px;font-weight:800;color:#15803d">{total_fmt}</div>
+        {"<div style='font-size:12px;color:#6b7280;margin-top:4px'>رسوم حكومية: "+f"{lead.quote_government_fees:,.0f} جنيه"+" — أتعاب المكتب: "+f"{lead.quote_total_fees:,.0f} جنيه"+"</div>" if (lead.quote_government_fees or lead.quote_total_fees) else ""}
+      </div>
+
+      {"<h3 style='color:#1e293b;font-size:14px;font-weight:700;margin:18px 0 8px'>📌 المطلوب من حضرتكم</h3><ul style='margin:0;padding-right:20px;color:#374151;font-size:13px;line-height:1.8'>"+docs_html+"</ul>" if docs_html else ""}
+      {"<div style='background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-top:18px;font-size:13px;color:#92400e'><strong>ملاحظات:</strong> "+lead.quote_notes+"</div>" if lead.quote_notes else ""}
+
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid #f1f5f9;font-size:13px;color:#374151">
+        <strong>التوقيع:</strong><br>المستشار / عمرو شعبان
+      </div>
+    """
+
+    subject = f"عرض سعر تأسيس شركة — {lead.code or ''} — {lead.name}"
+    html_body = _base_template(content, subject)
+
+    try:
+        send_email_sync(to_email, subject, html_body)
+        db.add(LeadActivity(lead_id=lead_id, user_id=current_user.id,
+                            action="quote_sent", description=f"تم إرسال عرض السعر إلى {to_email}"))
+        db.commit()
+        return {"success": True, "message": f"✅ تم إرسال عرض السعر إلى {to_email}"}
+    except Exception as e:
+        raise HTTPException(500, f"فشل الإرسال: {str(e)}")
 
 
 @router.delete("/{lead_id}")

@@ -597,7 +597,6 @@ const navItems = [
   {id:'dashboard'    ,icon:'📊',label:'الرئيسية'},
   {id:'clients'      ,icon:'👥',label:'العملاء'},
   {id:'leads'        ,icon:'🎯',label:'العملاء المحتملين'},
-  {id:'quotations'   ,icon:'💼',label:'عروض الأسعار'},
   {id:'establishment',icon:'🏗️',label:'تأسيس الشركات'},
   {id:'invoices'     ,icon:'💳',label:'أتعاب الحسابات'},
   {id:'collections'  ,icon:'💰',label:'التحصيلات'},
@@ -627,7 +626,7 @@ const navItems = [
 // Grouped navigation for sidebar display
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
-  {label:'CRM & المبيعات', items:['clients','leads','quotations','establishment']},
+  {label:'CRM & المبيعات', items:['clients','leads','establishment']},
   {label:'المالية', items:['invoices','collections','fin_reports','tax','statements']},
   {label:'التشغيل', items:['tasks','timesheet','obligations','postal','documents','appointments','papers']},
   {label:'الموارد البشرية', items:['payroll','settlements','assets']},
@@ -3390,12 +3389,13 @@ function renderLeads(stats) {
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:158px">ميعاد الميتينج</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">موظف مسؤول</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:160px">ملاحظات</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:74px">تفاصيل</th>
           <th style="padding:10px 6px;width:34px"></th>
         </tr>
       </thead>
       <tbody id="leadsGridBody">
         ${leadsData.map(l=>_buildLeadRow(l)).join('')}
-        ${leadsData.length===0?`<tr><td colspan="13" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين بعد — اضغط "+ إضافة صف"</div></td></tr>`:''}
+        ${leadsData.length===0?`<tr><td colspan="14" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين بعد — اضغط "+ إضافة صف"</div></td></tr>`:''}
       </tbody>
     </table>
   </div>`;
@@ -3431,6 +3431,7 @@ function _buildLeadRow(l){
     <td style="padding:3px 6px">${_cellInput('meeting_date',mtVal,'type="datetime-local" style="font-size:11px"')}</td>
     <td style="padding:3px 6px">${_cellSelect('assigned_to',usersOpts)}</td>
     <td style="padding:3px 6px">${_cellInput('notes',l.notes,'placeholder="ملاحظات..."')}</td>
+    <td style="padding:3px 6px;text-align:center">${l.id?`<button onclick="showLeadDetail(${l.id})" style="background:#1a2472;color:white;border:none;border-radius:6px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap" title="تفاصيل وعرض السعر">📋 تفاصيل</button>`:'—'}</td>
     <td style="padding:3px 6px;text-align:center"><button onclick="deleteLeadRow(${l.id||0})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px" title="حذف" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>
   </tr>`;
 }
@@ -3530,6 +3531,528 @@ async function deleteLeadRow(id) {
     toast('تم الحذف');
   } catch(e){toast(e.message,'error');}
 }
+
+// ── LEAD DETAIL MODAL ─────────────────────────────
+async function showLeadDetail(id) {
+  let lead;
+  try { lead = await api('GET', `/api/leads/${id}`); }
+  catch(e) { toast(e.message,'error'); return; }
+
+  // Parse JSON fields safely
+  let services = [];
+  try { services = JSON.parse(lead.quote_services||'[]'); } catch(e){}
+  let reqDocs = [];
+  try { reqDocs = JSON.parse(lead.quote_required_docs||'[]'); } catch(e){}
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1100;display:flex;align-items:center;justify-content:center;padding:16px';
+
+  const COMPANY_TYPE_OPTS_FULL={'':'—',llc:'شركة ذات مسؤولية محدودة',jsc:'شركة مساهمة',sole:'فردي',ngo:'جمعية',branch:'فرع',rep:'مكتب تمثيلي',other:'أخرى'};
+  const statusColors=LEAD_STATUS_COLORS;
+  const statusLabel=LEAD_STATUS_LABEL;
+
+  function fmtMoney(v){ return v!=null?Number(v).toLocaleString('ar-EG')+' جنيه':'—'; }
+  function fmtDt(v){ if(!v)return '—'; const d=new Date(v); return d.toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+
+  const serviceRows = services.map((s,i)=>
+    `<tr id="qs-row-${i}" style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:6px 8px"><input class="input" style="font-size:12px;padding:4px 8px" value="${escH(s.name||'')}" oninput="window._qsServices[${i}].name=this.value;_qsCalc()"/></td>
+      <td style="padding:6px 8px"><input class="input" type="number" style="font-size:12px;padding:4px 8px;width:110px;direction:ltr" value="${s.price||0}" oninput="window._qsServices[${i}].price=parseFloat(this.value)||0;_qsCalc()"/></td>
+      <td style="padding:6px 4px;text-align:center"><button onclick="window._qsServices.splice(${i},1);document.getElementById('qs-row-${i}').remove();_qsCalc()" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>
+    </tr>`
+  ).join('');
+
+  const docsHtml = reqDocs.map((d,i)=>
+    `<div id="qd-${i}" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <input class="input" style="flex:1;font-size:12px;padding:4px 8px" value="${escH(d)}" oninput="window._qsDocs[${i}]=this.value"/>
+      <button onclick="window._qsDocs.splice(${i},1);document.getElementById('qd-${i}').remove()" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button>
+    </div>`
+  ).join('');
+
+  overlay.innerHTML = `
+  <div style="background:#fff;border-radius:18px;width:100%;max-width:900px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1a2472,#152060);color:white;padding:20px 28px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <div style="font-size:11px;color:#b3c4e8;margin-bottom:3px">${escH(lead.code||'')}</div>
+        <div style="font-size:20px;font-weight:800">${escH(lead.name)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="background:${statusColors[lead.status]||'#94a3b8'}22;color:${statusColors[lead.status]||'#94a3b8'};border:1px solid ${statusColors[lead.status]||'#94a3b8'}44;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700">${statusLabel[lead.status]||lead.status}</span>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.15);border:none;color:white;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1">✕</button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0">
+      <button id="ld-tab-info" onclick="_ldTab('info')" style="padding:12px 22px;font-size:13px;font-weight:700;border:none;background:#fff;border-bottom:3px solid #1a2472;color:#1a2472;cursor:pointer;font-family:inherit">👤 بيانات العميل</button>
+      <button id="ld-tab-quote" onclick="_ldTab('quote')" style="padding:12px 22px;font-size:13px;font-weight:600;border:none;background:transparent;border-bottom:3px solid transparent;color:#64748b;cursor:pointer;font-family:inherit">💼 عرض السعر</button>
+      <button id="ld-tab-activity" onclick="_ldTab('activity')" style="padding:12px 22px;font-size:13px;font-weight:600;border:none;background:transparent;border-bottom:3px solid transparent;color:#64748b;cursor:pointer;font-family:inherit">📋 النشاطات</button>
+    </div>
+
+    <!-- Body (scrollable) -->
+    <div id="ld-body" style="flex:1;overflow-y:auto;padding:24px 28px">
+
+      <!-- TAB: Info -->
+      <div id="ld-pane-info">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          ${_ldField('الاسم','name',lead.name)}
+          ${_ldField('رقم الهاتف','phone',lead.phone,'tel')}
+          ${_ldField('البريد الإلكتروني','email',lead.email,'email')}
+          ${_ldField('نشاط الشركة','company_activities',lead.company_activities)}
+          ${_ldSelectField('الكيان القانوني','company_type',lead.company_type,COMPANY_TYPE_OPTS_FULL)}
+          ${_ldField('رأس المال','estimated_capital',lead.estimated_capital,'number')}
+          ${_ldField('المحافظة / الموقع','governorate',lead.governorate)}
+          ${_ldField('الاسم المقترح','suggested_name',lead.suggested_name)}
+          ${_ldField('الأسماء المقترحة (قائمة)','proposed_names',lead.proposed_names)}
+          ${_ldField('موعد الميتينج','meeting_date',lead.meeting_date?lead.meeting_date.slice(0,16):null,'datetime-local')}
+          ${_ldField('موعد المتابعة','follow_up_date',lead.follow_up_date?lead.follow_up_date.slice(0,16):null,'datetime-local')}
+          ${_ldSelectField('الحالة','status',lead.status,LEAD_STATUS_LABEL)}
+        </div>
+        <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#374151;cursor:pointer">
+            <input type="checkbox" id="ld-has_office" ${lead.has_office?'checked':''} style="width:16px;height:16px;accent-color:#1a2472"/>
+            يوجد مقر
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#374151;cursor:pointer">
+            <input type="checkbox" id="ld-has_existing_companies" ${lead.has_existing_companies?'checked':''} style="width:16px;height:16px;accent-color:#1a2472"/>
+            يوجد شركات قائمة
+          </label>
+        </div>
+        <div style="margin-top:14px">
+          <label class="form-label">ملاحظات</label>
+          <textarea id="ld-notes" class="input" rows="3" style="width:100%;resize:vertical">${escH(lead.notes||'')}</textarea>
+        </div>
+        <div style="margin-top:16px;text-align:left">
+          <button id="ld-save-info" class="btn btn-primary" onclick="saveLeadInfo(${lead.id})">💾 حفظ البيانات</button>
+        </div>
+      </div>
+
+      <!-- TAB: Quote -->
+      <div id="ld-pane-quote" style="display:none">
+        <div style="background:#eef1fb;border-right:4px solid #1a2472;border-radius:10px;padding:14px 18px;margin-bottom:18px;font-size:12px;color:#1a2472">
+          💡 بيانات العرض تُملأ تلقائياً من بيانات العميل — يمكنك تعديلها
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+          <div><label class="form-label">الكيان القانوني</label><input id="qq-legal_entity" class="input" value="${escH(lead.quote_legal_entity||COMPANY_TYPE_OPTS_FULL[lead.company_type||'']||'')}"/></div>
+          <div><label class="form-label">النشاط</label><input id="qq-activity" class="input" value="${escH(lead.quote_activity||lead.company_activities||'')}"/></div>
+          <div><label class="form-label">الموقع / المحافظة</label><input id="qq-location" class="input" value="${escH(lead.quote_location||lead.governorate||'')}"/></div>
+          <div><label class="form-label">رأس المال (جنيه)</label><input id="qq-capital" class="input" type="number" style="direction:ltr" value="${lead.quote_capital!=null?lead.quote_capital:(lead.estimated_capital||'')}"/></div>
+          <div><label class="form-label">أتعاب المكتب (جنيه)</label><input id="qq-total_fees" class="input" type="number" style="direction:ltr" value="${lead.quote_total_fees||''}" oninput="_qsCalc()"/></div>
+          <div><label class="form-label">الرسوم الحكومية (جنيه)</label><input id="qq-government_fees" class="input" type="number" style="direction:ltr" value="${lead.quote_government_fees||''}" oninput="_qsCalc()"/></div>
+        </div>
+
+        <!-- Services table -->
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label class="form-label" style="margin:0">الخدمات المقدمة</label>
+            <button onclick="_qsAddService()" class="btn btn-secondary" style="font-size:12px;padding:4px 10px">+ إضافة خدمة</button>
+          </div>
+          <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr style="background:#f8fafc">
+                <th style="padding:8px 10px;font-size:11px;color:#64748b;text-align:right;font-weight:700">الخدمة</th>
+                <th style="padding:8px 10px;font-size:11px;color:#64748b;text-align:right;font-weight:700;width:130px">السعر (جنيه)</th>
+                <th style="width:30px"></th>
+              </tr></thead>
+              <tbody id="qs-services-tbody">${serviceRows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Total summary -->
+        <div id="qs-total-block" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:10px;padding:16px 22px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:12px;color:#15803d;font-weight:600;margin-bottom:4px">إجمالي المصاريف والأتعاب</div>
+            <div id="qs-total-amt" style="font-size:26px;font-weight:800;color:#15803d">${fmtMoney(lead.quote_expenses_total)}</div>
+            <div id="qs-total-break" style="font-size:11px;color:#6b7280;margin-top:3px">${lead.quote_total_fees||lead.quote_government_fees?`أتعاب: ${fmtMoney(lead.quote_total_fees)} — رسوم: ${fmtMoney(lead.quote_government_fees)}`:''}</div>
+          </div>
+          <div style="font-size:36px">💰</div>
+        </div>
+
+        <!-- Required docs -->
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label class="form-label" style="margin:0">المستندات المطلوبة</label>
+            <button onclick="_qsAddDoc()" class="btn btn-secondary" style="font-size:12px;padding:4px 10px">+ إضافة مستند</button>
+          </div>
+          <div id="qs-docs-wrap">${docsHtml}</div>
+        </div>
+
+        <!-- Quote notes -->
+        <div style="margin-bottom:16px">
+          <label class="form-label">ملاحظات العرض</label>
+          <textarea id="qq-notes" class="input" rows="2" style="width:100%;resize:vertical">${escH(lead.quote_notes||'')}</textarea>
+        </div>
+
+        <div style="text-align:left">
+          <button id="ld-save-quote" class="btn btn-primary" onclick="saveLeadQuote(${lead.id})">💾 حفظ العرض</button>
+        </div>
+      </div>
+
+      <!-- TAB: Activities -->
+      <div id="ld-pane-activity" style="display:none">
+        ${(lead.activities||[]).length===0
+          ? emptyState('📋','لا يوجد نشاطات بعد')
+          : `<div style="display:flex;flex-direction:column;gap:10px">`+
+            (lead.activities||[]).map(a=>`
+            <div style="display:flex;gap:12px;padding:10px 14px;background:#f8fafc;border-radius:10px;border-right:3px solid #1a2472">
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(a.description||a.action)}</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:3px">${a.user_name?escH(a.user_name)+' — ':''}${fmtDt(a.created_at)}</div>
+              </div>
+            </div>`).join('')+`</div>`
+        }
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="border-top:2px solid #e2e8f0;padding:14px 28px;background:#f8fafc;display:flex;gap:10px;flex-wrap:wrap;flex-shrink:0">
+      <button onclick="sendLeadQuoteEmail(${lead.id},'${escH(lead.email||'')}')" class="btn btn-secondary" style="gap:6px">📧 إرسال بالبريد</button>
+      <button onclick="sendLeadWhatsApp(${lead.id})" class="btn btn-secondary" style="gap:6px;background:#25d366;color:white;border-color:#25d366">📱 WhatsApp</button>
+      <button onclick="previewLeadQuotePDF(${lead.id})" class="btn btn-secondary" style="gap:6px">📄 معاينة PDF</button>
+      <button onclick="printLeadQuote(${lead.id})" class="btn btn-secondary" style="gap:6px">🖨️ طباعة</button>
+      <div style="flex:1"></div>
+      <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary">إغلاق</button>
+    </div>
+  </div>`;
+
+  // Store mutable service/doc arrays on window so inline handlers can update them
+  window._qsServices = services.map(s=>({name:s.name||'',price:parseFloat(s.price)||0}));
+  window._qsDocs = reqDocs.slice();
+  window._ldLeadId = id;
+
+  document.body.append(overlay);
+  overlay.addEventListener('mousedown', e=>{ if(e.target===overlay) overlay.remove(); });
+}
+
+function _ldField(label, field, val, type='text'){
+  const v = val!=null?String(val):'';
+  return `<div>
+    <label class="form-label">${label}</label>
+    <input id="ld-${field}" class="input" type="${type}" value="${escH(v)}" ${type==='tel'?'style="direction:ltr"':''}/>
+  </div>`;
+}
+function _ldSelectField(label, field, val, opts){
+  const optsHtml = Object.entries(opts).map(([k,v])=>`<option value="${k}" ${val===k?'selected':''}>${v}</option>`).join('');
+  return `<div>
+    <label class="form-label">${label}</label>
+    <select id="ld-${field}" class="input">${optsHtml}</select>
+  </div>`;
+}
+
+function _ldTab(tab) {
+  ['info','quote','activity'].forEach(t=>{
+    const btn=document.getElementById(`ld-tab-${t}`);
+    const pane=document.getElementById(`ld-pane-${t}`);
+    if(!btn||!pane) return;
+    const active = t===tab;
+    btn.style.borderBottomColor = active?'#1a2472':'transparent';
+    btn.style.color = active?'#1a2472':'#64748b';
+    btn.style.background = active?'#fff':'transparent';
+    btn.style.fontWeight = active?'700':'600';
+    pane.style.display = active?'':'none';
+  });
+}
+
+function _qsCalc() {
+  const fees = parseFloat(document.getElementById('qq-total_fees')?.value)||0;
+  const gov  = parseFloat(document.getElementById('qq-government_fees')?.value)||0;
+  const svcTotal = (window._qsServices||[]).reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+  const total = fees + gov + svcTotal;
+  const amt = document.getElementById('qs-total-amt');
+  const brk = document.getElementById('qs-total-break');
+  if(amt) amt.textContent = total.toLocaleString('ar-EG')+' جنيه';
+  if(brk) brk.textContent = `أتعاب: ${fees.toLocaleString('ar-EG')} جنيه — رسوم: ${gov.toLocaleString('ar-EG')} جنيه`;
+}
+
+function _qsAddService() {
+  const svc = {name:'',price:0};
+  window._qsServices = window._qsServices||[];
+  const i = window._qsServices.length;
+  window._qsServices.push(svc);
+  const tbody = document.getElementById('qs-services-tbody');
+  if(!tbody) return;
+  const tr = document.createElement('tr');
+  tr.id = `qs-row-${i}`;
+  tr.style.borderBottom = '1px solid #f1f5f9';
+  tr.innerHTML = `
+    <td style="padding:6px 8px"><input class="input" style="font-size:12px;padding:4px 8px" placeholder="اسم الخدمة" oninput="window._qsServices[${i}].name=this.value;_qsCalc()"/></td>
+    <td style="padding:6px 8px"><input class="input" type="number" style="font-size:12px;padding:4px 8px;width:110px;direction:ltr" placeholder="0" oninput="window._qsServices[${i}].price=parseFloat(this.value)||0;_qsCalc()"/></td>
+    <td style="padding:6px 4px;text-align:center"><button onclick="window._qsServices.splice(${i},1);this.closest('tr').remove();_qsCalc()" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>`;
+  tbody.append(tr);
+}
+
+function _qsAddDoc() {
+  window._qsDocs = window._qsDocs||[];
+  const i = window._qsDocs.length;
+  window._qsDocs.push('');
+  const wrap = document.getElementById('qs-docs-wrap');
+  if(!wrap) return;
+  const div = document.createElement('div');
+  div.id = `qd-${i}`;
+  div.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px';
+  div.innerHTML = `
+    <input class="input" style="flex:1;font-size:12px;padding:4px 8px" placeholder="مستند مطلوب..." oninput="window._qsDocs[${i}]=this.value"/>
+    <button onclick="window._qsDocs.splice(${i},1);this.closest('div').remove()" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button>`;
+  wrap.append(div);
+}
+
+async function saveLeadInfo(id) {
+  const btn = document.getElementById('ld-save-info');
+  const body = {};
+  ['name','phone','email','company_activities','company_type','estimated_capital',
+   'governorate','suggested_name','proposed_names','meeting_date','follow_up_date','status','notes'].forEach(f=>{
+    const el = document.getElementById(`ld-${f}`);
+    if(!el) return;
+    if(el.type==='number') body[f] = el.value!==''?parseFloat(el.value):null;
+    else body[f] = el.value||null;
+  });
+  const officeEl = document.getElementById('ld-has_office');
+  if(officeEl) body.has_office = officeEl.checked;
+  const excEl = document.getElementById('ld-has_existing_companies');
+  if(excEl) body.has_existing_companies = excEl.checked;
+
+  await withSaving(btn, async()=>{
+    const updated = await api('PUT', `/api/leads/${id}`, body);
+    // Refresh local cache
+    const idx = leadsData.findIndex(l=>l.id===id);
+    if(idx>=0) leadsData[idx]=updated;
+    // Update grid row if visible
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if(row){
+      const tmp=document.createElement('table');
+      tmp.innerHTML=`<tbody>${_buildLeadRow(updated)}</tbody>`;
+      const newRow=tmp.querySelector('tr');
+      row.replaceWith(newRow);
+    }
+    toast('تم حفظ بيانات العميل ✓');
+  });
+}
+
+async function saveLeadQuote(id) {
+  const btn = document.getElementById('ld-save-quote');
+  const fees = parseFloat(document.getElementById('qq-total_fees')?.value)||0;
+  const gov  = parseFloat(document.getElementById('qq-government_fees')?.value)||0;
+  const svcTotal = (window._qsServices||[]).reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+  const body = {
+    quote_legal_entity: document.getElementById('qq-legal_entity')?.value||null,
+    quote_activity:     document.getElementById('qq-activity')?.value||null,
+    quote_location:     document.getElementById('qq-location')?.value||null,
+    quote_capital:      parseFloat(document.getElementById('qq-capital')?.value)||null,
+    quote_total_fees:   fees||null,
+    quote_government_fees: gov||null,
+    quote_expenses_total: (fees+gov+svcTotal)||null,
+    quote_services:     JSON.stringify((window._qsServices||[]).filter(s=>s.name)),
+    quote_required_docs: JSON.stringify((window._qsDocs||[]).filter(Boolean)),
+    quote_notes:        document.getElementById('qq-notes')?.value||null,
+  };
+  await withSaving(btn, async()=>{
+    await api('PUT', `/api/leads/${id}`, body);
+    _qsCalc();
+    toast('تم حفظ عرض السعر ✓');
+  });
+}
+
+async function sendLeadQuoteEmail(id, defaultEmail) {
+  const email = prompt('البريد الإلكتروني للإرسال:', defaultEmail||'');
+  if(!email) return;
+  try {
+    await api('POST', `/api/leads/${id}/quote/send-email`, {to_email:email});
+    toast('تم الإرسال بنجاح ✓');
+  } catch(e){ toast(e.message,'error'); }
+}
+
+async function sendLeadWhatsApp(id) {
+  // Build lead data from current saved state in leadsData or re-fetch
+  const lead = leadsData.find(l=>l.id===id);
+  // Collect quote data from modal inputs if open
+  const fees  = parseFloat(document.getElementById('qq-total_fees')?.value)||lead?.quote_total_fees||0;
+  const gov   = parseFloat(document.getElementById('qq-government_fees')?.value)||lead?.quote_government_fees||0;
+  const total = fees+gov;
+  const activity = document.getElementById('qq-activity')?.value || lead?.quote_activity || lead?.company_activities || '';
+  const legal = document.getElementById('qq-legal_entity')?.value || lead?.quote_legal_entity || '';
+  const docs = (window._qsDocs||[]).filter(Boolean);
+
+  const phone = lead?.phone?.replace(/\D/g,'');
+  if(!phone){ toast('لا يوجد رقم هاتف لهذا العميل','error'); return; }
+  const waPhone = phone.startsWith('0')?'2'+phone:phone;
+
+  const msg = `مساء الخير / ${lead?.name||''}
+
+يسعدنا تقديم عرض السعر الخاص بتأسيس شركتكم:
+
+📌 الكيان القانوني: ${legal||'—'}
+📌 النشاط: ${activity||'—'}
+💰 إجمالي المصاريف والأتعاب: ${total>0?total.toLocaleString('ar-EG')+' جنيه':'—'}
+${fees?'🏢 أتعاب المكتب: '+fees.toLocaleString('ar-EG')+' جنيه':''}
+${gov?'🏛️ رسوم حكومية: '+gov.toLocaleString('ar-EG')+' جنيه':''}
+${docs.length?'\n📋 المستندات المطلوبة:\n'+docs.map(d=>'• '+d).join('\n'):''}
+
+للاستفسار والحجز نرجو التواصل معنا.
+مع تحياتنا — مكتب MS للمحاسبة والضرائب
+المستشار: عمرو شعبان`.trim();
+
+  window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+async function previewLeadQuotePDF(id) {
+  // Gather data from modal or from leadsData
+  const lead = leadsData.find(l=>l.id===id);
+  const legalEntity = document.getElementById('qq-legal_entity')?.value || lead?.quote_legal_entity || '';
+  const activity    = document.getElementById('qq-activity')?.value    || lead?.quote_activity    || lead?.company_activities || '';
+  const location    = document.getElementById('qq-location')?.value    || lead?.quote_location    || lead?.governorate        || '';
+  const capital     = parseFloat(document.getElementById('qq-capital')?.value) || lead?.quote_capital || lead?.estimated_capital || 0;
+  const fees        = parseFloat(document.getElementById('qq-total_fees')?.value) || lead?.quote_total_fees || 0;
+  const gov         = parseFloat(document.getElementById('qq-government_fees')?.value) || lead?.quote_government_fees || 0;
+  const svcTotal    = (window._qsServices||[]).reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+  const total       = fees + gov + svcTotal;
+  const notes       = document.getElementById('qq-notes')?.value || lead?.quote_notes || '';
+  const services    = (window._qsServices||[]).filter(s=>s.name);
+  const docs        = (window._qsDocs||[]).filter(Boolean);
+  const today       = new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'});
+
+  const servicesHtml = services.map(s=>`
+    <tr>
+      <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#374151">${escH(s.name)}</td>
+      <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:700;color:#1a2472;text-align:left">${Number(s.price).toLocaleString('ar-EG')} جنيه</td>
+    </tr>`).join('');
+  const docsListHtml = docs.map(d=>`<li style="margin:5px 0;font-size:13px;color:#374151">${escH(d)}</li>`).join('');
+
+  const printHtml = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<title>عرض سعر — ${escH(lead?.code||'')} — ${escH(lead?.name||'')}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+  *{font-family:'Cairo',sans-serif;box-sizing:border-box;margin:0;padding:0}
+  body{background:#fff;color:#1e293b;direction:rtl;font-size:14px;line-height:1.6}
+  .page{width:210mm;min-height:297mm;margin:0 auto;background:white;position:relative}
+  .header{background:linear-gradient(135deg,#1a2472 0%,#152060 60%,#0f1848 100%);color:white;padding:30px 40px 22px}
+  .header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .co-name{font-size:24px;font-weight:800}
+  .co-sub{font-size:11px;color:#b3c4e8;margin-top:2px;letter-spacing:1px}
+  .qmeta{text-align:left}
+  .qnum{font-size:18px;font-weight:800;color:#fbbf24}
+  .qdate{font-size:11px;color:#b3c4e8;margin-top:3px}
+  .hdiv{border-top:1px solid rgba(255,255,255,.2);margin:14px 0}
+  .qtitle{font-size:15px;font-weight:600;color:#b3c4e8;text-align:center}
+  .body{padding:28px 40px}
+  .greet{font-size:16px;font-weight:600;color:#1a2472;margin-bottom:3px}
+  .greet-sub{font-size:13px;color:#64748b;margin-bottom:22px}
+  .info-block{background:linear-gradient(135deg,#eef1fb,#f0f4ff);border:1.5px solid #c7d2fe;border-radius:10px;padding:18px 22px;margin-bottom:20px}
+  .info-title{font-size:12px;font-weight:700;color:#1a2472;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;border-bottom:1px solid #c7d2fe;padding-bottom:7px}
+  .info-row{display:flex;align-items:baseline;gap:8px;margin-bottom:7px;font-size:13px}
+  .info-label{color:#64748b;min-width:130px}
+  .info-value{font-weight:700;color:#1e293b;flex:1}
+  .svc-table{width:100%;border-collapse:collapse;margin-bottom:20px;border-radius:10px;overflow:hidden}
+  .svc-thead th{background:#1a2472;color:white;padding:8px 14px;font-size:12px;text-align:right;font-weight:700}
+  .svc-thead th:last-child{text-align:left}
+  .total-block{background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:10px;padding:16px 22px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
+  .total-label{font-size:12px;color:#15803d;font-weight:600}
+  .total-amt{font-size:28px;font-weight:800;color:#15803d}
+  .total-break{font-size:11px;color:#6b7280;margin-top:3px}
+  .docs-block{margin-bottom:20px}
+  .sec-title{font-size:12px;font-weight:700;color:#1a2472;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .docs-box{background:#fffbeb;border-right:4px solid #d97706;border-radius:8px;padding:12px 16px}
+  .notes-block{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#92400e}
+  .sig-block{border-top:2px solid #e8edf3;padding-top:18px;margin-top:18px;display:flex;justify-content:space-between;align-items:flex-end}
+  .sig-side{text-align:center}
+  .sig-line{border-top:1px solid #94a3b8;width:170px;margin:0 auto 5px;padding-top:7px;font-size:11px;color:#64748b}
+  .sig-name{font-weight:700;font-size:13px;color:#1e293b}
+  .footer{background:#1a2472;color:#b3c4e8;padding:12px 40px;display:flex;justify-content:space-between;font-size:10px}
+  @media print{.no-print{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{margin:0}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="header-top">
+      <div><div class="co-name">🏛️ MS Accounting</div><div class="co-sub">Corporate Accounting & Tax Consulting</div></div>
+      <div class="qmeta">
+        <div class="qnum">${escH(lead?.code||'QUO')}</div>
+        <div class="qdate">📅 ${today}</div>
+      </div>
+    </div>
+    <div class="hdiv"></div>
+    <div class="qtitle">عرض سعر — تأسيس شركة</div>
+  </div>
+
+  <div class="body">
+    <div class="greet">مساء الخير،</div>
+    <div class="greet-sub">مع حضرتك / ${escH(lead?.name||'')}</div>
+
+    <div class="info-block">
+      <div class="info-title">📋 تفاصيل عرض السعر</div>
+      ${legalEntity?`<div class="info-row"><span class="info-label">الكيان القانوني:</span><span class="info-value">${escH(legalEntity)}</span></div>`:''}
+      ${activity?`<div class="info-row"><span class="info-label">النشاط:</span><span class="info-value">${escH(activity)}</span></div>`:''}
+      ${location?`<div class="info-row"><span class="info-label">مقر النشاط:</span><span class="info-value">${escH(location)}</span></div>`:''}
+      ${capital?`<div class="info-row"><span class="info-label">رأس المال:</span><span class="info-value">${Number(capital).toLocaleString('ar-EG')} جنيه</span></div>`:''}
+      <div class="info-row"><span class="info-label">اسم العميل:</span><span class="info-value">${escH(lead?.name||'')}</span></div>
+      ${lead?.phone?`<div class="info-row"><span class="info-label">رقم الهاتف:</span><span class="info-value">${escH(lead.phone)}</span></div>`:''}
+    </div>
+
+    ${servicesHtml?`<table class="svc-table">
+      <thead class="svc-thead"><tr><th>الخدمة</th><th>السعر</th></tr></thead>
+      <tbody>${servicesHtml}</tbody>
+    </table>`:''}
+
+    <div class="total-block">
+      <div>
+        <div class="total-label">إجمالي المصاريف والأتعاب</div>
+        <div class="total-amt">${total>0?total.toLocaleString('ar-EG')+' جنيه':'—'}</div>
+        ${fees||gov?`<div class="total-break">أتعاب المكتب: ${fees.toLocaleString('ar-EG')} جنيه — رسوم حكومية: ${gov.toLocaleString('ar-EG')} جنيه</div>`:''}
+      </div>
+      <div style="font-size:36px">💰</div>
+    </div>
+
+    ${docsListHtml?`<div class="docs-block">
+      <div class="sec-title">📌 المستندات المطلوبة من حضرتكم</div>
+      <div class="docs-box"><ul style="padding-right:18px">${docsListHtml}</ul></div>
+    </div>`:''}
+
+    ${notes?`<div class="notes-block"><strong>ملاحظات:</strong> ${escH(notes)}</div>`:''}
+
+    <div class="sig-block">
+      <div class="sig-side">
+        <div class="sig-line">العميل</div>
+        <div class="sig-name">${escH(lead?.name||'')}</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px">التوقيع والتاريخ</div>
+      </div>
+      <div style="text-align:center;color:#64748b;font-size:12px">
+        <div style="font-size:22px;margin-bottom:5px">🏛️</div>
+        <div style="font-weight:700;color:#1a2472">MS Accounting</div>
+        <div style="font-size:10px">مكتب محاسبة وضرائب</div>
+      </div>
+      <div class="sig-side">
+        <div class="sig-line">المستشار</div>
+        <div class="sig-name">عمرو شعبان</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px">المستشار الضريبي</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>MS Accounting — مكتب المحاسبة والضرائب</div>
+    <div>${escH(lead?.code||'')} | ${today}</div>
+    <div>هذا العرض سري وخاص بالعميل المُشار إليه</div>
+  </div>
+</div>
+<div class="no-print" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:10px;background:white;padding:12px 20px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.2)">
+  <button onclick="window.print()" style="background:linear-gradient(135deg,#1a2472,#152060);color:white;border:none;border-radius:9px;padding:10px 24px;font-size:14px;font-family:'Cairo',sans-serif;cursor:pointer;font-weight:700">🖨️ طباعة / حفظ PDF</button>
+  <button onclick="window.close()" style="background:#f1f5f9;color:#374151;border:1.5px solid #d1d5db;border-radius:9px;padding:10px 24px;font-size:14px;font-family:'Cairo',sans-serif;cursor:pointer">إغلاق</button>
+</div>
+</body></html>`;
+
+  const w = window.open('', '_blank', 'width=900,height=1000,scrollbars=yes');
+  if(!w){ toast('يرجى السماح بفتح نوافذ منبثقة في المتصفح','error'); return; }
+  w.document.write(printHtml);
+  w.document.close();
+}
+
+function printLeadQuote(id) { previewLeadQuotePDF(id); }
 
 // ── ESTABLISHMENT ──────────────────────────────────
 let estData=[];
@@ -6387,10 +6910,21 @@ window.downloadDoc=downloadDoc;
 // tax
 window.submitTaxReturn=submitTaxReturn;
 window.showTaxModal=showTaxModal;
-// leads grid
+// leads grid + detail
 window.addLeadRow=addLeadRow;
 window.deleteLeadRow=deleteLeadRow;
 window.saveLeadCell=saveLeadCell;
+window.showLeadDetail=showLeadDetail;
+window.saveLeadInfo=saveLeadInfo;
+window.saveLeadQuote=saveLeadQuote;
+window.sendLeadQuoteEmail=sendLeadQuoteEmail;
+window.sendLeadWhatsApp=sendLeadWhatsApp;
+window.previewLeadQuotePDF=previewLeadQuotePDF;
+window.printLeadQuote=printLeadQuote;
+window._ldTab=_ldTab;
+window._qsCalc=_qsCalc;
+window._qsAddService=_qsAddService;
+window._qsAddDoc=_qsAddDoc;
 // establishment
 window.updateEstStage=updateEstStage;
 window.doUpdateEstStage=doUpdateEstStage;

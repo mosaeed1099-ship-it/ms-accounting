@@ -74,6 +74,23 @@ class Lead(Base):
     notes = Column(Text)
     lost_reason = Column(Text)
 
+    # حقول إضافية CRM
+    follow_up_date = Column(DateTime, nullable=True)          # موعد المتابعة
+    has_existing_companies = Column(Boolean, default=False)   # شركات قائمة
+    proposed_names = Column(Text, nullable=True)              # JSON: قائمة الأسماء المقترحة
+
+    # ─── عرض السعر المدمج ─────────────────────────────────────────────────────
+    quote_legal_entity    = Column(String, nullable=True)    # الكيان القانوني
+    quote_activity        = Column(String, nullable=True)    # النشاط
+    quote_location        = Column(String, nullable=True)    # الموقع / المحافظة
+    quote_capital         = Column(Float,  nullable=True)    # رأس المال
+    quote_total_fees      = Column(Float,  nullable=True)    # إجمالي أتعاب المكتب
+    quote_government_fees = Column(Float,  nullable=True)    # الرسوم الحكومية
+    quote_expenses_total  = Column(Float,  nullable=True)    # إجمالي شامل
+    quote_services        = Column(Text,   nullable=True)    # JSON: [{name, price}]
+    quote_required_docs   = Column(Text,   nullable=True)    # JSON: [string, ...]
+    quote_notes           = Column(Text,   nullable=True)    # ملاحظات العرض
+
     # رابط بعميل رسمي (بعد التحويل)
     converted_client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
     converted_at = Column(DateTime, nullable=True)

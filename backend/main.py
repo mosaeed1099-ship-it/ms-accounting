@@ -112,6 +112,38 @@ def seed_admin():
         db.close()
 
 
+def _migrate_leads_columns():
+    """Add new Lead columns that may not exist on older databases."""
+    from app.database import engine
+    from sqlalchemy import text
+    new_columns = [
+        ("follow_up_date",          "TIMESTAMP"),
+        ("has_existing_companies",  "BOOLEAN DEFAULT FALSE"),
+        ("proposed_names",          "TEXT"),
+        ("quote_legal_entity",      "VARCHAR(200)"),
+        ("quote_activity",          "VARCHAR(200)"),
+        ("quote_location",          "VARCHAR(200)"),
+        ("quote_capital",           "FLOAT"),
+        ("quote_total_fees",        "FLOAT"),
+        ("quote_government_fees",   "FLOAT"),
+        ("quote_expenses_total",    "FLOAT"),
+        ("quote_services",          "TEXT"),
+        ("quote_required_docs",     "TEXT"),
+        ("quote_notes",             "TEXT"),
+    ]
+    with engine.connect() as conn:
+        for col, col_type in new_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE leads ADD COLUMN IF NOT EXISTS {col} {col_type}"))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+    print("✅ Leads migration done")
+
+
 def _init_db_sync():
     """Blocking DB init — runs in thread pool."""
     import time
@@ -119,6 +151,7 @@ def _init_db_sync():
         try:
             create_tables()
             seed_admin()
+            _migrate_leads_columns()
             print("✅ Database ready")
             return
         except Exception as exc:
