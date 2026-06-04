@@ -215,6 +215,15 @@
     .confirm-box p{margin:0 0 22px;font-size:14px;color:#64748b;line-height:1.6}
     .confirm-btns{display:flex;gap:10px;justify-content:flex-end}
 
+    /* ─── Form Labels ─── */
+    .form-label{display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px}
+
+    /* ─── Empty State ─── */
+    .empty-state{text-align:center;padding:48px 20px;color:#94a3b8}
+    .empty-state .es-icon{font-size:40px;margin-bottom:10px}
+    .empty-state .es-title{font-size:13px;font-weight:700;color:#475569;margin-bottom:6px}
+    .empty-state .es-sub{font-size:12px;color:#94a3b8}
+
     /* ─── Print Styles ─── */
     .print-header { display:none }
 
@@ -299,6 +308,22 @@ let currentUser = JSON.parse(localStorage.getItem('ms_user') || 'null');
 let currentPage = 'dashboard';
 let chartInstances = {};
 
+// ── Shared data caches ────────────────────────────────
+let _clientsCache = null;
+/** Return cached client list; re-fetches only when cache is cleared */
+async function getClients(pageSize=500) {
+  if (_clientsCache) return _clientsCache;
+  const d = await api('GET', `/api/clients?page_size=${pageSize}`);
+  _clientsCache = d?.items || [];
+  return _clientsCache;
+}
+/** Call after any client create/edit/delete to force next getClients() to re-fetch */
+function invalidateClientsCache() { _clientsCache = null; }
+
+// ── Notification interval tracker ────────────────────
+let _notifInterval = null;
+let _fabClickHandler = null;
+
 // ── Utilities ──────────────────────────────────────
 const $ = (s,c=document) => c.querySelector(s);
 const $$ = (s,c=document) => [...c.querySelectorAll(s)];
@@ -359,7 +384,7 @@ function dateAr(d) {
   if(!d) return '—';
   return new Intl.DateTimeFormat('ar-EG',{year:'numeric',month:'short',day:'numeric'}).format(new Date(d));
 }
-const fmtDate = dateAr;
+// fmtDate removed — use dateAr() directly
 
 function closeModal() {
   document.getElementById('modal')?.remove();
@@ -433,6 +458,34 @@ function skeletonCards(n=6) {
       <div class="skeleton skel-line" style="width:60%"></div>
     </div>`).join('')}
   </div>`;
+}
+
+// ── Shared UI Helpers ──────────────────────────────────
+/** Show spinner inside any element */
+function setLoading(el) {
+  el.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+}
+
+/** Render a centred empty-state block */
+function emptyState(icon, title, sub='') {
+  return `<div class="empty-state">
+    ${icon ? `<div class="es-icon">${icon}</div>` : ''}
+    <div class="es-title">${title}</div>
+    ${sub ? `<div class="es-sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+/** Empty-state inside a table row */
+function emptyStateRow(colspan, icon, title, sub='') {
+  return `<tr><td colspan="${colspan}">${emptyState(icon, title, sub)}</td></tr>`;
+}
+
+/** Wrap a save button in a loading state while async fn runs */
+async function withSaving(btn, fn) {
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'جاري الحفظ...';
+  try { await fn(); }
+  catch(e) { toast(e.message,'error'); btn.disabled=false; btn.innerHTML=orig; }
 }
 
 // ── FAB Functions ──────────────────────────────────────
@@ -734,21 +787,24 @@ function renderApp() {
     </div>
     <button class="fab-main" id="fabBtn" onclick="toggleFab()" title="إضافة سريعة">+</button>
   `;
+  // Remove previous FAB to prevent duplicates on re-login
+  document.getElementById('fabWrap')?.remove();
   document.body.append(fab);
-  document.addEventListener('click', e => {
-    const w = document.getElementById('fabWrap');
-    if(w && !w.contains(e.target)) closeFab();
-  }, {capture:true, passive:true});
+
+  // Register FAB close-outside listener once (remove previous to avoid stacking)
+  if (_fabClickHandler) document.removeEventListener('click', _fabClickHandler, {capture:true});
+  _fabClickHandler = e => { const w = document.getElementById('fabWrap'); if(w && !w.contains(e.target)) closeFab(); };
+  document.addEventListener('click', _fabClickHandler, {capture:true, passive:true});
 
   // Start connection monitor (keeps checking every 30s + handles offline/online events)
   _startConnMonitor();
 
   navigate(currentPage);
 
-  // Load notifications count
+  // Load notifications count and refresh every 2 minutes (clear any previous interval)
   loadNotifCount();
-  // Refresh every 2 minutes
-  setInterval(loadNotifCount, 120000);
+  if (_notifInterval) clearInterval(_notifInterval);
+  _notifInterval = setInterval(loadNotifCount, 120000);
 }
 
 // ── Notifications Bell ─────────────────────────────
@@ -1051,7 +1107,7 @@ function navigate(page) {
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
-  if(main) main.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
+  if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
   const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports,postal:loadPostal,statements:loadStatements,timesheet:loadTimesheet,office_services:loadOfficeServices,company_docs:loadCompanyDocs,folders:loadFolders,audit_trail:loadAuditTrail,client_portal:loadClientPortal,permissions:loadPermissions};
   if(pages[page]) pages[page]();
@@ -1473,12 +1529,12 @@ async function loadClients() {
   const main=document.getElementById('main');
   if(main&&!clientsData.length){main.className='page';main.innerHTML=skeletonTable(5,7);}
   try {
-    const p = new URLSearchParams({page_size:'100'});
-    if(clientFilter && clientFilter!=='all') p.append('status', clientFilter);
-    if(clientSearch) p.append('q', clientSearch);
-    const data = await api('GET',`/api/clients?${p}`);
+    // Always fetch all clients; filtering is done client-side in renderClients()
+    const data = await api('GET',`/api/clients?page_size=500`);
     if(!data) return;
     clientsData = data.items||[];
+    invalidateClientsCache(); // keep shared cache in sync
+    _clientsCache = clientsData;
     renderClients();
   } catch(e) { toast(e.message,'error'); }
 }
@@ -1496,13 +1552,23 @@ const CLIENT_TYPE_BADGE={
   'individual':'badge-green','freelancer':'badge-purple','company':'badge-blue',
 };
 
+// ── Shared lookup tables (module-level — not re-declared per render call) ──
+const CLIENT_STATUS_BADGE  = {active:'badge-green',inactive:'badge-gray',prospect:'badge-yellow',suspended:'badge-red'};
+const CLIENT_STATUS_LABEL  = {active:'نشط',inactive:'غير نشط',prospect:'محتمل',suspended:'موقوف'};
+const INV_STATUS_BADGE     = {paid:'badge-green',sent:'badge-blue',partial:'badge-yellow',overdue:'badge-red',draft:'badge-gray',cancelled:'badge-gray'};
+const INV_STATUS_LABEL     = {paid:'مسددة',sent:'مرسلة',partial:'جزئي',overdue:'متأخرة',draft:'مسودة',cancelled:'ملغاة'};
+const PRIORITY_COLOR       = {urgent:'#dc2626',high:'#f97316',medium:'#eab308',low:'#22c55e'};
+const PRIORITY_LABEL       = {urgent:'عاجل',high:'عالي',medium:'متوسط',low:'منخفض'};
+const CAT_LABEL            = {tax:'ضرائب',accounting:'محاسبة',payroll:'مرتبات',legal:'قانوني',other:'أخرى'};
+const MONTH_NAMES_AR       = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
 function renderClients() {
   const main=document.getElementById('main');
   main.className='page';
   const typeLabel=CLIENT_TYPE_LABEL;
   const typeBadge=CLIENT_TYPE_BADGE;
-  const statusBadge={'active':'badge-green','inactive':'badge-gray','prospect':'badge-yellow','suspended':'badge-red'};
-  const statusLabel={'active':'نشط','inactive':'غير نشط','prospect':'محتمل','suspended':'موقوف'};
+  const statusBadge=CLIENT_STATUS_BADGE;
+  const statusLabel=CLIENT_STATUS_LABEL;
   main.innerHTML=`
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1528,12 +1594,16 @@ function renderClients() {
         <th>الكود</th><th>الاسم</th><th>النوع</th><th>الهاتف</th><th>النشاط</th><th>قيمة العقد</th><th>الرصيد</th><th>الحالة</th><th>إجراءات</th>
       </tr></thead>
       <tbody>
-        ${clientsData.length===0?`<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">
-          <div style="font-size:40px;margin-bottom:10px">👥</div>
-          <div style="font-weight:700;color:#475569;margin-bottom:6px">لا يوجد عملاء</div>
-          <div style="font-size:12px">اضغط "+ إضافة عميل" لإنشاء أول عميل</div>
-        </td></tr>`:
-          clientsData.map(c=>{
+        ${(()=>{
+          // Client-side filter — no round-trip on each keystroke
+          const q = clientSearch.toLowerCase();
+          const filtered = clientsData.filter(c=>{
+            if(clientFilter!=='all' && c.status!==clientFilter) return false;
+            if(q) return (c.name||'').toLowerCase().includes(q)||(c.tax_number||'').includes(q)||(c.code||'').toLowerCase().includes(q);
+            return true;
+          });
+          if(!filtered.length) return emptyStateRow(9,'👥','لا يوجد عملاء','اضغط "+ إضافة عميل" لإنشاء أول عميل');
+          return filtered.map(c=>{
             const bal = c.balance||0;
             const balStyle = bal>0?'color:#dc2626;font-weight:700':bal<0?'color:#16a34a;font-weight:700':'color:#94a3b8';
             const balText = bal===0?'—': (bal>0?`<span style="${balStyle}">▲ ${money(bal)}</span>`:`<span style="${balStyle}">✓ ${money(Math.abs(bal))}</span>`);
@@ -1558,19 +1628,21 @@ function renderClients() {
                 <button class="btn btn-secondary btn-sm" title="إرسال بريد" onclick="showClientEmailModal(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.email||''}')">📧</button>
               </div>
             </td>
-          </tr>`;}).join('')}
+          </tr>`;}).join('');
+        })()}
       </tbody>
     </table>
   </div>`;
-  document.getElementById('clientSearchInput').oninput=e=>{clientSearch=e.target.value;loadClients()};
-  document.getElementById('clientFilterSelect').onchange=e=>{clientFilter=e.target.value;loadClients()};
+  // Client-side: search/filter calls renderClients() directly — no API round-trip
+  document.getElementById('clientSearchInput').oninput=e=>{clientSearch=e.target.value;renderClients()};
+  document.getElementById('clientFilterSelect').onchange=e=>{clientFilter=e.target.value;renderClients()};
 }
 
 async function showClientDetail(id) {
   const c = clientsData.find(x=>x.id===id);
   if(!c) return;
   const typeLabel=CLIENT_TYPE_LABEL;
-  const statusLabel={'active':'نشط','inactive':'غير نشط','prospect':'محتمل','suspended':'موقوف'};
+  const statusLabel=CLIENT_STATUS_LABEL;
 
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
@@ -1928,6 +2000,7 @@ function showClientModal(id=null) {
       else await api('POST','/api/clients',body);
       toast(c?'تم تحديث بيانات العميل':'تم إضافة العميل بنجاح');
       overlay.remove();
+      invalidateClientsCache();
       loadClients();
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`}
   };
@@ -1963,8 +2036,8 @@ async function loadInvoices() {
 function renderInvoices() {
   const main=document.getElementById('main');
   main.className='page';
-  const statusBadge={paid:'badge-green',sent:'badge-blue',partial:'badge-yellow',overdue:'badge-red',draft:'badge-gray',cancelled:'badge-gray'};
-  const statusLabel={paid:'مسددة',sent:'مرسلة',partial:'جزئي',overdue:'متأخرة',draft:'مسودة',cancelled:'ملغاة'};
+  const statusBadge=INV_STATUS_BADGE;
+  const statusLabel=INV_STATUS_LABEL;
   const total=invoicesData.reduce((s,i)=>s+i.total,0);
   const collected=invoicesData.reduce((s,i)=>s+i.paid_amount,0);
   const outstanding=invoicesData.reduce((s,i)=>s+i.remaining,0);
@@ -2023,7 +2096,7 @@ function renderInvoices() {
 async function showInvoiceModal(id=null, preClientId=null) {
   let inv=null, clients=[];
   try {
-    clients=(await api('GET','/api/clients?page_size=200'))?.items||[];
+    clients=await getClients();
     if(id) inv=invoicesData.find(x=>x.id===id);
   } catch(e){toast(e.message,'error');return}
 
@@ -2172,7 +2245,7 @@ let _taskEmpFilter = null;      // {id, name} | null = all
 async function loadTasks() {
   const main = document.getElementById('main');
   main.className = 'page';
-  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
     const [taskRes, userRes] = await Promise.all([
       api('GET', '/api/tasks?page_size=200'),
@@ -2193,8 +2266,8 @@ async function loadTasks() {
 // ── Employee folder cards view ──────────────────────────────────────
 function renderTaskFolders() {
   const main = document.getElementById('main');
-  const priorityColor = {urgent:'#dc2626', high:'#f97316', medium:'#eab308', low:'#22c55e'};
-  const priorityLabel = {urgent:'عاجل', high:'عالي', medium:'متوسط', low:'منخفض'};
+  const priorityColor = PRIORITY_COLOR;
+  const priorityLabel = PRIORITY_LABEL;
 
   // اجمّع مهام كل موظف
   const empMap = {};
@@ -2289,7 +2362,7 @@ async function openEmployeeTasks(empId, empName) {
   _taskEmpFilter = {id: empId, name: empName};
   _taskViewMode  = 'folders';
   const main = document.getElementById('main');
-  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
     const res = empId
       ? await api('GET', `/api/tasks?assigned_to=${empId}&page_size=200`)
@@ -2302,9 +2375,9 @@ async function openEmployeeTasks(empId, empName) {
 function renderEmployeeTasks() {
   const main = document.getElementById('main');
   const emp  = _taskEmpFilter;
-  const priorityColor = {urgent:'#dc2626', high:'#f97316', medium:'#eab308', low:'#22c55e'};
-  const priorityLabel = {urgent:'🔴 عاجل', high:'🟠 عالي', medium:'🟡 متوسط', low:'🟢 منخفض'};
-  const catLabel = {tax:'ضرائب', accounting:'محاسبة', payroll:'مرتبات', legal:'قانوني', other:'أخرى'};
+  const priorityColor = PRIORITY_COLOR;
+  const priorityLabel = {urgent:'🔴 عاجل', high:'🟠 عالي', medium:'🟡 متوسط', low:'🟢 منخفض'}; // kanban uses emoji prefix
+  const catLabel = CAT_LABEL;
 
   const pending = tasksData.filter(t => t.status !== 'done' && t.status !== 'cancelled');
   const done    = tasksData.filter(t => t.status === 'done');
@@ -2399,9 +2472,9 @@ function renderKanban() {
     {id:'done',label:'مكتمل',color:'#16a34a',bg:'#f0fdf4'},
     {id:'cancelled',label:'ملغى',color:'#dc2626',bg:'#fff5f5'},
   ];
-  const priorityColor={urgent:'#dc2626',high:'#f97316',medium:'#eab308',low:'#22c55e'};
-  const priorityLabel={urgent:'عاجل',high:'عالي',medium:'متوسط',low:'منخفض'};
-  const catLabel={tax:'ضرائب',accounting:'محاسبة',payroll:'مرتبات',legal:'قانوني',other:'أخرى'};
+  const priorityColor=PRIORITY_COLOR;
+  const priorityLabel=PRIORITY_LABEL;
+  const catLabel=CAT_LABEL;
   const catColor={tax:'badge-red',accounting:'badge-blue',payroll:'badge-purple',legal:'badge-orange',other:'badge-gray'};
 
   main.innerHTML=`
@@ -2456,7 +2529,7 @@ async function showTaskModal(id=null) {
   const defaultAssignee = _taskEmpFilter?.id || null;
 
   let clients=[];
-  try { clients=(await api('GET','/api/clients?page_size=200'))?.items||[]; } catch(e){}
+  try { clients=await getClients(); } catch(e){}
   const users = tasksUsersData;
 
   const overlay=document.createElement('div');
@@ -2743,7 +2816,7 @@ let driveClientsCache=[];
 async function showDriveImportWizard() {
   // Load clients
   if(!driveClientsCache.length) {
-    try { const d=await api('GET','/api/clients?page_size=200'); driveClientsCache=d?.items||[]; } catch(e){}
+    try { driveClientsCache=await getClients(); } catch(e){}
   }
 
   driveWizardOverlay=document.createElement('div');
@@ -2986,7 +3059,7 @@ window.driveShowStep=driveShowStep;
 
 async function showUploadModal(preClientId=null) {
   let clients=[];
-  try { const d=await api('GET','/api/clients?page_size=200'); clients=d?.items||[]; } catch(e){}
+  try { clients=await getClients(); } catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.innerHTML=`<div class="modal" style="max-width:460px">
@@ -3129,7 +3202,7 @@ async function submitTaxReturn(id) {
 function showTaxModal(id=null) {
   const t=id?taxData.find(x=>x.id===id):null;
   let clients=[];
-  api('GET','/api/clients?page_size=200').then(d=>clients=d?.items||[]).catch(()=>{});
+  getClients().then(r=>clients=r).catch(()=>{});
   setTimeout(()=>{
     const overlay=document.createElement('div');
     overlay.className='modal-overlay';
@@ -3893,7 +3966,7 @@ async function showUpdateOblModal(instanceId) {
 
 async function showObligationModal(preClientId=null) {
   let clientsList=[];
-  try{ const d=await api('GET','/api/clients?page_size=200'); clientsList=d?.items||[]; }catch(e){}
+  try{ clientsList=await getClients(); }catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.innerHTML=`<div class="modal" style="max-width:500px">
@@ -4189,7 +4262,7 @@ async function deactivateEmployee(userId) {
 
 async function showAssignTaskModal(userId, userName) {
   let clients=[];
-  try{const r=await api('GET','/api/clients?page_size=200');clients=Array.isArray(r)?r:(r.items||[]);}catch(e){}
+  try{clients=await getClients();}catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
@@ -4355,7 +4428,7 @@ function renderCollections(summary) {
 
 async function showCollectionModal(type='establishment') {
   let clients=[];
-  try{const d=await api('GET','/api/clients?page_size=200');clients=d?.items||[];}catch(e){}
+  try{clients=await getClients();}catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.innerHTML=`<div class="modal" style="max-width:560px">
@@ -6475,7 +6548,7 @@ async function accRender() {
   });
   const content = document.getElementById('accContent');
   if(!content) return;
-  content.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  content.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
     switch(_accTab) {
       case 'dashboard':  content.innerHTML = await accDashboard(); break;
@@ -7257,7 +7330,7 @@ async function switchEtaTab(tab) {
 async function _loadEtaSubTab() {
   const el = document.getElementById('etaSubContent');
   if(!el) return;
-  el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  el.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
     switch(_etaSubTab) {
       case 'dashboard':  el.innerHTML = await _etaDashboard(); break;
@@ -7473,7 +7546,7 @@ window.etaLoadVatReturn = function() {
   const y = +document.getElementById('vatYear')?.value  || new Date().getFullYear();
   const el = document.getElementById('etaSubContent');
   if(!el) return;
-  el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  el.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   _etaVatReturnForPeriod(m, y).then(html=>{ el.innerHTML=html; }).catch(e=>{ el.innerHTML=`<div style="color:#dc2626">${e.message}</div>`; });
 };
 
@@ -7571,7 +7644,7 @@ window.etaReloadDocs = function() {
   const type = document.getElementById('etaDocType')?.value || '';
   const el = document.getElementById('etaSubContent');
   if(!el) return;
-  el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  el.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   _etaDocsForPeriod(m, y, dir, type).then(html=>el.innerHTML=html).catch(e=>{el.innerHTML=`<div style="color:#dc2626">${e.message}</div>`;});
 };
 
@@ -8298,7 +8371,7 @@ async function accArAp() {
 async function accCashFlow() {
   const data = await api('GET', `/api/accounting/${_accClientId}/reports/cash-flow?year=${_accYear}`);
   const months = data.months || [];
-  const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const MONTH_NAMES = MONTH_NAMES_AR;
 
   return `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -8376,7 +8449,7 @@ let _settleYear  = new Date().getFullYear();
 async function loadSettlements() {
   const main = document.getElementById('main');
   main.className = 'page';
-  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
     const employees = await api('GET', '/api/settlements/employees');
     _settleEmp = null;
@@ -8436,7 +8509,7 @@ function renderSettlementsList(employees) {
           </div>
           <div>
             <div style="font-size:14px;font-weight:700;color:#1e293b">${escH(emp.employee_name)}</div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:2px">آخر تسوية: ${emp.last_settlement ? fmtDate(emp.last_settlement) : 'لا يوجد'}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">آخر تسوية: ${emp.last_settlement ? dateAr(emp.last_settlement) : 'لا يوجد'}</div>
           </div>
         </div>
       </div>
@@ -8475,7 +8548,7 @@ function renderSettlementsList(employees) {
 async function openEmployeeSettlements(empName) {
   _settleEmp = {name: empName};
   const main = document.getElementById('main');
-  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
 
   const now = new Date();
   _settleMonth = now.getMonth() + 1;
@@ -8566,7 +8639,7 @@ async function renderEmpSettlements() {
           <tbody>
             ${settlements.map((s,idx)=>`
             <tr style="border-top:1px solid #f1f5f9;${idx%2===1?'background:#fafbfc':''}">
-              <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">${fmtDate(s.date)}</td>
+              <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">${dateAr(s.date)}</td>
               <td style="padding:10px 14px;vertical-align:top;min-width:200px">
                 ${(s.expense_items||[]).map(item=>`
                 <div style="display:flex;justify-content:space-between;gap:16px;font-size:12px;padding:2px 0;border-bottom:1px solid #f1f5f9;last-child:border:none">
@@ -8904,7 +8977,7 @@ let _apptFilter = 'all';
 async function loadAppointments() {
   const main = document.getElementById('main');
   main.className = 'page';
-  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   await renderAppointments();
 }
 
@@ -8994,7 +9067,7 @@ async function renderAppointments() {
 
 async function showAddAppointment() {
   let clients = [];
-  try { clients = await api('GET','/api/clients?page_size=200'); } catch(e){}
+  try { clients=await getClients(); } catch(e){}
   const today = new Date().toISOString().split('T')[0];
   const html = `
   <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
@@ -9085,7 +9158,7 @@ let _papersStatus = '';
 async function loadGovernmentPapers() {
   const main = document.getElementById('main');
   main.className = 'page';
-  main.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   await renderGovernmentPapers();
 }
 
@@ -9186,9 +9259,9 @@ async function renderGovernmentPapers() {
                 <td style="padding:10px 14px;font-weight:600;color:#1e293b">${escH(p.client_name||'—')}</td>
                 <td style="padding:10px 14px;color:#475569">${escH(p.paper_type)}</td>
                 <td style="padding:10px 14px;text-align:center;color:#64748b;font-size:12px">${escH(p.paper_number||'—')}</td>
-                <td style="padding:10px 14px;text-align:center;color:#64748b;font-size:12px">${p.issue_date?fmtDate(p.issue_date):'—'}</td>
+                <td style="padding:10px 14px;text-align:center;color:#64748b;font-size:12px">${p.issue_date?dateAr(p.issue_date):'—'}</td>
                 <td style="padding:10px 14px;text-align:center">
-                  <div style="font-size:12px;color:${daysLeft!==null&&daysLeft<30?'#dc2626':'#475569'};font-weight:${daysLeft!==null&&daysLeft<30?'700':'400'}">${p.expiry_date?fmtDate(p.expiry_date):'—'}</div>
+                  <div style="font-size:12px;color:${daysLeft!==null&&daysLeft<30?'#dc2626':'#475569'};font-weight:${daysLeft!==null&&daysLeft<30?'700':'400'}">${p.expiry_date?dateAr(p.expiry_date):'—'}</div>
                   ${daysLeft!==null?`<div style="font-size:10px;color:${daysLeft<0?'#dc2626':daysLeft<30?'#d97706':'#94a3b8'}">${daysLeft<0?'منتهية منذ '+Math.abs(daysLeft)+' يوم':daysLeft===0?'اليوم':'بعد '+daysLeft+' يوم'}</div>`:''}
                 </td>
                 <td style="padding:10px 14px;text-align:center">${statusInfo(p.status)}</td>
@@ -9215,7 +9288,7 @@ async function renderGovernmentPapers() {
 
 async function showAddPaper(existingPaper) {
   let clients = [];
-  try { clients = await api('GET','/api/clients?page_size=200'); } catch(e){}
+  try { clients=await getClients(); } catch(e){}
   const clientArr = Array.isArray(clients)?clients:clients.clients||[];
   const paperTypes = ['بطاقة ضريبية','سجل تجاري','شهادة ض.ق.م','بطاقة رقم قومي','عقد إيجار','ترخيص تجاري','بيان قيد','ختم الشركة','توكيل رسمي','عقد شركة','شهادة استثمار','أخرى'];
   const p = existingPaper || {};
@@ -10249,7 +10322,7 @@ function renderPostal(counts) {
 
 async function showAddPostal() {
   let clients=[];
-  try{ const d=await api('GET','/api/clients?page_size=200'); clients=d.items||[]; }catch{}
+  try{ clients=await getClients(); }catch{}
   let users=[];
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   const types=['أوراق تأسيس','سجل تجاري','بطاقة ضريبية','عقد عمل','ميزانية','إقرار ضريبي','فاتورة','مستند آخر'];
@@ -10299,7 +10372,7 @@ async function showEditPostal(id) {
   const m=_postalData.find(x=>x.id===id);
   if(!m) return;
   let clients=[];
-  try{ const d=await api('GET','/api/clients?page_size=200'); clients=d.items||[]; }catch{}
+  try{ clients=await getClients(); }catch{}
   let users=[];
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   const types=['أوراق تأسيس','سجل تجاري','بطاقة ضريبية','عقد عمل','ميزانية','إقرار ضريبي','فاتورة','مستند آخر'];
@@ -10481,7 +10554,7 @@ async function toggleStage(id, stage, val) {
 
 async function showAddStatement() {
   let clients=[];
-  try{ const d=await api('GET','/api/clients?page_size=200&status=active'); clients=d.items||[]; }catch{}
+  try{ clients=(await getClients()).filter(c=>c.status==='active'); }catch{}
   let users=[];
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">📑 ميزانية جديدة</h3>
@@ -10697,7 +10770,7 @@ function renderTimesheet(totalHours, stats) {
 async function showAddTimeEntry() {
   let tasks=[], clients=[], users=[];
   try{ const d=await api('GET','/api/tasks?page_size=100&status=open'); tasks=d.items||[]; }catch{}
-  try{ const d=await api('GET','/api/clients?page_size=200'); clients=d.items||[]; }catch{}
+  try{ clients=await getClients(); }catch{}
   try{ const d=await api('GET','/api/users'); users=d||[]; }catch{}
   openModal(`<h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">⏱️ تسجيل ساعات عمل</h3>
   <div class="form-row" style="margin-bottom:14px">
@@ -10849,7 +10922,7 @@ async function loadOfficeServices() {
 
 async function showAddOfficeService() {
   let clients = [];
-  try { clients = await api('GET','/api/clients?page_size=500'); clients = clients.items||clients; } catch(e){}
+  try { clients=await getClients(); } catch(e){}
   openModal(`
   <h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">🏢 إضافة خدمة جديدة</h3>
   <div style="display:grid;gap:14px">
@@ -11001,8 +11074,7 @@ async function loadCompanyDocs() {
 
   // Load clients for filter
   try {
-    const cls = await api('GET','/api/clients?page_size=500');
-    const items = cls.items||cls;
+    const items = await getClients();
     const sel = document.getElementById('cdClientFilter');
     if(sel) items.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o);});
   } catch(e){}
@@ -11077,7 +11149,7 @@ async function loadCompanyDocsForClient() {
 
 async function showAddCompanyDoc() {
   let clients = [];
-  try { const r=await api('GET','/api/clients?page_size=500'); clients=r.items||r; } catch(e){}
+  try { clients=await getClients(); } catch(e){}
   openModal(`
   <h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">📜 إضافة مستند</h3>
   <div style="display:grid;gap:14px">
@@ -11391,7 +11463,7 @@ async function fetchPortalUsers() {
 
 async function showCreatePortalUser() {
   let clients=[];
-  try{const r=await api('GET','/api/clients?page_size=500');clients=r.items||r;}catch(e){}
+  try{clients=await getClients();}catch(e){}
   openModal(`
   <h3 style="margin:0 0 18px;font-size:16px;font-weight:800;color:#1e293b">🔑 إنشاء حساب عميل</h3>
   <div style="display:grid;gap:14px">
