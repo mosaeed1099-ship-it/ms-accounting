@@ -90,6 +90,7 @@ class Lead(Base):
     quote_services        = Column(Text,   nullable=True)    # JSON: [{name, price}]
     quote_required_docs   = Column(Text,   nullable=True)    # JSON: [string, ...]
     quote_notes           = Column(Text,   nullable=True)    # ملاحظات العرض
+    quote_deliver_docs    = Column(Text,   nullable=True)    # JSON: [{name, checked}] مستندات تسليم العميل
 
     # رابط بعميل رسمي (بعد التحويل)
     converted_client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)

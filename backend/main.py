@@ -129,6 +129,7 @@ def _migrate_leads_columns():
         ("quote_expenses_total",    "FLOAT"),
         ("quote_services",          "TEXT"),
         ("quote_required_docs",     "TEXT"),
+        ("quote_deliver_docs",      "TEXT"),
         ("quote_notes",             "TEXT"),
     ]
     with engine.connect() as conn:

@@ -48,6 +48,7 @@ class LeadCreate(BaseModel):
     quote_expenses_total: Optional[float] = None
     quote_services: Optional[str] = None
     quote_required_docs: Optional[str] = None
+    quote_deliver_docs: Optional[str] = None
     quote_notes: Optional[str] = None
 
 class LeadUpdate(LeadCreate):
@@ -126,6 +127,7 @@ def lead_to_dict(lead: Lead) -> dict:
         "quote_expenses_total": lead.quote_expenses_total,
         "quote_services": lead.quote_services,
         "quote_required_docs": lead.quote_required_docs,
+        "quote_deliver_docs": lead.quote_deliver_docs,
         "quote_notes": lead.quote_notes,
         "created_at": lead.created_at.isoformat() if lead.created_at else None,
         "updated_at": lead.updated_at.isoformat() if lead.updated_at else None,
