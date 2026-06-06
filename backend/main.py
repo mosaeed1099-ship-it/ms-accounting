@@ -75,16 +75,191 @@ def _db_health_job():
         logger.warning(f"[db-health] failed: {exc} — pool will auto-reconnect via pool_pre_ping")
 
 
+def _db_backup_job():
+    """Weekly PostgreSQL backup — pg_dump compressed → email to admin."""
+    import subprocess, gzip, os
+    from datetime import datetime
+
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url or "sqlite" in db_url:
+        logger.info("[backup] SQLite/desktop mode — skipping pg backup")
+        return
+
+    # Parse postgresql://user:pass@host:port/dbname
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(db_url)
+        env = os.environ.copy()
+        env["PGPASSWORD"] = p.password or ""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        result = subprocess.run(
+            ["pg_dump", "-h", p.hostname, "-p", str(p.port or 5432),
+             "-U", p.username, "-d", p.path.lstrip("/"),
+             "--no-owner", "--no-acl", "-F", "p"],
+            capture_output=True, env=env, timeout=120
+        )
+        if result.returncode != 0:
+            logger.error(f"[backup] pg_dump failed: {result.stderr.decode()}")
+            return
+
+        compressed = gzip.compress(result.stdout)
+        filename = f"ms_backup_{timestamp}.sql.gz"
+
+        # Save locally in BACKUP_DIR
+        try:
+            from app.config import settings
+            backup_path = os.path.join(settings.BACKUP_DIR, filename)
+            with open(backup_path, "wb") as f:
+                f.write(compressed)
+            logger.info(f"[backup] saved locally: {backup_path} ({len(compressed)//1024} KB)")
+        except Exception as e:
+            logger.warning(f"[backup] local save failed: {e}")
+
+        # Email to admin if SMTP configured
+        try:
+            from app.services.email_service import get_config, send_email_with_attachment
+            cfg = get_config()
+            if cfg.smtp_user and cfg.smtp_pass:
+                size_kb = len(compressed) // 1024
+                html = f"""
+                <div style="font-family:sans-serif;direction:rtl;padding:20px">
+                  <h2 style="color:#1a2472">🗄️ نسخة احتياطية أسبوعية — MS Accounting</h2>
+                  <p>تم إنشاء النسخة الاحتياطية بنجاح.</p>
+                  <table style="border-collapse:collapse;width:100%">
+                    <tr><td style="padding:8px;font-weight:bold">التاريخ</td><td style="padding:8px">{datetime.now().strftime('%Y-%m-%d %H:%M')}</td></tr>
+                    <tr style="background:#f8fafc"><td style="padding:8px;font-weight:bold">الملف</td><td style="padding:8px">{filename}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold">الحجم</td><td style="padding:8px">{size_kb} KB</td></tr>
+                  </table>
+                  <p style="color:#64748b;font-size:12px;margin-top:20px">الملف المضغوط مرفق بهذا البريد.</p>
+                </div>"""
+                send_email_with_attachment(
+                    to_email=cfg.smtp_user,
+                    subject=f"🗄️ نسخة احتياطية أسبوعية — {timestamp}",
+                    html_body=html,
+                    attachment_bytes=compressed,
+                    attachment_name=filename,
+                    mime_type="application/gzip"
+                )
+                logger.info(f"[backup] emailed to {cfg.smtp_user}")
+        except Exception as e:
+            logger.warning(f"[backup] email failed: {e}")
+
+    except Exception as exc:
+        logger.error(f"[backup] job error: {exc}", exc_info=True)
+
+
+def _monthly_client_report_job():
+    """1st of each month at 8am — send obligation+invoice summary to every active client with email."""
+    from datetime import date, timedelta
+    logger.info("[monthly-report] starting monthly client report job")
+    try:
+        from app.database import SessionLocal
+        from app.models.client import Client, ClientStatus
+        from app.models.invoice import Invoice
+        from app.models.obligation import TaxObligation, ObligationInstance
+        from app.services.email_service import get_config, send_client_reminder
+
+        cfg = get_config()
+        if not cfg.enabled:
+            logger.info("[monthly-report] email not configured — skipping")
+            return
+
+        db = SessionLocal()
+        try:
+            today = date.today()
+            next_60 = today + timedelta(days=60)
+
+            clients = db.query(Client).filter(
+                Client.email.isnot(None),
+                Client.email != "",
+                Client.status == ClientStatus.ACTIVE,
+            ).all()
+
+            sent, skipped = 0, 0
+            for client in clients:
+                # Upcoming obligations in next 60 days
+                instances = (
+                    db.query(ObligationInstance)
+                    .join(TaxObligation)
+                    .filter(
+                        TaxObligation.client_id == client.id,
+                        ObligationInstance.status.in_(["pending", "overdue", "upcoming"]),
+                        ObligationInstance.due_date <= next_60,
+                    )
+                    .order_by(ObligationInstance.due_date)
+                    .limit(15)
+                    .all()
+                )
+                obligations = []
+                for inst in instances:
+                    days_left = (inst.due_date - today).days if inst.due_date else 0
+                    obligations.append({
+                        "obligation_type": inst.obligation.obligation_type if inst.obligation else "",
+                        "due_date": inst.due_date.strftime("%Y/%m/%d") if inst.due_date else "",
+                        "days_left": days_left,
+                    })
+
+                # Unpaid invoices
+                unpaid = (
+                    db.query(Invoice)
+                    .filter(
+                        Invoice.client_id == client.id,
+                        Invoice.status.in_(["sent", "partial", "overdue"]),
+                    )
+                    .order_by(Invoice.issue_date.desc())
+                    .limit(10)
+                    .all()
+                )
+                invoices = []
+                for inv in unpaid:
+                    invoices.append({
+                        "invoice_number": inv.invoice_number,
+                        "issue_date": inv.issue_date.strftime("%Y/%m/%d") if inv.issue_date else "",
+                        "total": inv.total or 0,
+                        "remaining": inv.remaining or 0,
+                        "status": inv.status.value if hasattr(inv.status, "value") else str(inv.status),
+                    })
+
+                if not obligations and not invoices:
+                    skipped += 1
+                    continue
+
+                try:
+                    month_ar = ["يناير","فبراير","مارس","أبريل","مايو","يونيو",
+                                "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"][today.month - 1]
+                    send_client_reminder(
+                        to_email=client.email,
+                        client_name=client.name,
+                        obligations=obligations,
+                        invoices=invoices,
+                        custom_msg=f"هذا ملخصكم الشهري لشهر {month_ar} {today.year} من مكتب MS للمحاسبة.",
+                    )
+                    sent += 1
+                    logger.info(f"[monthly-report] sent to {client.email} ({client.name})")
+                except Exception as e:
+                    logger.warning(f"[monthly-report] failed for {client.email}: {e}")
+                    skipped += 1
+
+            logger.info(f"[monthly-report] done — sent: {sent}, skipped: {skipped}")
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.error(f"[monthly-report] job error: {exc}", exc_info=True)
+
+
 def _start_scheduler():
     """Start APScheduler background jobs."""
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.interval import IntervalTrigger
+        from apscheduler.triggers.cron import CronTrigger
         sched = BackgroundScheduler(timezone="Africa/Cairo", daemon=True)
-        sched.add_job(_keep_alive_job,  IntervalTrigger(minutes=8),  id="keep_alive",  replace_existing=True)
-        sched.add_job(_db_health_job,   IntervalTrigger(minutes=5),  id="db_health",   replace_existing=True)
+        sched.add_job(_keep_alive_job,          IntervalTrigger(minutes=8),          id="keep_alive",      replace_existing=True)
+        sched.add_job(_db_health_job,           IntervalTrigger(minutes=5),          id="db_health",       replace_existing=True)
+        sched.add_job(_db_backup_job,           CronTrigger(day_of_week="sun", hour=2, minute=0), id="db_backup",       replace_existing=True)
+        sched.add_job(_monthly_client_report_job, CronTrigger(day=1, hour=8, minute=0), id="monthly_report",  replace_existing=True)
         sched.start()
-        logger.info("✅ Scheduler started (keep-alive every 8 min, db-health every 5 min)")
+        logger.info("✅ Scheduler started (keep-alive 8min, db-health 5min, backup Sunday 2am, monthly-report 1st-of-month 8am)")
         return sched
     except Exception as exc:
         logger.warning(f"⚠️  Scheduler not started: {exc}")

@@ -604,3 +604,59 @@ def notify_obligation(to_email: str, client_name: str, obligation_type: str,
 def send_test_email(to_email: str) -> bool:
     subject, html = test_email_template(to_email)
     return send_email_sync(to_email, subject, html)
+
+
+def send_email_with_attachment(to_email: str, subject: str, html_body: str,
+                                attachment_bytes: bytes, attachment_name: str,
+                                mime_type: str = "application/octet-stream") -> bool:
+    """Send email with a single binary attachment via SMTP only (API providers don't support attachments here)."""
+    from email.mime.base import MIMEBase
+    from email import encoders
+    cfg = get_config()
+    if not (cfg.smtp_user and cfg.smtp_pass):
+        raise Exception("إرسال المرفقات يتطلب إعداد SMTP. أضف SMTP_USER و SMTP_PASS في الإعدادات.")
+
+    msg = MIMEMultipart('mixed')
+    msg['Subject'] = subject
+    msg['From'] = f"{cfg.from_name} <{cfg.from_email}>"
+    msg['To'] = to_email
+    msg['Date'] = formatdate(localtime=True)
+    msg['Message-ID'] = make_msgid(domain=cfg.from_email.split('@')[-1] if '@' in cfg.from_email else 'ms-accounting.com')
+
+    alt = MIMEMultipart('alternative')
+    import re as _re
+    plain = _re.sub(r'<[^>]+>', '', html_body.replace('<br>', '\n').replace('</p>', '\n'))
+    alt.attach(MIMEText(plain, 'plain', 'utf-8'))
+    alt.attach(MIMEText(html_body, 'html', 'utf-8'))
+    msg.attach(alt)
+
+    part = MIMEBase(*mime_type.split('/'))
+    part.set_payload(attachment_bytes)
+    encoders.encode_base64(part)
+    part.add_header('Content-Disposition', f'attachment; filename="{attachment_name}"')
+    msg.attach(part)
+
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+
+    for port, use_ssl in [(cfg.smtp_port, False), (465, True), (587, False)]:
+        try:
+            if use_ssl:
+                with smtplib.SMTP_SSL(cfg.smtp_host, port, context=context, timeout=30) as server:
+                    server.login(cfg.smtp_user, cfg.smtp_pass)
+                    server.sendmail(cfg.from_email, to_email, msg.as_string())
+            else:
+                with smtplib.SMTP(cfg.smtp_host, port, timeout=30) as server:
+                    server.ehlo()
+                    server.starttls(context=context)
+                    server.login(cfg.smtp_user, cfg.smtp_pass)
+                    server.sendmail(cfg.from_email, to_email, msg.as_string())
+            logger.info(f"Email with attachment sent to {to_email}: {subject}")
+            return True
+        except Exception as e:
+            logger.warning(f"SMTP port {port} failed (attachment): {e}")
+            continue
+    raise Exception("فشل إرسال البريد مع المرفق عبر SMTP")
