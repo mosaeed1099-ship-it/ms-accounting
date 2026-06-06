@@ -641,35 +641,27 @@ const navItems = [
   {id:'fin_reports'  ,icon:'📈',label:'التقارير المالية'},
   {id:'tax'          ,icon:'🧾',label:'الإقرارات'},
   {id:'tasks'        ,icon:'✅',label:'المهام'},
-  {id:'timesheet'    ,icon:'⏱️',label:'التايم شيت'},
   {id:'obligations'  ,icon:'🔔',label:'الالتزامات الضريبية'},
   {id:'statements'   ,icon:'📑',label:'الميزانيات'},
-  {id:'postal'       ,icon:'📬',label:'البوسطة'},
   {id:'documents'    ,icon:'📁',label:'الأرشيف'},
   {id:'appointments' ,icon:'📅',label:'المواعيد'},
-  {id:'papers'       ,icon:'📄',label:'الأوراق الحكومية'},
   {id:'payroll'      ,icon:'👔',label:'الرواتب والموظفين'},
   {id:'settlements'  ,icon:'👷',label:'تسويات الموظفين'},
-  {id:'assets'       ,icon:'🏭',label:'الأصول الثابتة'},
-  {id:'mail'             ,icon:'📧',label:'البريد الإلكتروني'},
-  {id:'settings'         ,icon:'⚙️',label:'الإعدادات'},
-  // ── New platform modules ──
-  {id:'office_services'  ,icon:'🏢',label:'خدمات المكتب'},
-  {id:'company_docs'     ,icon:'📜',label:'وثائق الشركة'},
-  {id:'folders'          ,icon:'🗂️',label:'إدارة الملفات'},
-  {id:'audit_trail'      ,icon:'🔍',label:'سجل المراجعة'},
-  {id:'client_portal'    ,icon:'🔑',label:'بوابة العملاء'},
-  {id:'permissions'      ,icon:'🛡️',label:'الصلاحيات'},
+  {id:'mail'         ,icon:'📧',label:'البريد الإلكتروني'},
+  {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
+  {id:'office_services',icon:'🏢',label:'خدمات المكتب'},
+  {id:'client_portal' ,icon:'🔑',label:'بوابة العملاء'},
+  {id:'permissions'   ,icon:'🛡️',label:'الصلاحيات'},
 ];
 // Grouped navigation for sidebar display
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
   {label:'CRM & المبيعات', items:['clients','leads','establishment']},
   {label:'المالية', items:['invoices','collections','fin_reports','tax','statements']},
-  {label:'التشغيل', items:['tasks','timesheet','obligations','postal','documents','appointments','papers']},
-  {label:'الموارد البشرية', items:['payroll','settlements','assets']},
-  {label:'إدارة المكتب', items:['office_services','company_docs','folders','audit_trail']},
-  {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
+  {label:'التشغيل', items:['tasks','obligations','documents','appointments']},
+  {label:'الموارد البشرية', items:['payroll','settlements']},
+  {label:'إدارة المكتب', items:['office_services','client_portal']},
+  {label:'الإدارة', items:['mail','permissions','settings']},
 ];
 
 // ── App Shell ──────────────────────────────────────
@@ -1150,13 +1142,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',papers:'الأوراق الحكومية',accounting:'المحاسبة',payroll:'الرواتب والموظفين',assets:'الأصول الثابتة',fin_reports:'التقارير المالية',postal:'البوسطة',statements:'الميزانيات',timesheet:'التايم شيت',office_services:'خدمات المكتب',company_docs:'وثائق الشركة',folders:'إدارة الملفات',audit_trail:'سجل المراجعة',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,papers:loadGovernmentPapers,payroll:loadPayroll,assets:loadAssets,fin_reports:loadFinReports,postal:loadPostal,statements:loadStatements,timesheet:loadTimesheet,office_services:loadOfficeServices,company_docs:loadCompanyDocs,folders:loadFolders,audit_trail:loadAuditTrail,client_portal:loadClientPortal,permissions:loadPermissions};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions};
   if(pages[page]) pages[page]();
 }
 
@@ -1745,7 +1737,7 @@ async function showClientDetail(id) {
       <button class="btn btn-secondary btn-sm" onclick="showClientTimeline(${c.id},'${escH(c.name)}')">🕐 Timeline</button>
       ${c.tax_obligations&&c.tax_obligations.length?`<button class="btn btn-sm" style="background:#eef1fb;color:#1a2472;border:1.5px solid #b3c4e8" onclick="autoGenClientObligations(${c.id})">⚙️ Auto-Generate</button>`:''}
       <button class="btn btn-sm" style="background:linear-gradient(135deg,#1e3a8a,#1a2472);color:white;border:none;font-weight:700" onclick="this.closest('.modal-overlay').remove();openClientAccounting(${c.id},'${escH(c.name)}')">🏛️ الحسابات</button>
-      <button class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac;font-weight:700" onclick="this.closest('.modal-overlay').remove();navigate('company_docs');setTimeout(()=>{document.getElementById('cdClientFilter')&&(document.getElementById('cdClientFilter').value='${c.id}')&&loadCompanyDocsForClient()},500)">📜 وثائق</button>
+      <button class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac;font-weight:700" onclick="this.closest('.modal-overlay').remove();navigate('documents')">📜 وثائق</button>
       <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;border:1.5px solid #fed7aa;font-weight:700" onclick="this.closest('.modal-overlay').remove();navigate('office_services');setTimeout(()=>{document.getElementById('osSvcFilter')&&(document.getElementById('osSvcFilter').value='')},500)">🏢 خدمات</button>
       <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
     </div>
