@@ -4086,6 +4086,23 @@ async function loadReports() {
 
 // ── LEADS (CRM) ────────────────────────────────────
 // ── LEADS GRID ─────────────────────────────────────
+
+/**
+ * تحويل أي صيغة رقم مصري إلى الصيغة الدولية لواتساب (201XXXXXXXXX)
+ * يتعامل مع: 01x... / 1x... / 201x... / +201x...
+ */
+function toWAPhone(raw) {
+  let d = (raw || '').replace(/\D/g, ''); // احذف كل حرف غير رقمي
+  if (!d) return null;
+  // إذا كان الرقم يبدأ بـ 20 وطوله 12 → صحيح مباشرة
+  if (d.startsWith('20') && d.length === 12) return d;
+  // إذا بدأ بـ 0 وطوله 11 → 01XXXXXXXXX → نحذف الصفر ونضيف 20
+  if (d.startsWith('0') && d.length === 11) return '20' + d.slice(1);
+  // إذا بدأ بـ 1 وطوله 10 → 1XXXXXXXXX → نضيف 20 مباشرة
+  if (d.startsWith('1') && d.length === 10) return '20' + d;
+  // أي حالة أخرى → احذف الأصفار الأولى وأضف 20
+  return '20' + d.replace(/^0+/, '');
+}
 const LEAD_STATUS_COLORS={new:'#4478b0',interested:'#15803d',not_answered:'#6b7280',wrong_number:'#dc2626',call_later:'#d97706',meeting:'#f59e0b',quotation_sent:'#f97316',paid:'#10b981',under_establishment:'#06b6d4',tax_registered:'#14b8a6',accounting_client:'#22c55e',inactive:'#94a3b8',lost:'#ef4444'};
 const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',not_answered:'لم يرد',wrong_number:'رقم خطأ',call_later:'كلمني لاحقاً',meeting:'اجتماع',quotation_sent:'عرض مرسل',paid:'دفع',under_establishment:'قيد التأسيس',tax_registered:'مسجل ضريبياً',accounting_client:'عميل محاسبة',inactive:'غير نشط',lost:'خسارة'};
 const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',wrong_number:'#fef2f2',call_later:'#fefce8'};
@@ -4971,9 +4988,8 @@ ${extra    ? `\n${extra}` : ''}
 async function sendLeadWhatsApp(id) {
   const lead = leadsData.find(l=>l.id===id);
   if (!lead) { toast('بيانات العميل غير موجودة','error'); return; }
-  const phone = (lead.phone||'').replace(/\D/g,'');
-  if(!phone){ toast('لا يوجد رقم هاتف لهذا العميل','error'); return; }
-  const waPhone = phone.startsWith('20') ? phone : '20'+phone.replace(/^0/,'');
+  const waPhone = toWAPhone(lead?.phone);
+  if(!waPhone){ toast('لا يوجد رقم هاتف لهذا العميل','error'); return; }
 
   if(lead.status === 'not_answered') {
     sendLeadNoAnswerWhatsApp(lead);
@@ -4998,9 +5014,8 @@ window.sendLeadEmailDirect = function(id) {
 };
 
 function sendLeadNoAnswerWhatsApp(lead) {
-  const phone = (lead?.phone||'').replace(/\D/g,'');
-  if(!phone){ toast('لا يوجد رقم هاتف','error'); return; }
-  const waPhone = phone.startsWith('20') ? phone : '20'+phone.replace(/^0/,'');
+  const waPhone = toWAPhone(lead?.phone);
+  if(!waPhone){ toast('لا يوجد رقم هاتف','error'); return; }
 
   const msg =
 `أخبار حضرتك إيه؟
@@ -7394,11 +7409,8 @@ async function sendQuotationEmail(id, currentEmail) {
 
 function sendQuotationWhatsApp(id, phone, clientName, quoteNumber, total, legalEntity) {
   // ── تنسيق رقم الهاتف للواتساب (مصري → دولي)
-  let num = (phone||'').replace(/[\s\-\(\)]/g,'');
+  const num = toWAPhone(phone);
   if(!num){ toast('لا يوجد رقم هاتف مسجّل لهذا العميل','error'); return; }
-  if(num.startsWith('+'))  num = num.slice(1);
-  if(num.startsWith('0'))  num = '2' + num;          // 01x → 201x
-  if(num.startsWith('1') && num.length===10) num = '20' + num; // 1xxxxxxxxx → 201xxxxxxxxx
   // ── رسالة واتساب جاهزة
   const entityAr = {
     llc:'شركة ذات مسؤولية محدودة',
