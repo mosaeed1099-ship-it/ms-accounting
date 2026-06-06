@@ -12842,13 +12842,6 @@ window.toggleLanguage = toggleLanguage;
 window.t = t;
 </script>
 
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/ms-accounting/sw.js', {scope: '/ms-accounting/'})
-      .catch(() => {}); // silent fail — sw is an enhancement only
-  });
-}
-</script>
+
 </body>
 </html>
