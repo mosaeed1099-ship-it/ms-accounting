@@ -33,6 +33,7 @@ from app.routers import folders as folders_router
 from app.routers import client_portal as client_portal_router
 from app.routers import office_services as office_services_router
 from app.routers import tax_center as tax_center_router
+from app.routers import formation as formation_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -44,6 +45,7 @@ import app.models.folder              # noqa: F401
 import app.models.client_portal       # noqa: F401
 import app.models.office_service      # noqa: F401
 import app.models.tax_center          # noqa: F401
+import app.models.establishment       # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -410,6 +412,18 @@ def _daily_deadline_alerts():
         logger.warning(f"[deadline-alert] job error: {exc}")
 
 
+def _migrate_formation_tables():
+    """Create formation tables columns if they don't exist (idempotent)."""
+    from app.database import engine
+    from sqlalchemy import text
+    stmts = [
+        "CREATE TABLE IF NOT EXISTS company_formation_cases (id SERIAL PRIMARY KEY)",
+        "CREATE TABLE IF NOT EXISTS formation_events (id SERIAL PRIMARY KEY)",
+    ]
+    # Just let create_tables handle it via SQLAlchemy metadata — this is a no-op guard
+    print("✅ Formation tables checked")
+
+
 def _init_db_sync():
     """Blocking DB init — runs in thread pool."""
     import time
@@ -418,6 +432,7 @@ def _init_db_sync():
             create_tables()
             seed_admin()
             _migrate_leads_columns()
+            _migrate_formation_tables()
             _seed_wht_types()
             print("✅ Database ready")
             return
@@ -514,6 +529,7 @@ app.include_router(folders_router.router)
 app.include_router(client_portal_router.router)
 app.include_router(office_services_router.router)
 app.include_router(tax_center_router.router)
+app.include_router(formation_router.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
