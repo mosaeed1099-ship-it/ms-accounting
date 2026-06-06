@@ -4183,7 +4183,7 @@ function renderLeads(stats) {
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:200px">الكيان القانوني (الرسالة)</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">إجمالي الأتعاب (ج.م.)</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:100px">رأس المال</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:52px">مقر</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">مقر النشاط</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:132px">حالة العميل</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">موظف مسؤول</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:150px">ملاحظات</th>
@@ -4235,7 +4235,7 @@ function _buildLeadRow(l){
     <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:12px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="شركة ذات مسؤولية محدودة..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
     <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;text-align:left;direction:ltr" data-field="quote_total_fees" type="number" value="${escH(String(totalFeesVal))}" placeholder="0" onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
     <td style="padding:3px 6px">${_cellInput('estimated_capital',l.estimated_capital!=null?l.estimated_capital:'','type="number" placeholder="0" style="direction:ltr"')}</td>
-    <td style="padding:3px 6px;text-align:center"><input type="checkbox" data-field="has_office" ${l.has_office?'checked':''} style="width:17px;height:17px;cursor:pointer;accent-color:#1a2472" onchange="saveLeadCell(this)"/></td>
+    <td style="padding:3px 6px">${_cellInput('quote_location',l.quote_location||'','placeholder="القاهرة، شارة..."')}</td>
     <td style="padding:3px 6px">${_cellSelect('status',statOpts,`background:${sc}18;color:${sc};font-weight:700;border-color:${sc}44`)}</td>
     <td style="padding:3px 6px">${_cellSelect('assigned_to',usersOpts)}</td>
     <td style="padding:3px 6px">${_cellInput('notes',l.notes,'placeholder="ملاحظات..."')}</td>
@@ -4282,9 +4282,11 @@ function _syncLeadInlineToState(row){
   const emailEl = row.querySelector('[data-field="email"]');
   const legalEl = row.querySelector('[data-field="quote_legal_entity"]');
   const feesEl  = row.querySelector('[data-field="quote_total_fees"]');
+  const locEl   = row.querySelector('[data-field="quote_location"]');
   if(emailEl) _leadExpandState[id].email = emailEl.value || '';
   if(legalEl) _leadExpandState[id].legal_entity = legalEl.value || '';
   if(feesEl)  _leadExpandState[id].total_fees = feesEl.value !== '' ? parseFloat(feesEl.value) : '';
+  if(locEl)   _leadExpandState[id].location = locEl.value || '';
 }
 
 function _getLeadExpandState(l) {
@@ -5005,6 +5007,7 @@ function _buildLeadMessage(lead, st) {
   const total    = parseFloat(st.total_fees) || lead.quote_total_fees || lead.quote_expenses_total || 0;
   const legal    = st.legal_entity || lead.quote_legal_entity || '';
   const activity = st.activity || lead.quote_activity || lead.company_activities || '';
+  const location = st.location || lead.quote_location || '';
   const extra    = [st.notes2, st.extra].filter(Boolean).join('\n');
 
   return `السلام عليكم أستاذ / ${lead?.name||''}
@@ -5013,7 +5016,7 @@ function _buildLeadMessage(lead, st) {
 
 الكيان القانوني: ${legal||'—'}
 النشاط: ${activity||'—'}
-رأس المال: ${capital>0?capital.toLocaleString('ar-EG')+' جنيه':'—'}
+${location ? `مقر النشاط: ${location}\n` : ''}رأس المال: ${capital>0?capital.toLocaleString('ar-EG')+' جنيه':'—'}
 
 إجمالي مصاريف وأتعاب التأسيس:
 ${total>0?total.toLocaleString('ar-EG')+' جنيه':'—'}
