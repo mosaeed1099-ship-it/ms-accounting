@@ -329,18 +329,47 @@ const $ = (s,c=document) => c.querySelector(s);
 const $$ = (s,c=document) => [...c.querySelectorAll(s)];
 const v = id => (document.getElementById(id)||{}).value||'';
 
-async function api(method, path, body=null, {retries=1, retryDelay=1500}={}) {
+// ── API cache (stale-while-revalidate) ─────────────────────
+const _AC = {
+  TTL: 60000,  // 60 seconds
+  key: (path) => 'api_cache_' + path,
+  set(path, data) { try { sessionStorage.setItem(this.key(path), JSON.stringify({t: Date.now(), d: data})); } catch(e){} },
+  get(path) { try { const v = JSON.parse(sessionStorage.getItem(this.key(path))||'null'); return v && (Date.now()-v.t < this.TTL*10) ? v : null; } catch(e){ return null; } },
+  fresh(path) { try { const v = JSON.parse(sessionStorage.getItem(this.key(path))||'null'); return v && (Date.now()-v.t < this.TTL) ? v.d : null; } catch(e){ return null; } },
+};
+
+function _showStaleBanner() {
+  if (document.getElementById('stale-banner')) return;
+  const b = document.createElement('div');
+  b.id = 'stale-banner';
+  b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#fef9c3;border-bottom:2px solid #fde68a;padding:8px 16px;text-align:center;font-size:13px;color:#92400e;font-weight:600';
+  b.innerHTML = '⚠️ الخادم يُعاد تشغيله — تعرض بيانات مؤقتة. سيتم التحديث تلقائياً خلال لحظات... <button onclick="document.getElementById('stale-banner').remove()" style="margin-right:12px;background:none;border:none;cursor:pointer;font-size:16px;color:#92400e">✕</button>';
+  document.body.prepend(b);
+}
+
+function _hideStaleBanner() {
+  document.getElementById('stale-banner')?.remove();
+}
+
+async function api(method, path, body=null, {retries=2, retryDelay=2000, useCache=true}={}) {
+  const isGet = method === 'GET';
   const opts = {
     method,
     headers:{'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{})},
-    signal: AbortSignal.timeout(30000),   // 30s hard timeout per request
+    signal: AbortSignal.timeout(30000),
   };
   if (body) opts.body = JSON.stringify(body);
+
+  // Return fresh cache immediately for GET (avoid spinner on repeat visits)
+  if (isGet && useCache) {
+    const fresh = _AC.fresh(path);
+    if (fresh !== null) return fresh;
+  }
 
   let lastErr;
   for(let attempt = 0; attempt <= retries; attempt++) {
     try {
-      if(attempt > 0) await new Promise(res => setTimeout(res, retryDelay * attempt));
+      if(attempt > 0) await new Promise(res => setTimeout(res, retryDelay * Math.pow(1.5, attempt-1)));
       const r = await fetch(API+path, opts);
       if(r.status === 401){ logout(); return null; }
       const data = await r.json().catch(()=>({}));
@@ -351,15 +380,24 @@ async function api(method, path, body=null, {retries=1, retryDelay=1500}={}) {
         else if(data.message) msg = data.message;
         throw new Error(msg);
       }
-      // Restore green status on success if was offline
-      if(_connState === 'offline') { _connState = 'ok'; setApiStatus(true, 'API متصل'); }
+      // Success — cache GET, clear stale banner, restore status
+      if (isGet && useCache) _AC.set(path, data);
+      if(_connState !== 'ok') { _connState='ok'; setApiStatus(true,'API متصل'); }
+      _hideStaleBanner();
       return data;
     } catch(e) {
       lastErr = e;
-      const isNetworkErr = e.name === 'TimeoutError' || e.name === 'AbortError'
-                        || (e.message && (e.message.includes('fetch') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')));
-      if(isNetworkErr && attempt < retries) continue;   // retry
-      if(isNetworkErr) throw new Error('تعذّر الاتصال بالخادم — تحقق من الإنترنت أو أعد المحاولة لاحقاً');
+      const isNet = e.name==='TimeoutError' || e.name==='AbortError'
+                 || (e.message && /fetch|Failed to fetch|NetworkError|network/i.test(e.message));
+      if(isNet && attempt < retries) continue;  // retry with backoff
+      if(isNet) {
+        // Network error — try stale cache before giving up
+        if (isGet && useCache) {
+          const stale = _AC.get(path);
+          if (stale) { _showStaleBanner(); return stale.d; }
+        }
+        throw new Error('الخادم يُعاد تشغيله — يُرجى الانتظار لحظة ثم حاول مجدداً');
+      }
       throw e;
     }
   }
@@ -1043,6 +1081,7 @@ async function _checkConn() {
       _connRetries = 0;
       setApiStatus(true, 'API متصل');
       toast('✅ تم استعادة الاتصال بالخادم');
+      if(window._connMonitorNormal) window._connMonitorNormal();
       // Refresh current page silently
       const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,office_services:loadOfficeServices,company_docs:loadCompanyDocs,folders:loadFolders,audit_trail:loadAuditTrail,client_portal:loadClientPortal,permissions:loadPermissions};
       if(pages[currentPage]) try{ pages[currentPage](); }catch(e){}
@@ -1061,6 +1100,7 @@ async function _checkConn() {
       _connRetries = 0;
       setApiStatus(false, 'غير متصل...');
       toast('⚠️ انقطع الاتصال بالخادم. جارٍ إعادة المحاولة...', 'error');
+      if(window._connMonitorFast) window._connMonitorFast();
     }
     _connRetries++;
     setApiStatus(false, `غير متصل (محاولة ${_connRetries})`);
@@ -1069,14 +1109,22 @@ async function _checkConn() {
 
 function _startConnMonitor() {
   _checkConn();
-  // Check every 30 seconds
-  setInterval(_checkConn, 30000);
-  // Also react to browser online/offline events
-  window.addEventListener('online',  () => { if(_connState !== 'ok') _checkConn(); });
+  // Check every 20s normally; if offline, check every 5s until restored
+  let _connInterval = setInterval(_checkConn, 20000);
+  window._connMonitorFast = () => {
+    clearInterval(_connInterval);
+    _connInterval = setInterval(_checkConn, 5000);
+  };
+  window._connMonitorNormal = () => {
+    clearInterval(_connInterval);
+    _connInterval = setInterval(_checkConn, 20000);
+  };
+  window.addEventListener('online',  () => { if(_connState !== 'ok') { _checkConn(); } });
   window.addEventListener('offline', () => {
     _connState = 'offline';
     setApiStatus(false, 'لا يوجد اتصال بالإنترنت');
     toast('❌ لا يوجد اتصال بالإنترنت', 'error');
+    window._connMonitorFast();
   });
 }
 
@@ -12796,6 +12844,15 @@ window.addEventListener('ms-app-ready', ()=>{
 
 window.toggleLanguage = toggleLanguage;
 window.t = t;
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/ms-accounting/sw.js', {scope: '/ms-accounting/'})
+      .catch(() => {}); // silent fail — sw is an enhancement only
+  });
+}
 </script>
 </body>
 </html>
