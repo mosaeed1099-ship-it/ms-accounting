@@ -4125,6 +4125,7 @@ const LEAD_DEFAULT_REQUIRED_DOCS = [
 // Keyed by lead id
 const _leadExpandState = {};
 const COMPANY_TYPE_OPTS={'':'—',llc:'ش.م.م',jsc:'ش.م.م.ع',sole:'فردي',ngo:'جمعية',branch:'فرع',rep:'مكتب تمثيلي',other:'أخرى'};
+const COMPANY_TYPE_FULL={'':'',llc:'شركة ذات مسؤولية محدودة',jsc:'شركة مساهمة',sole:'مؤسسة فردية',ngo:'جمعية أهلية',branch:'فرع شركة أجنبية',rep:'مكتب تمثيلي',other:''};
 
 function escH(v){if(v==null)return '';return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
@@ -4170,28 +4171,29 @@ function renderLeads(stats) {
     <button class="btn btn-primary" onclick="addLeadRow()">+ إضافة صف</button>
   </div>
   <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-    <table id="leadsGrid" style="width:100%;border-collapse:collapse;min-width:1380px">
+    <table id="leadsGrid" style="width:100%;border-collapse:collapse;min-width:1700px">
       <thead>
         <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
           <th style="padding:10px 10px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;width:82px">الكود</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:145px">اسم العميل *</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:120px">رقم الهاتف</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:160px">البريد الإلكتروني</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:150px">نشاط الشركة</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:105px">كيان الشركة</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:95px">نوع الكيان</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:200px">الكيان القانوني (الرسالة)</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">إجمالي الأتعاب (ج.م.)</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:100px">رأس المال</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:58px">مقر</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:145px">الاسم المقترح</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:52px">مقر</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:132px">حالة العميل</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:158px">ميعاد الميتينج</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">موظف مسؤول</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:160px">ملاحظات</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:150px">ملاحظات</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:90px">إجراءات</th>
           <th style="padding:10px 6px;width:34px"></th>
         </tr>
       </thead>
       <tbody id="leadsGridBody">
         ${leadsData.map(l=>_buildLeadRow(l)).join('')}
-        ${leadsData.length===0?`<tr><td colspan="14" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين — اضغط "+ إضافة صف"</div></td></tr>`:''}
+        ${leadsData.length===0?`<tr><td colspan="15" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين — اضغط "+ إضافة صف"</div></td></tr>`:''}
       </tbody>
     </table>
   </div>`;
@@ -4213,22 +4215,28 @@ function _buildLeadRow(l){
   const usersOpts=`<option value="">— بلا —</option>`+leadsUsersData.map(u=>`<option value="${u.id}" ${l.assigned_to==u.id?'selected':''}>${escH(u.name)}</option>`).join('');
   const statOpts=Object.entries(LEAD_STATUS_LABEL).map(([v,lbl])=>`<option value="${v}" ${l.status===v?'selected':''}>${lbl}</option>`).join('');
   const ctOpts=Object.entries(COMPANY_TYPE_OPTS).map(([v,lbl])=>`<option value="${v}" ${(l.company_type||'')===(v)?'selected':''}>${lbl}</option>`).join('');
-  const mtVal=l.meeting_date?l.meeting_date.slice(0,16):'';
   const rowBg = LEAD_ROW_BG[l.status] || '';
   const isNew = !l.id;
   const expandId = `lead-expand-${l.id||'new'}`;
+  // legal entity value: prefer saved quote_legal_entity, fallback to COMPANY_TYPE_FULL mapping
+  const legalVal = l.quote_legal_entity || (COMPANY_TYPE_FULL[l.company_type||'']||'');
+  const totalFeesVal = l.quote_total_fees!=null ? l.quote_total_fees : '';
+
+  // company_type select with auto-fill for legal entity
+  const ctSelect = `<select style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:5px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;cursor:pointer;" data-field="company_type" onchange="saveLeadCell(this);_onLeadCompanyTypeChange(this)">${ctOpts}</select>`;
 
   const mainRow = `<tr data-id="${l.id||'new'}" style="border-bottom:${isNew?'2px solid #e0e7ff':'1px solid #f1f5f9'};background:${rowBg}" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
     <td style="padding:4px 10px;white-space:nowrap"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
     <td style="padding:3px 6px">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
     <td style="padding:3px 6px">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr"')}</td>
+    <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;direction:ltr;transition:border-color .15s,background .15s" data-field="email" type="email" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
     <td style="padding:3px 6px">${_cellInput('company_activities',l.company_activities,'placeholder="تجارة، خدمات..."')}</td>
-    <td style="padding:3px 6px">${_cellSelect('company_type',ctOpts)}</td>
+    <td style="padding:3px 6px">${ctSelect}</td>
+    <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:12px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="شركة ذات مسؤولية محدودة..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;text-align:left;direction:ltr" data-field="quote_total_fees" type="number" value="${escH(String(totalFeesVal))}" placeholder="0" onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
     <td style="padding:3px 6px">${_cellInput('estimated_capital',l.estimated_capital!=null?l.estimated_capital:'','type="number" placeholder="0" style="direction:ltr"')}</td>
     <td style="padding:3px 6px;text-align:center"><input type="checkbox" data-field="has_office" ${l.has_office?'checked':''} style="width:17px;height:17px;cursor:pointer;accent-color:#1a2472" onchange="saveLeadCell(this)"/></td>
-    <td style="padding:3px 6px">${_cellInput('suggested_name',l.suggested_name,'placeholder="الاسم المقترح"')}</td>
     <td style="padding:3px 6px">${_cellSelect('status',statOpts,`background:${sc}18;color:${sc};font-weight:700;border-color:${sc}44`)}</td>
-    <td style="padding:3px 6px">${_cellInput('meeting_date',mtVal,'type="datetime-local" style="font-size:11px"')}</td>
     <td style="padding:3px 6px">${_cellSelect('assigned_to',usersOpts)}</td>
     <td style="padding:3px 6px">${_cellInput('notes',l.notes,'placeholder="ملاحظات..."')}</td>
     <td style="padding:3px 6px;text-align:center">
@@ -4247,9 +4255,36 @@ function _buildLeadRow(l){
     <td style="padding:3px 6px;text-align:center"><button onclick="deleteLeadRow(${l.id||0})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px" title="حذف" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>
   </tr>`;
 
-  const expandRow = l.id ? `<tr id="${expandId}" style="display:none"><td colspan="14" style="padding:0;border-bottom:2px solid #c7d3ef">${_buildLeadExpandPanel(l)}</td></tr>` : '';
+  const expandRow = l.id ? `<tr id="${expandId}" style="display:none"><td colspan="15" style="padding:0;border-bottom:2px solid #c7d3ef">${_buildLeadExpandPanel(l)}</td></tr>` : '';
 
   return mainRow + expandRow;
+}
+
+// Auto-fill legal entity from company type dropdown
+function _onLeadCompanyTypeChange(sel){
+  const row = sel.closest('tr[data-id]');
+  if(!row) return;
+  const legalInp = row.querySelector('[data-field="quote_legal_entity"]');
+  if(!legalInp) return;
+  const full = COMPANY_TYPE_FULL[sel.value] || '';
+  legalInp.value = full;
+  // sync to expand state
+  const id = parseInt(row.dataset.id);
+  if(id && _leadExpandState[id]) _leadExpandState[id].legal_entity = full;
+}
+
+// Sync inline row fields (email, legal_entity, total_fees) into _leadExpandState
+function _syncLeadInlineToState(row){
+  if(!row) return;
+  const id = parseInt(row.dataset.id);
+  if(!id || isNaN(id)) return;
+  if(!_leadExpandState[id]) return;
+  const emailEl = row.querySelector('[data-field="email"]');
+  const legalEl = row.querySelector('[data-field="quote_legal_entity"]');
+  const feesEl  = row.querySelector('[data-field="quote_total_fees"]');
+  if(emailEl) _leadExpandState[id].email = emailEl.value || '';
+  if(legalEl) _leadExpandState[id].legal_entity = legalEl.value || '';
+  if(feesEl)  _leadExpandState[id].total_fees = feesEl.value !== '' ? parseFloat(feesEl.value) : '';
 }
 
 function _getLeadExpandState(l) {
@@ -4381,6 +4416,11 @@ window.toggleLeadExpand = function(id) {
   const btn = document.getElementById(`expand-btn-${id}`);
   if (!row) return;
   const isOpen = row.style.display !== 'none';
+  if (!isOpen) {
+    // sync inline fields to expand state before opening
+    const mainRow = document.querySelector(`tr[data-id="${id}"]`);
+    if (mainRow) _syncLeadInlineToState(mainRow);
+  }
   row.style.display = isOpen ? 'none' : '';
   if (btn) btn.textContent = isOpen ? '▾' : '▴';
 };
@@ -4996,6 +5036,8 @@ async function sendLeadWhatsApp(id) {
     return;
   }
 
+  const mainRow = document.querySelector(`tr[data-id="${id}"]`);
+  if (mainRow) _syncLeadInlineToState(mainRow);
   const st = _getLeadExpandState(lead);
   const msg = _buildLeadMessage(lead, st);
   window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -5004,6 +5046,8 @@ async function sendLeadWhatsApp(id) {
 window.sendLeadEmailDirect = function(id) {
   const lead = leadsData.find(l=>l.id===id);
   if (!lead) return;
+  const mainRow = document.querySelector(`tr[data-id="${id}"]`);
+  if (mainRow) _syncLeadInlineToState(mainRow);
   const st = _getLeadExpandState(lead);
   const email = st.email || lead.email || '';
   if (!email) { toast('لا يوجد بريد إلكتروني لهذا العميل','error'); return; }
