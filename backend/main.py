@@ -1,6 +1,6 @@
 import sys, os
 # ── Early startup signal (appears even if later imports crash) ───────────────
-print("🚀 MS Accounting backend starting...", file=sys.stderr, flush=True)
+print("🚀 MS Accounting backend starting... v2.1.0 (formation API)", file=sys.stderr, flush=True)
 import asyncio
 import logging
 from fastapi import FastAPI, Request
