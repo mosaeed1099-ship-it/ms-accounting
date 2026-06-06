@@ -4973,7 +4973,7 @@ async function sendLeadWhatsApp(id) {
   if (!lead) { toast('بيانات العميل غير موجودة','error'); return; }
   const phone = (lead.phone||'').replace(/\D/g,'');
   if(!phone){ toast('لا يوجد رقم هاتف لهذا العميل','error'); return; }
-  const waPhone = phone.startsWith('20') ? phone : '2'+phone.replace(/^0/,'');
+  const waPhone = phone.startsWith('20') ? phone : '20'+phone.replace(/^0/,'');
 
   if(lead.status === 'not_answered') {
     sendLeadNoAnswerWhatsApp(lead);
@@ -5000,7 +5000,7 @@ window.sendLeadEmailDirect = function(id) {
 function sendLeadNoAnswerWhatsApp(lead) {
   const phone = (lead?.phone||'').replace(/\D/g,'');
   if(!phone){ toast('لا يوجد رقم هاتف','error'); return; }
-  const waPhone = phone.startsWith('20') ? phone : '2'+phone.replace(/^0/,'');
+  const waPhone = phone.startsWith('20') ? phone : '20'+phone.replace(/^0/,'');
 
   const msg =
 `أخبار حضرتك إيه؟
