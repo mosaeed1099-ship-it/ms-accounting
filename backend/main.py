@@ -32,6 +32,7 @@ from app.routers import audit_logs as audit_logs_router
 from app.routers import folders as folders_router
 from app.routers import client_portal as client_portal_router
 from app.routers import office_services as office_services_router
+from app.routers import tax_center as tax_center_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -42,6 +43,7 @@ import app.models.audit_log           # noqa: F401
 import app.models.folder              # noqa: F401
 import app.models.client_portal       # noqa: F401
 import app.models.office_service      # noqa: F401
+import app.models.tax_center          # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -258,8 +260,10 @@ def _start_scheduler():
         sched.add_job(_db_health_job,           IntervalTrigger(minutes=5),          id="db_health",       replace_existing=True)
         sched.add_job(_db_backup_job,           CronTrigger(day_of_week="sun", hour=2, minute=0), id="db_backup",       replace_existing=True)
         sched.add_job(_monthly_client_report_job, CronTrigger(day=1, hour=8, minute=0), id="monthly_report",  replace_existing=True)
+        sched.add_job(_process_eta_retry_queue,   IntervalTrigger(minutes=5),          id="eta_retry",       replace_existing=True)
+        sched.add_job(_daily_deadline_alerts,     CronTrigger(hour=8, minute=0),       id="deadline_alerts", replace_existing=True)
         sched.start()
-        logger.info("✅ Scheduler started (keep-alive 8min, db-health 5min, backup Sunday 2am, monthly-report 1st-of-month 8am)")
+        logger.info("✅ Scheduler started (keep-alive 8min, db-health 5min, backup Sunday 2am, monthly-report 1st-of-month 8am, eta-retry 5min, deadline-alerts 8am)")
         return sched
     except Exception as exc:
         logger.warning(f"⚠️  Scheduler not started: {exc}")
@@ -320,6 +324,92 @@ def _migrate_leads_columns():
     print("✅ Leads migration done")
 
 
+def _seed_wht_types():
+    """Seed withholding type lookup table (idempotent)."""
+    try:
+        from app.models.tax_center import WithholdingType, WHT_TYPE_SEEDS
+        db = SessionLocal()
+        try:
+            existing = db.query(WithholdingType).count()
+            if existing == 0:
+                for seed in WHT_TYPE_SEEDS:
+                    db.add(WithholdingType(
+                        code=seed[0], name_ar=seed[1], category=seed[2],
+                        rate_company=seed[3], rate_individual=seed[4],
+                        rate_foreign=seed[5], legal_ref=seed[6], is_active=True,
+                    ))
+                db.commit()
+                print(f"✅ Seeded {len(WHT_TYPE_SEEDS)} withholding types")
+        finally:
+            db.close()
+    except Exception as exc:
+        print(f"⚠️  WHT seed failed: {exc}")
+
+
+def _process_eta_retry_queue():
+    """Process pending ETA retry submissions."""
+    try:
+        from app.models.tax_center import ETASubmission
+        from datetime import datetime
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            pending = db.query(ETASubmission).filter(
+                ETASubmission.status == "retry_pending",
+                ETASubmission.next_retry_at <= now,
+            ).limit(20).all()
+            if not pending:
+                return
+            logger.info(f"[eta-retry] processing {len(pending)} pending submissions")
+            for sub in pending:
+                try:
+                    from app.services.eta_service import ETAService
+                    svc = ETAService(db, sub.client_id)
+                    # Re-submit using stored payload
+                    import json
+                    docs = json.loads(sub.payload_json) if sub.payload_json else []
+                    result = svc.submit_documents(docs)
+                    sub.status = "submitted"
+                    sub.last_response = json.dumps(result)
+                    sub.submitted_at = now
+                except Exception as e:
+                    sub.attempt_number = (sub.attempt_number or 0) + 1
+                    delays = [60, 300, 900, 3600, 14400]
+                    idx = min(sub.attempt_number - 1, len(delays) - 1)
+                    from datetime import timedelta
+                    sub.next_retry_at = now + timedelta(seconds=delays[idx])
+                    if sub.attempt_number >= 5:
+                        sub.status = "failed"
+                    logger.warning(f"[eta-retry] sub {sub.id} attempt {sub.attempt_number} failed: {e}")
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning(f"[eta-retry] job error: {exc}")
+
+
+def _daily_deadline_alerts():
+    """8am Cairo — alert on tax deadlines within 7 days."""
+    try:
+        from datetime import date, timedelta
+        from app.models.tax_center import TaxCalendarEvent
+        db = SessionLocal()
+        try:
+            today = date.today()
+            cutoff = today + timedelta(days=7)
+            events = db.query(TaxCalendarEvent).filter(
+                TaxCalendarEvent.due_date >= today,
+                TaxCalendarEvent.due_date <= cutoff,
+                TaxCalendarEvent.status.in_(["pending", "upcoming"]),
+            ).all()
+            if events:
+                logger.info(f"[deadline-alert] {len(events)} events due within 7 days")
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning(f"[deadline-alert] job error: {exc}")
+
+
 def _init_db_sync():
     """Blocking DB init — runs in thread pool."""
     import time
@@ -328,6 +418,7 @@ def _init_db_sync():
             create_tables()
             seed_admin()
             _migrate_leads_columns()
+            _seed_wht_types()
             print("✅ Database ready")
             return
         except Exception as exc:
@@ -422,6 +513,7 @@ app.include_router(audit_logs_router.router)
 app.include_router(folders_router.router)
 app.include_router(client_portal_router.router)
 app.include_router(office_services_router.router)
+app.include_router(tax_center_router.router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
