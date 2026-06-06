@@ -4088,8 +4088,25 @@ async function loadReports() {
 // ── LEADS GRID ─────────────────────────────────────
 const LEAD_STATUS_COLORS={new:'#4478b0',interested:'#15803d',not_answered:'#6b7280',wrong_number:'#dc2626',call_later:'#d97706',meeting:'#f59e0b',quotation_sent:'#f97316',paid:'#10b981',under_establishment:'#06b6d4',tax_registered:'#14b8a6',accounting_client:'#22c55e',inactive:'#94a3b8',lost:'#ef4444'};
 const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',not_answered:'لم يرد',wrong_number:'رقم خطأ',call_later:'كلمني لاحقاً',meeting:'اجتماع',quotation_sent:'عرض مرسل',paid:'دفع',under_establishment:'قيد التأسيس',tax_registered:'مسجل ضريبياً',accounting_client:'عميل محاسبة',inactive:'غير نشط',lost:'خسارة'};
-// Row background color by status
 const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',wrong_number:'#fef2f2',call_later:'#fefce8'};
+
+const LEAD_DEFAULT_DELIVERABLES = [
+  'عقد تأسيس',
+  'صحيفة استثمار',
+  'وثيقة بيانات',
+  'طلب القيد في وزارة التجارة الداخلية',
+  'البطاقة الضريبية',
+  'السجل التجاري',
+];
+const LEAD_DEFAULT_REQUIRED_DOCS = [
+  'توكيل تأسيس شركات',
+  'صورة البطاقة الشخصية للشركاء',
+  'عقد إيجار',
+  'إيصال كهرباء',
+];
+// In-memory store for expanded-panel state (deliverables, required docs, extra fields)
+// Keyed by lead id
+const _leadExpandState = {};
 const COMPANY_TYPE_OPTS={'':'—',llc:'ش.م.م',jsc:'ش.م.م.ع',sole:'فردي',ngo:'جمعية',branch:'فرع',rep:'مكتب تمثيلي',other:'أخرى'};
 
 function escH(v){if(v==null)return '';return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -4151,13 +4168,13 @@ function renderLeads(stats) {
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:158px">ميعاد الميتينج</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">موظف مسؤول</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:160px">ملاحظات</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:74px">تفاصيل</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:90px">إجراءات</th>
           <th style="padding:10px 6px;width:34px"></th>
         </tr>
       </thead>
       <tbody id="leadsGridBody">
         ${leadsData.map(l=>_buildLeadRow(l)).join('')}
-        ${leadsData.length===0?`<tr><td colspan="14" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين بعد — اضغط "+ إضافة صف"</div></td></tr>`:''}
+        ${leadsData.length===0?`<tr><td colspan="14" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين — اضغط "+ إضافة صف"</div></td></tr>`:''}
       </tbody>
     </table>
   </div>`;
@@ -4181,7 +4198,10 @@ function _buildLeadRow(l){
   const ctOpts=Object.entries(COMPANY_TYPE_OPTS).map(([v,lbl])=>`<option value="${v}" ${(l.company_type||'')===(v)?'selected':''}>${lbl}</option>`).join('');
   const mtVal=l.meeting_date?l.meeting_date.slice(0,16):'';
   const rowBg = LEAD_ROW_BG[l.status] || '';
-  return `<tr data-id="${l.id||'new'}" style="border-bottom:1px solid #f1f5f9;background:${rowBg}" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
+  const isNew = !l.id;
+  const expandId = `lead-expand-${l.id||'new'}`;
+
+  const mainRow = `<tr data-id="${l.id||'new'}" style="border-bottom:${isNew?'2px solid #e0e7ff':'1px solid #f1f5f9'};background:${rowBg}" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
     <td style="padding:4px 10px;white-space:nowrap"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
     <td style="padding:3px 6px">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
     <td style="padding:3px 6px">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr"')}</td>
@@ -4194,9 +4214,277 @@ function _buildLeadRow(l){
     <td style="padding:3px 6px">${_cellInput('meeting_date',mtVal,'type="datetime-local" style="font-size:11px"')}</td>
     <td style="padding:3px 6px">${_cellSelect('assigned_to',usersOpts)}</td>
     <td style="padding:3px 6px">${_cellInput('notes',l.notes,'placeholder="ملاحظات..."')}</td>
-    <td style="padding:3px 6px;text-align:center">${l.id?`<button onclick="showLeadDetail(${l.id})" style="background:#1a2472;color:white;border:none;border-radius:6px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap" title="تفاصيل وعرض السعر">📋 تفاصيل</button>`:'—'}</td>
+    <td style="padding:3px 6px;text-align:center">
+      ${l.id ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px">
+        <button onclick="toggleLeadExpand(${l.id})" id="expand-btn-${l.id}"
+          style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s"
+          title="توسيع — عرض السعر والإرسال">▾</button>
+        <button onclick="sendLeadWhatsApp(${l.id})"
+          style="background:#25d366;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center"
+          title="واتساب">📱</button>
+        <button onclick="sendLeadEmailDirect(${l.id})"
+          style="background:#1a2472;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center"
+          title="بريد إلكتروني">✉️</button>
+      </div>` : '—'}
+    </td>
     <td style="padding:3px 6px;text-align:center"><button onclick="deleteLeadRow(${l.id||0})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px" title="حذف" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>
   </tr>`;
+
+  const expandRow = l.id ? `<tr id="${expandId}" style="display:none"><td colspan="14" style="padding:0;border-bottom:2px solid #c7d3ef">${_buildLeadExpandPanel(l)}</td></tr>` : '';
+
+  return mainRow + expandRow;
+}
+
+function _getLeadExpandState(l) {
+  if (!_leadExpandState[l.id]) {
+    // Initialize from saved data or defaults
+    let deliverables, reqDocs;
+    try { deliverables = l.quote_deliver_docs ? JSON.parse(l.quote_deliver_docs) : null; } catch(e) { deliverables = null; }
+    try { reqDocs = l.quote_required_docs ? JSON.parse(l.quote_required_docs) : null; } catch(e) { reqDocs = null; }
+    _leadExpandState[l.id] = {
+      email: l.email || '',
+      legal_entity: l.quote_legal_entity || '',
+      activity: l.quote_activity || l.company_activities || '',
+      capital: l.quote_capital != null ? l.quote_capital : (l.estimated_capital || ''),
+      total_fees: l.quote_total_fees || l.quote_expenses_total || '',
+      notes2: l.quote_notes || '',
+      extra: l.losses_detail || '',
+      deliverables: deliverables || LEAD_DEFAULT_DELIVERABLES.map(t => ({text: t, checked: true})),
+      reqDocs: reqDocs || LEAD_DEFAULT_REQUIRED_DOCS.map(t => ({text: t, checked: true})),
+    };
+  }
+  return _leadExpandState[l.id];
+}
+
+function _buildLeadExpandPanel(l) {
+  const st = _getLeadExpandState(l);
+  const inp = (field, val, extra='') => `<input
+    style="width:100%;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px;font-size:12.5px;font-family:inherit;outline:none;transition:border-color .15s"
+    data-expand-id="${l.id}" data-expand-field="${field}" value="${escH(String(val||''))}" ${extra}
+    onfocus="this.style.borderColor='#1a2472'"
+    onblur="this.style.borderColor='#e2e8f0';_saveLeadExpandField(${l.id},this.dataset.expandField,this.value)"/>`;
+
+  const chkList = (items, listKey, containerId) => `
+    <div id="${containerId}" style="display:flex;flex-direction:column;gap:5px">
+      ${items.map((item, idx) => `
+        <div id="${containerId}-item-${idx}" style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" ${item.checked?'checked':''} style="width:15px;height:15px;accent-color:#1a2472;cursor:pointer;flex-shrink:0"
+            onchange="_toggleLeadExpandCheck(${l.id},'${listKey}',${idx},this.checked)"/>
+          <input style="flex:1;border:none;border-bottom:1px solid #e2e8f0;padding:2px 4px;font-size:12px;font-family:inherit;outline:none;background:transparent"
+            value="${escH(item.text)}"
+            onblur="_editLeadExpandCheckText(${l.id},'${listKey}',${idx},this.value)"/>
+          <button onclick="_removeLeadExpandCheck(${l.id},'${listKey}',${idx},'${containerId}')"
+            style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0"
+            onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button>
+        </div>`).join('')}
+    </div>
+    <button onclick="_addLeadExpandCheck(${l.id},'${listKey}','${containerId}')"
+      style="margin-top:6px;background:none;border:1px dashed #c7d3ef;border-radius:6px;color:#4478b0;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;width:100%">+ إضافة عنصر</button>`;
+
+  return `
+  <div style="background:linear-gradient(to bottom,#f0f4ff,#f8fafc);padding:16px 22px;border-right:4px solid #1a2472">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr) repeat(2,1fr);gap:10px;margin-bottom:16px">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">البريد الإلكتروني</div>
+        ${inp('email', st.email, 'type="email" placeholder="example@email.com" style="direction:ltr"')}
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">الكيان القانوني</div>
+        ${inp('legal_entity', st.legal_entity, 'placeholder="ش.م.م / فردي..."')}
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">النشاط (عرض السعر)</div>
+        ${inp('activity', st.activity, 'placeholder="تجارة، مقاولات..."')}
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">رأس المال (جنيه)</div>
+        ${inp('capital', st.capital, 'type="number" placeholder="0" style="direction:ltr"')}
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">إجمالي مصاريف وأتعاب التأسيس (جنيه)</div>
+        ${inp('total_fees', st.total_fees, 'type="number" placeholder="أدخل الإجمالي" style="direction:ltr"')}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">ملاحظات إضافية</div>
+        <textarea data-expand-id="${l.id}" data-expand-field="notes2"
+          style="width:100%;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:56px"
+          placeholder="ملاحظات تضاف لنهاية الرسالة..."
+          onfocus="this.style.borderColor='#1a2472'" onblur="this.style.borderColor='#e2e8f0';_saveLeadExpandField(${l.id},'notes2',this.value)">${escH(st.notes2)}</textarea>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">تفاصيل إضافية</div>
+        <textarea data-expand-id="${l.id}" data-expand-field="extra"
+          style="width:100%;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:56px"
+          placeholder="أي تفاصيل أخرى..."
+          onfocus="this.style.borderColor='#1a2472'" onblur="this.style.borderColor='#e2e8f0';_saveLeadExpandField(${l.id},'extra',this.value)">${escH(st.extra)}</textarea>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:#1a2472;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+          ✅ حضرتك هتستلم مننا:
+        </div>
+        ${chkList(st.deliverables, 'deliverables', `chk-del-${l.id}`)}
+      </div>
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:#1a2472;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+          📋 هحتاج من حضرتك:
+        </div>
+        ${chkList(st.reqDocs, 'reqDocs', `chk-req-${l.id}`)}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button onclick="sendLeadWhatsApp(${l.id})"
+        style="display:flex;align-items:center;gap:6px;background:#25d366;color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        📱 إرسال واتساب
+      </button>
+      <button onclick="sendLeadEmailDirect(${l.id})"
+        style="display:flex;align-items:center;gap:6px;background:#1a2472;color:white;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        ✉️ إرسال بريد إلكتروني
+      </button>
+      <button onclick="_saveLeadExpandAll(${l.id})"
+        style="display:flex;align-items:center;gap:6px;background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        💾 حفظ
+      </button>
+      <button onclick="toggleLeadExpand(${l.id})"
+        style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit">
+        ▴ طي
+      </button>
+      <div id="expand-save-status-${l.id}" style="font-size:12px;color:#15803d"></div>
+    </div>
+  </div>`;
+}
+
+window.toggleLeadExpand = function(id) {
+  const row = document.getElementById(`lead-expand-${id}`);
+  const btn = document.getElementById(`expand-btn-${id}`);
+  if (!row) return;
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : '';
+  if (btn) btn.textContent = isOpen ? '▾' : '▴';
+};
+
+window._saveLeadExpandField = async function(id, field, value) {
+  const st = _leadExpandState[id];
+  if (!st) return;
+  st[field] = value;
+  // Map expand fields to backend fields
+  const fieldMap = {
+    email: 'email',
+    legal_entity: 'quote_legal_entity',
+    activity: 'quote_activity',
+    capital: 'quote_capital',
+    total_fees: 'quote_total_fees',
+    notes2: 'quote_notes',
+    extra: 'losses_detail',
+  };
+  const backendField = fieldMap[field];
+  if (!backendField) return;
+  const parsedVal = (field==='capital'||field==='total_fees') ? (parseFloat(value)||null) : (value||null);
+  try {
+    await api('PUT', `/api/leads/${id}`, {[backendField]: parsedVal,
+      ...(field==='total_fees' ? {quote_expenses_total: parsedVal} : {})
+    });
+    const lead = leadsData.find(l=>l.id===id);
+    if (lead) lead[backendField] = parsedVal;
+    const statusEl = document.getElementById(`expand-save-status-${id}`);
+    if (statusEl) { statusEl.textContent = '✓ محفوظ'; setTimeout(()=>{if(statusEl)statusEl.textContent='';},1500); }
+  } catch(e) { console.warn('expand save failed:', e); }
+};
+
+window._saveLeadExpandAll = async function(id) {
+  const st = _leadExpandState[id];
+  if (!st) return;
+  const statusEl = document.getElementById(`expand-save-status-${id}`);
+  try {
+    const updated = await api('PUT', `/api/leads/${id}`, {
+      email: st.email || null,
+      quote_legal_entity: st.legal_entity || null,
+      quote_activity: st.activity || null,
+      quote_capital: parseFloat(st.capital) || null,
+      quote_total_fees: parseFloat(st.total_fees) || null,
+      quote_expenses_total: parseFloat(st.total_fees) || null,
+      quote_notes: st.notes2 || null,
+      losses_detail: st.extra || null,
+      quote_deliver_docs: JSON.stringify(st.deliverables),
+      quote_required_docs: JSON.stringify(st.reqDocs),
+    });
+    const idx = leadsData.findIndex(l=>l.id===id);
+    if (idx>=0) leadsData[idx] = updated;
+    if (statusEl) { statusEl.textContent = '✅ تم الحفظ'; setTimeout(()=>{if(statusEl)statusEl.textContent='';},2000); }
+    toast('تم حفظ البيانات ✓');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+window._toggleLeadExpandCheck = function(id, listKey, idx, checked) {
+  const st = _leadExpandState[id];
+  if (st && st[listKey] && st[listKey][idx]) {
+    st[listKey][idx].checked = checked;
+  }
+};
+window._editLeadExpandCheckText = function(id, listKey, idx, text) {
+  const st = _leadExpandState[id];
+  if (st && st[listKey] && st[listKey][idx]) {
+    st[listKey][idx].text = text;
+  }
+};
+window._removeLeadExpandCheck = function(id, listKey, idx, containerId) {
+  const st = _leadExpandState[id];
+  if (!st || !st[listKey]) return;
+  st[listKey].splice(idx, 1);
+  // Rebuild the checklist in place
+  const lead = leadsData.find(l=>l.id===id);
+  if (!lead) return;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const wrapper = container.parentElement;
+  if (!wrapper) return;
+  wrapper.innerHTML = `<div style="font-size:12px;font-weight:700;color:#1a2472;margin-bottom:10px">${listKey==='deliverables'?'✅ حضرتك هتستلم مننا:':'📋 هحتاج من حضرتك:'}</div>` +
+    _buildChecklistHTML(st[listKey], listKey, containerId, id);
+};
+window._addLeadExpandCheck = function(id, listKey, containerId) {
+  const st = _leadExpandState[id];
+  if (!st || !st[listKey]) return;
+  const idx = st[listKey].length;
+  st[listKey].push({text: '', checked: true});
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const itemDiv = document.createElement('div');
+  itemDiv.id = `${containerId}-item-${idx}`;
+  itemDiv.style.cssText = 'display:flex;align-items:center;gap:6px';
+  itemDiv.innerHTML = `
+    <input type="checkbox" checked style="width:15px;height:15px;accent-color:#1a2472;cursor:pointer;flex-shrink:0"
+      onchange="_toggleLeadExpandCheck(${id},'${listKey}',${idx},this.checked)"/>
+    <input style="flex:1;border:none;border-bottom:1px solid #e2e8f0;padding:2px 4px;font-size:12px;font-family:inherit;outline:none;background:transparent"
+      placeholder="اكتب العنصر..." autofocus
+      onblur="_editLeadExpandCheckText(${id},'${listKey}',${idx},this.value)"/>
+    <button onclick="_removeLeadExpandCheck(${id},'${listKey}',${idx},'${containerId}')"
+      style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0"
+      onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button>`;
+  container.insertBefore(itemDiv, container.lastElementChild);
+  itemDiv.querySelector('input[type="text"], input:not([type="checkbox"])').focus?.();
+};
+
+function _buildChecklistHTML(items, listKey, containerId, leadId) {
+  return `<div id="${containerId}" style="display:flex;flex-direction:column;gap:5px">
+    ${items.map((item, idx) => `
+      <div id="${containerId}-item-${idx}" style="display:flex;align-items:center;gap:6px">
+        <input type="checkbox" ${item.checked?'checked':''} style="width:15px;height:15px;accent-color:#1a2472;cursor:pointer;flex-shrink:0"
+          onchange="_toggleLeadExpandCheck(${leadId},'${listKey}',${idx},this.checked)"/>
+        <input style="flex:1;border:none;border-bottom:1px solid #e2e8f0;padding:2px 4px;font-size:12px;font-family:inherit;outline:none;background:transparent"
+          value="${escH(item.text)}"
+          onblur="_editLeadExpandCheckText(${leadId},'${listKey}',${idx},this.value)"/>
+        <button onclick="_removeLeadExpandCheck(${leadId},'${listKey}',${idx},'${containerId}')"
+          style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0"
+          onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button>
+      </div>`).join('')}
+  </div>
+  <button onclick="_addLeadExpandCheck(${leadId},'${listKey}','${containerId}')"
+    style="margin-top:6px;background:none;border:1px dashed #c7d3ef;border-radius:6px;color:#4478b0;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;width:100%">+ إضافة عنصر</button>`;
 }
 
 async function saveLeadCell(el) {
@@ -4225,13 +4513,12 @@ async function saveLeadCell(el) {
       const result=await api('POST','/api/leads',body);
       _leadNewSaving=false;
       if(!result) return;
-      row.dataset.id=String(result.id);
-      const codeEl=row.querySelector('td:first-child span');
-      if(codeEl) codeEl.textContent=result.code||'—';
-      const delBtn=row.querySelector('button[title="حذف"]');
-      if(delBtn) delBtn.setAttribute('onclick',`deleteLeadRow(${result.id})`);
       leadsData.push(result);
-      row.style.background='';
+      // Replace single new-row with full two-row structure (main + expand)
+      const tmp2=document.createElement('table');
+      tmp2.innerHTML=`<tbody>${_buildLeadRow(result)}</tbody>`;
+      const newRows=tmp2.querySelectorAll('tr');
+      row.replaceWith(...newRows);
       toast('تم إضافة العميل المحتمل');
     } catch(err){_leadNewSaving=false;toast(err.message,'error');}
     return;
@@ -4254,8 +4541,9 @@ async function saveLeadCell(el) {
       if(row2) row2.style.background=LEAD_ROW_BG[value]||'';
       // Auto WhatsApp for "لم يرد"
       if(value==='not_answered'){
-        const lead=leadsData.find(l=>l.id===parseInt(el.closest('tr[data-id]')?.dataset.id));
-        if(lead?.phone) setTimeout(()=>sendLeadNoAnswerWhatsApp(lead),300);
+        const rowId2 = el.closest('tr[data-id]')?.dataset.id;
+        const lead2 = leadsData.find(l=>l.id===parseInt(rowId2));
+        if(lead2?.phone) setTimeout(()=>sendLeadNoAnswerWhatsApp(lead2),400);
       }
     } else {
       el.style.borderColor='#10b981';
@@ -4280,7 +4568,9 @@ function addLeadRow() {
   const newLead={id:null,code:null,name:'',phone:'',company_activities:'',company_type:'',estimated_capital:null,has_office:false,suggested_name:'',status:'new',meeting_date:null,assigned_to:null,notes:''};
   const tmp=document.createElement('table');
   tmp.innerHTML=`<tbody>${_buildLeadRow(newLead)}</tbody>`;
-  const tr=tmp.querySelector('tr');
+  // Only take the main row (first tr), not the expand row (which requires an id)
+  const trs = tmp.querySelectorAll('tr');
+  const tr = trs[0];
   tr.style.background='#f0fdf4';
   tbody.insertBefore(tr,tbody.firstChild);
   const n=tr.querySelector('[data-field="name"]');
@@ -4298,6 +4588,9 @@ async function deleteLeadRow(id) {
     await api('DELETE',`/api/leads/${id}`);
     const row=document.querySelector(`tr[data-id="${id}"]`);
     if(row) row.remove();
+    const expRow=document.getElementById(`lead-expand-${id}`);
+    if(expRow) expRow.remove();
+    delete _leadExpandState[id];
     leadsData=leadsData.filter(l=>l.id!==id);
     toast('تم الحذف');
   } catch(e){toast(e.message,'error');}
@@ -4585,13 +4878,22 @@ async function saveLeadInfo(id) {
     const idx = leadsData.findIndex(l=>l.id===id);
     if(idx>=0) leadsData[idx]=updated;
     else leadsData.push(updated);
-    // Update grid row if visible — rebuild & replace
+    // Update grid row if visible — rebuild & replace (main + expand rows)
     const row = document.querySelector(`tr[data-id="${id}"]`);
     if(row){
+      const expandRow = document.getElementById(`lead-expand-${id}`);
+      const wasOpen = expandRow && expandRow.style.display !== 'none';
       const tmp=document.createElement('table');
       tmp.innerHTML=`<tbody>${_buildLeadRow(updated)}</tbody>`;
-      const newRow=tmp.querySelector('tr');
-      row.replaceWith(newRow);
+      const rows = tmp.querySelectorAll('tr');
+      if(expandRow) expandRow.remove();
+      row.replaceWith(...rows);
+      if(wasOpen) {
+        const newExpand = document.getElementById(`lead-expand-${id}`);
+        if(newExpand) { newExpand.style.display=''; }
+        const btn = document.getElementById(`expand-btn-${id}`);
+        if(btn) btn.textContent='▴';
+      }
     }
     // Update status badge inside modal if open
     const modalBadge = document.querySelector('.modal .lead-status-badge');
@@ -4638,28 +4940,17 @@ async function sendLeadQuoteEmail(id, defaultEmail) {
   } catch(e){ toast(e.message,'error'); }
 }
 
-async function sendLeadWhatsApp(id) {
-  const lead = leadsData.find(l=>l.id===id);
-  const phone = lead?.phone?.replace(/\D/g,'');
-  if(!phone){ toast('لا يوجد رقم هاتف لهذا العميل','error'); return; }
+function _buildLeadMessage(lead, st) {
+  // Deliverables & required docs from state
+  const delivers = (st.deliverables||[]).filter(i=>i.checked).map(i=>`• ${i.text}`).join('\n');
+  const reqDocs  = (st.reqDocs||[]).filter(i=>i.checked).map(i=>`• ${i.text}`).join('\n');
+  const capital  = parseFloat(st.capital) || lead.quote_capital || lead.estimated_capital || 0;
+  const total    = parseFloat(st.total_fees) || lead.quote_total_fees || lead.quote_expenses_total || 0;
+  const legal    = st.legal_entity || lead.quote_legal_entity || '';
+  const activity = st.activity || lead.quote_activity || lead.company_activities || '';
+  const extra    = [st.notes2, st.extra].filter(Boolean).join('\n');
 
-  // If status is "not_answered" → send follow-up message instead of quote
-  if(lead?.status === 'not_answered') {
-    sendLeadNoAnswerWhatsApp(lead);
-    return;
-  }
-
-  // Quote fields from modal inputs or saved data
-  const totalInput = parseFloat(document.getElementById('qq-total_fees')?.value);
-  const total = !isNaN(totalInput) ? totalInput : (lead?.quote_total_fees || lead?.quote_expenses_total || 0);
-  const activity = document.getElementById('qq-activity')?.value || lead?.quote_activity || lead?.company_activities || '';
-  const legal    = document.getElementById('qq-legal_entity')?.value || lead?.quote_legal_entity || '';
-  const capital  = parseFloat(document.getElementById('qq-capital')?.value) || lead?.quote_capital || lead?.estimated_capital || 0;
-
-  const waPhone = phone.startsWith('0') ? '2'+phone : phone.startsWith('20') ? phone : '2'+phone;
-
-  const msg =
-`السلام عليكم أستاذ / ${lead?.name||''}
+  return `السلام عليكم أستاذ / ${lead?.name||''}
 
 عرض السعر الخاص بتأسيس الشركة:
 
@@ -4669,31 +4960,47 @@ async function sendLeadWhatsApp(id) {
 
 إجمالي مصاريف وأتعاب التأسيس:
 ${total>0?total.toLocaleString('ar-EG')+' جنيه':'—'}
-
-حضرتك هتستلم مننا:
-• عقد تأسيس
-• صحيفة استثمار
-• وثيقة بيانات
-• طلب القيد في وزارة التجارة الداخلية
-• البطاقة الضريبية
-• السجل التجاري
-
-هحتاج من حضرتك:
-• توكيل تأسيس شركات
-• صورة البطاقة الشخصية للشركاء
-• عقد إيجار
-• إيصال كهرباء
+${delivers ? `\nحضرتك هتستلم مننا:\n${delivers}` : ''}
+${reqDocs  ? `\nهحتاج من حضرتك:\n${reqDocs}` : ''}
+${extra    ? `\n${extra}` : ''}
 
 مع خالص الشكر والتقدير
-المستشار / عمرو شعبان`;
+المستشار / عمرو شعبان`.replace(/\n{3,}/g, '\n\n').trim();
+}
 
+async function sendLeadWhatsApp(id) {
+  const lead = leadsData.find(l=>l.id===id);
+  if (!lead) { toast('بيانات العميل غير موجودة','error'); return; }
+  const phone = (lead.phone||'').replace(/\D/g,'');
+  if(!phone){ toast('لا يوجد رقم هاتف لهذا العميل','error'); return; }
+  const waPhone = phone.startsWith('20') ? phone : '2'+phone.replace(/^0/,'');
+
+  if(lead.status === 'not_answered') {
+    sendLeadNoAnswerWhatsApp(lead);
+    return;
+  }
+
+  const st = _getLeadExpandState(lead);
+  const msg = _buildLeadMessage(lead, st);
   window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
+
+window.sendLeadEmailDirect = function(id) {
+  const lead = leadsData.find(l=>l.id===id);
+  if (!lead) return;
+  const st = _getLeadExpandState(lead);
+  const email = st.email || lead.email || '';
+  if (!email) { toast('لا يوجد بريد إلكتروني لهذا العميل','error'); return; }
+  const msg = _buildLeadMessage(lead, st);
+  const subject = encodeURIComponent(`عرض سعر تأسيس شركة — ${lead.name||''}`);
+  const body = encodeURIComponent(msg);
+  window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+};
 
 function sendLeadNoAnswerWhatsApp(lead) {
   const phone = (lead?.phone||'').replace(/\D/g,'');
   if(!phone){ toast('لا يوجد رقم هاتف','error'); return; }
-  const waPhone = phone.startsWith('0') ? '2'+phone : phone.startsWith('20') ? phone : '2'+phone;
+  const waPhone = phone.startsWith('20') ? phone : '2'+phone.replace(/^0/,'');
 
   const msg =
 `أخبار حضرتك إيه؟
@@ -7774,6 +8081,8 @@ window.saveLeadQuote=saveLeadQuote;
 window.sendLeadQuoteEmail=sendLeadQuoteEmail;
 window.sendLeadWhatsApp=sendLeadWhatsApp;
 window.sendLeadNoAnswerWhatsApp=sendLeadNoAnswerWhatsApp;
+window.toggleLeadExpand=toggleLeadExpand;
+window.sendLeadEmailDirect=sendLeadEmailDirect;
 window.previewLeadQuotePDF=previewLeadQuotePDF;
 window.printLeadQuote=printLeadQuote;
 window._ldTab=_ldTab;
