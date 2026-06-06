@@ -4086,8 +4086,10 @@ async function loadReports() {
 
 // ── LEADS (CRM) ────────────────────────────────────
 // ── LEADS GRID ─────────────────────────────────────
-const LEAD_STATUS_COLORS={new:'#4478b0',interested:'#8b5cf6',meeting:'#f59e0b',quotation_sent:'#f97316',paid:'#10b981',under_establishment:'#06b6d4',tax_registered:'#14b8a6',accounting_client:'#22c55e',inactive:'#94a3b8',lost:'#ef4444'};
-const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',meeting:'اجتماع',quotation_sent:'عرض مرسل',paid:'دفع',under_establishment:'قيد التأسيس',tax_registered:'مسجل ضريبياً',accounting_client:'عميل محاسبة',inactive:'غير نشط',lost:'خسارة'};
+const LEAD_STATUS_COLORS={new:'#4478b0',interested:'#15803d',not_answered:'#6b7280',wrong_number:'#dc2626',call_later:'#d97706',meeting:'#f59e0b',quotation_sent:'#f97316',paid:'#10b981',under_establishment:'#06b6d4',tax_registered:'#14b8a6',accounting_client:'#22c55e',inactive:'#94a3b8',lost:'#ef4444'};
+const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',not_answered:'لم يرد',wrong_number:'رقم خطأ',call_later:'كلمني لاحقاً',meeting:'اجتماع',quotation_sent:'عرض مرسل',paid:'دفع',under_establishment:'قيد التأسيس',tax_registered:'مسجل ضريبياً',accounting_client:'عميل محاسبة',inactive:'غير نشط',lost:'خسارة'};
+// Row background color by status
+const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',wrong_number:'#fef2f2',call_later:'#fefce8'};
 const COMPANY_TYPE_OPTS={'':'—',llc:'ش.م.م',jsc:'ش.م.م.ع',sole:'فردي',ngo:'جمعية',branch:'فرع',rep:'مكتب تمثيلي',other:'أخرى'};
 
 function escH(v){if(v==null)return '';return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -4178,7 +4180,8 @@ function _buildLeadRow(l){
   const statOpts=Object.entries(LEAD_STATUS_LABEL).map(([v,lbl])=>`<option value="${v}" ${l.status===v?'selected':''}>${lbl}</option>`).join('');
   const ctOpts=Object.entries(COMPANY_TYPE_OPTS).map(([v,lbl])=>`<option value="${v}" ${(l.company_type||'')===(v)?'selected':''}>${lbl}</option>`).join('');
   const mtVal=l.meeting_date?l.meeting_date.slice(0,16):'';
-  return `<tr data-id="${l.id||'new'}" style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#fafbff'" onmouseout="this.style.background=''">
+  const rowBg = LEAD_ROW_BG[l.status] || '';
+  return `<tr data-id="${l.id||'new'}" style="border-bottom:1px solid #f1f5f9;background:${rowBg}" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
     <td style="padding:4px 10px;white-space:nowrap"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
     <td style="padding:3px 6px">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
     <td style="padding:3px 6px">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr"')}</td>
@@ -4246,6 +4249,14 @@ async function saveLeadCell(el) {
       el.style.background=`${sc}18`;
       el.style.color=sc;
       el.style.borderColor=`${sc}44`;
+      // Update row background
+      const row2=el.closest('tr');
+      if(row2) row2.style.background=LEAD_ROW_BG[value]||'';
+      // Auto WhatsApp for "لم يرد"
+      if(value==='not_answered'){
+        const lead=leadsData.find(l=>l.id===parseInt(el.closest('tr[data-id]')?.dataset.id));
+        if(lead?.phone) setTimeout(()=>sendLeadNoAnswerWhatsApp(lead),300);
+      }
     } else {
       el.style.borderColor='#10b981';
       setTimeout(()=>{if(el!==document.activeElement)el.style.borderColor='transparent';},1000);
@@ -4399,8 +4410,8 @@ async function showLeadDetail(id) {
           <div><label class="form-label">النشاط</label><input id="qq-activity" class="input" value="${escH(lead.quote_activity||lead.company_activities||'')}"/></div>
           <div><label class="form-label">الموقع / المحافظة</label><input id="qq-location" class="input" value="${escH(lead.quote_location||lead.governorate||'')}"/></div>
           <div><label class="form-label">رأس المال (جنيه)</label><input id="qq-capital" class="input" type="number" style="direction:ltr" value="${lead.quote_capital!=null?lead.quote_capital:(lead.estimated_capital||'')}"/></div>
-          <div><label class="form-label">أتعاب المكتب (جنيه)</label><input id="qq-total_fees" class="input" type="number" style="direction:ltr" value="${lead.quote_total_fees||''}" oninput="_qsCalc()"/></div>
-          <div><label class="form-label">الرسوم الحكومية (جنيه)</label><input id="qq-government_fees" class="input" type="number" style="direction:ltr" value="${lead.quote_government_fees||''}" oninput="_qsCalc()"/></div>
+          <div><label class="form-label">إجمالي مصاريف وأتعاب التأسيس (جنيه)</label><input id="qq-total_fees" class="input" type="number" style="direction:ltr" value="${lead.quote_total_fees||lead.quote_expenses_total||''}" oninput="_qsCalc()" placeholder="أدخل الإجمالي يدوياً"/></div>
+          <input type="hidden" id="qq-government_fees" value="0"/>
         </div>
 
         <!-- Services table -->
@@ -4425,8 +4436,7 @@ async function showLeadDetail(id) {
         <div id="qs-total-block" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:10px;padding:16px 22px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between">
           <div>
             <div style="font-size:12px;color:#15803d;font-weight:600;margin-bottom:4px">إجمالي المصاريف والأتعاب</div>
-            <div id="qs-total-amt" style="font-size:26px;font-weight:800;color:#15803d">${fmtMoney(lead.quote_expenses_total)}</div>
-            <div id="qs-total-break" style="font-size:11px;color:#6b7280;margin-top:3px">${lead.quote_total_fees||lead.quote_government_fees?`أتعاب: ${fmtMoney(lead.quote_total_fees)} — رسوم: ${fmtMoney(lead.quote_government_fees)}`:''}</div>
+            <div id="qs-total-amt" style="font-size:26px;font-weight:800;color:#15803d">${fmtMoney(lead.quote_total_fees||lead.quote_expenses_total)}</div>
           </div>
           <div style="font-size:36px">💰</div>
         </div>
@@ -4518,13 +4528,8 @@ function _ldTab(tab) {
 
 function _qsCalc() {
   const fees = parseFloat(document.getElementById('qq-total_fees')?.value)||0;
-  const gov  = parseFloat(document.getElementById('qq-government_fees')?.value)||0;
-  const svcTotal = (window._qsServices||[]).reduce((s,r)=>s+(parseFloat(r.price)||0),0);
-  const total = fees + gov + svcTotal;
   const amt = document.getElementById('qs-total-amt');
-  const brk = document.getElementById('qs-total-break');
-  if(amt) amt.textContent = total.toLocaleString('ar-EG')+' جنيه';
-  if(brk) brk.textContent = `أتعاب: ${fees.toLocaleString('ar-EG')} جنيه — رسوم: ${gov.toLocaleString('ar-EG')} جنيه`;
+  if(amt) amt.textContent = fees > 0 ? fees.toLocaleString('ar-EG')+' جنيه' : '—';
 }
 
 function _qsAddService() {
@@ -4579,7 +4584,8 @@ async function saveLeadInfo(id) {
     // Refresh local cache
     const idx = leadsData.findIndex(l=>l.id===id);
     if(idx>=0) leadsData[idx]=updated;
-    // Update grid row if visible
+    else leadsData.push(updated);
+    // Update grid row if visible — rebuild & replace
     const row = document.querySelector(`tr[data-id="${id}"]`);
     if(row){
       const tmp=document.createElement('table');
@@ -4587,29 +4593,37 @@ async function saveLeadInfo(id) {
       const newRow=tmp.querySelector('tr');
       row.replaceWith(newRow);
     }
+    // Update status badge inside modal if open
+    const modalBadge = document.querySelector('.modal .lead-status-badge');
+    if(modalBadge && updated.status){
+      const sc=LEAD_STATUS_COLORS[updated.status]||'#94a3b8';
+      modalBadge.style.background=`${sc}22`;
+      modalBadge.style.color=sc;
+      modalBadge.textContent=LEAD_STATUS_LABEL[updated.status]||updated.status;
+    }
     toast('تم حفظ بيانات العميل ✓');
   });
 }
 
 async function saveLeadQuote(id) {
   const btn = document.getElementById('ld-save-quote');
-  const fees = parseFloat(document.getElementById('qq-total_fees')?.value)||0;
-  const gov  = parseFloat(document.getElementById('qq-government_fees')?.value)||0;
-  const svcTotal = (window._qsServices||[]).reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+  const total = parseFloat(document.getElementById('qq-total_fees')?.value)||0;
   const body = {
     quote_legal_entity: document.getElementById('qq-legal_entity')?.value||null,
     quote_activity:     document.getElementById('qq-activity')?.value||null,
     quote_location:     document.getElementById('qq-location')?.value||null,
     quote_capital:      parseFloat(document.getElementById('qq-capital')?.value)||null,
-    quote_total_fees:   fees||null,
-    quote_government_fees: gov||null,
-    quote_expenses_total: (fees+gov+svcTotal)||null,
+    quote_total_fees:   total||null,
+    quote_government_fees: 0,
+    quote_expenses_total: total||null,
     quote_services:     JSON.stringify((window._qsServices||[]).filter(s=>s.name)),
     quote_required_docs: JSON.stringify((window._qsDocs||[]).filter(Boolean)),
     quote_notes:        document.getElementById('qq-notes')?.value||null,
   };
   await withSaving(btn, async()=>{
-    await api('PUT', `/api/leads/${id}`, body);
+    const updated = await api('PUT', `/api/leads/${id}`, body);
+    const idx = leadsData.findIndex(l=>l.id===id);
+    if(idx>=0) leadsData[idx]=updated;
     _qsCalc();
     toast('تم حفظ عرض السعر ✓');
   });
@@ -4625,34 +4639,78 @@ async function sendLeadQuoteEmail(id, defaultEmail) {
 }
 
 async function sendLeadWhatsApp(id) {
-  // Build lead data from current saved state in leadsData or re-fetch
   const lead = leadsData.find(l=>l.id===id);
-  // Collect quote data from modal inputs if open
-  const fees  = parseFloat(document.getElementById('qq-total_fees')?.value)||lead?.quote_total_fees||0;
-  const gov   = parseFloat(document.getElementById('qq-government_fees')?.value)||lead?.quote_government_fees||0;
-  const total = fees+gov;
-  const activity = document.getElementById('qq-activity')?.value || lead?.quote_activity || lead?.company_activities || '';
-  const legal = document.getElementById('qq-legal_entity')?.value || lead?.quote_legal_entity || '';
-  const docs = (window._qsDocs||[]).filter(Boolean);
-
   const phone = lead?.phone?.replace(/\D/g,'');
   if(!phone){ toast('لا يوجد رقم هاتف لهذا العميل','error'); return; }
-  const waPhone = phone.startsWith('0')?'2'+phone:phone;
 
-  const msg = `مساء الخير / ${lead?.name||''}
+  // If status is "not_answered" → send follow-up message instead of quote
+  if(lead?.status === 'not_answered') {
+    sendLeadNoAnswerWhatsApp(lead);
+    return;
+  }
 
-يسعدنا تقديم عرض السعر الخاص بتأسيس شركتكم:
+  // Quote fields from modal inputs or saved data
+  const totalInput = parseFloat(document.getElementById('qq-total_fees')?.value);
+  const total = !isNaN(totalInput) ? totalInput : (lead?.quote_total_fees || lead?.quote_expenses_total || 0);
+  const activity = document.getElementById('qq-activity')?.value || lead?.quote_activity || lead?.company_activities || '';
+  const legal    = document.getElementById('qq-legal_entity')?.value || lead?.quote_legal_entity || '';
+  const capital  = parseFloat(document.getElementById('qq-capital')?.value) || lead?.quote_capital || lead?.estimated_capital || 0;
 
-📌 الكيان القانوني: ${legal||'—'}
-📌 النشاط: ${activity||'—'}
-💰 إجمالي المصاريف والأتعاب: ${total>0?total.toLocaleString('ar-EG')+' جنيه':'—'}
-${fees?'🏢 أتعاب المكتب: '+fees.toLocaleString('ar-EG')+' جنيه':''}
-${gov?'🏛️ رسوم حكومية: '+gov.toLocaleString('ar-EG')+' جنيه':''}
-${docs.length?'\n📋 المستندات المطلوبة:\n'+docs.map(d=>'• '+d).join('\n'):''}
+  const waPhone = phone.startsWith('0') ? '2'+phone : phone.startsWith('20') ? phone : '2'+phone;
 
-للاستفسار والحجز نرجو التواصل معنا.
-مع تحياتنا — مكتب MS للمحاسبة والضرائب
-المستشار: عمرو شعبان`.trim();
+  const msg =
+`السلام عليكم أستاذ / ${lead?.name||''}
+
+عرض السعر الخاص بتأسيس الشركة:
+
+الكيان القانوني: ${legal||'—'}
+النشاط: ${activity||'—'}
+رأس المال: ${capital>0?capital.toLocaleString('ar-EG')+' جنيه':'—'}
+
+إجمالي مصاريف وأتعاب التأسيس:
+${total>0?total.toLocaleString('ar-EG')+' جنيه':'—'}
+
+حضرتك هتستلم مننا:
+• عقد تأسيس
+• صحيفة استثمار
+• وثيقة بيانات
+• طلب القيد في وزارة التجارة الداخلية
+• البطاقة الضريبية
+• السجل التجاري
+
+هحتاج من حضرتك:
+• توكيل تأسيس شركات
+• صورة البطاقة الشخصية للشركاء
+• عقد إيجار
+• إيصال كهرباء
+
+مع خالص الشكر والتقدير
+المستشار / عمرو شعبان`;
+
+  window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+function sendLeadNoAnswerWhatsApp(lead) {
+  const phone = (lead?.phone||'').replace(/\D/g,'');
+  if(!phone){ toast('لا يوجد رقم هاتف','error'); return; }
+  const waPhone = phone.startsWith('0') ? '2'+phone : phone.startsWith('20') ? phone : '2'+phone;
+
+  const msg =
+`أخبار حضرتك إيه؟
+
+مع حضرتك المستشار / عمرو شعبان
+
+كنت بحاول أتواصل مع حضرتك هاتفياً ولم يتم الرد بخصوص تأسيس شركة.
+
+محتاج أعرف من حضرتك بعض التفاصيل لإرسال عرض السعر:
+
+1- نشاط الشركة
+2- رأس مال الشركة
+3- هل يوجد مقر أم سيتم التأسيس على مقر افتراضي؟
+4- هل يوجد شركاء؟
+5- عنوان المقر إن وجد
+
+في انتظار رد حضرتك، وسأقوم بإرسال جميع التفاصيل وعرض السعر المناسب.`;
 
   window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
@@ -7715,6 +7773,7 @@ window.saveLeadInfo=saveLeadInfo;
 window.saveLeadQuote=saveLeadQuote;
 window.sendLeadQuoteEmail=sendLeadQuoteEmail;
 window.sendLeadWhatsApp=sendLeadWhatsApp;
+window.sendLeadNoAnswerWhatsApp=sendLeadNoAnswerWhatsApp;
 window.previewLeadQuotePDF=previewLeadQuotePDF;
 window.printLeadQuote=printLeadQuote;
 window._ldTab=_ldTab;
