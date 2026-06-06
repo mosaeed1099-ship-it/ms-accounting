@@ -343,7 +343,7 @@ function _showStaleBanner() {
   const b = document.createElement('div');
   b.id = 'stale-banner';
   b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#fef9c3;border-bottom:2px solid #fde68a;padding:8px 16px;text-align:center;font-size:13px;color:#92400e;font-weight:600';
-  b.innerHTML = '⚠️ الخادم يُعاد تشغيله — تعرض بيانات مؤقتة. سيتم التحديث تلقائياً خلال لحظات... <button onclick="document.getElementById('stale-banner').remove()" style="margin-right:12px;background:none;border:none;cursor:pointer;font-size:16px;color:#92400e">✕</button>';
+  b.innerHTML = `⚠️ الخادم يُعاد تشغيله — تعرض بيانات مؤقتة. سيتم التحديث تلقائياً خلال لحظات... <button onclick="_hideStaleBanner()" style="margin-right:12px;background:none;border:none;cursor:pointer;font-size:16px;color:#92400e">✕</button>`;
   document.body.prepend(b);
 }
 
@@ -3190,9 +3190,6 @@ async function showUploadModal(preClientId=null) {
   };
 }
 
-// ── TAX RETURNS ────────────────────────────────────
-let taxData=[];
-
 // ── TAX HUB ────────────────────────────────────────
 let taxData = [];
 let _taxTab = 'returns';  // returns | prepare | portals
@@ -4722,7 +4719,6 @@ const OBL_STATUS_AR = {
   upcoming:'قادم', pending:'معلق', in_progress:'قيد التنفيذ',
   submitted:'مُقدَّم', paid:'مدفوع', late:'متأخر', exempted:'معفى'
 };
-const PRIORITY_COLOR = {urgent:'#dc2626', high:'#f97316', medium:'#d97706', low:'#16a34a'};
 const PRIORITY_AR = {urgent:'عاجل', high:'مرتفع', medium:'متوسط', low:'منخفض'};
 const FREQ_AR = {monthly:'شهري', quarterly:'ربعي', annual:'سنوي'};
 
