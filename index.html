@@ -636,8 +636,7 @@ const navItems = [
   {id:'clients'      ,icon:'👥',label:'العملاء'},
   {id:'leads'        ,icon:'🎯',label:'العملاء المحتملين'},
   {id:'establishment',icon:'🏗️',label:'تأسيس الشركات'},
-  {id:'invoices'     ,icon:'💳',label:'أتعاب الحسابات'},
-  {id:'collections'  ,icon:'💰',label:'التحصيلات'},
+  {id:'invoices'     ,icon:'💰',label:'الأتعاب والتحصيلات'},
   {id:'fin_reports'  ,icon:'📈',label:'التقارير المالية'},
   {id:'tax'          ,icon:'🧾',label:'الإقرارات'},
   {id:'tasks'        ,icon:'✅',label:'المهام'},
@@ -657,7 +656,7 @@ const navItems = [
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
   {label:'CRM & المبيعات', items:['clients','leads','establishment']},
-  {label:'المالية', items:['invoices','collections','fin_reports','tax','statements']},
+  {label:'المالية', items:['invoices','fin_reports','tax','statements']},
   {label:'التشغيل', items:['tasks','obligations','documents','appointments']},
   {label:'الموارد البشرية', items:['payroll','settlements']},
   {label:'إدارة المكتب', items:['office_services','client_portal']},
@@ -1309,7 +1308,7 @@ async function loadDashboard() {
         gradient:'linear-gradient(135deg,#059669,#10b981)',
         iconBg:'rgba(255,255,255,.15)',icon:'💰',
         label:'إجمالي المحصّل',value:money(collected),
-        sub:`من أصل ${money(invoiced)} فواتير`,page:'collections'
+        sub:`من أصل ${money(invoiced)} فواتير`,page:'invoices'
       })}
       ${kpiCard({
         gradient:'linear-gradient(135deg,#b45309,#f59e0b)',
@@ -2059,78 +2058,165 @@ function addInvoiceForClient(clientId, clientName) {
 // ── INVOICES ───────────────────────────────────────
 let invoicesData=[], invoiceFilter='all';
 
+// ── Unified Fees & Collections page ─────────────────
+let _feesTab = 'establishment'; // 'establishment' | 'monthly_fee' | 'invoices'
+let _feesCollData = [];
+
 async function loadInvoices() {
-  const main=document.getElementById('main');
-  if(main&&!invoicesData.length){main.className='page';main.innerHTML=skeletonTable(5,8);}
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
-    const p = new URLSearchParams({page_size:'100'});
-    if(invoiceFilter && invoiceFilter!=='all') p.append('status', invoiceFilter);
-    const data=await api('GET',`/api/invoices?${p}`);
-    if(!data) return;
-    invoicesData=data.items||[];
-    renderInvoices();
-  } catch(e){toast(e.message,'error')}
+    const [summary, colData, invData] = await Promise.all([
+      api('GET', '/api/collections/summary').catch(()=>null),
+      api('GET', '/api/collections?page_size=200').catch(()=>({items:[]})),
+      api('GET', '/api/invoices?page_size=100').catch(()=>({items:[]})),
+    ]);
+    _feesCollData = colData.items || [];
+    invoicesData  = invData.items  || [];
+    renderInvoices(summary);
+  } catch(e) { toast(e.message,'error'); }
 }
 
-function renderInvoices() {
-  const main=document.getElementById('main');
-  main.className='page';
-  const statusBadge=INV_STATUS_BADGE;
-  const statusLabel=INV_STATUS_LABEL;
-  const total=invoicesData.reduce((s,i)=>s+i.total,0);
-  const collected=invoicesData.reduce((s,i)=>s+i.paid_amount,0);
-  const outstanding=invoicesData.reduce((s,i)=>s+i.remaining,0);
-  main.innerHTML=`
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
-    <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:12px;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📄</div>
-      <div><div style="font-size:18px;font-weight:800;color:#1e293b">${money(total)}</div><div style="font-size:12px;color:#64748b">إجمالي الأتعاب</div></div>
+function renderInvoices(summary) {
+  const main = document.getElementById('main');
+  main.className = 'page';
+
+  const estData = _feesCollData.filter(c=>c.collection_type==='establishment');
+  const mthData = _feesCollData.filter(c=>c.collection_type==='monthly_fee');
+
+  // KPI summary
+  const kpiHtml = summary ? `
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:22px">
+    <div class="stat-card stat-blue" style="cursor:default">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:6px">📋 إجمالي المتفق عليه</div>
+      <div style="font-size:20px;font-weight:800;color:#1e293b">${money(summary.total_agreed)}</div>
     </div>
-    <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:12px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">💵</div>
-      <div><div style="font-size:18px;font-weight:800;color:#16a34a">${money(collected)}</div><div style="font-size:12px;color:#64748b">إجمالي المحصّل</div></div>
+    <div class="stat-card stat-green" style="cursor:default">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:6px">✅ إجمالي المحصّل</div>
+      <div style="font-size:20px;font-weight:800;color:#16a34a">${money(summary.total_collected)}</div>
     </div>
-    <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:12px;background:#fff1f2;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">⏳</div>
-      <div><div style="font-size:18px;font-weight:800;color:#dc2626">${money(outstanding)}</div><div style="font-size:12px;color:#64748b">المستحق</div></div>
+    <div class="stat-card stat-red" style="cursor:default">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:6px">⏳ المتبقي</div>
+      <div style="font-size:20px;font-weight:800;color:#dc2626">${money(summary.total_remaining)}</div>
     </div>
-  </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${['all','paid','sent','partial','overdue','draft'].map(s=>`<button onclick="invoiceFilter='${s}';loadInvoices()" class="btn btn-sm ${invoiceFilter===s?'btn-primary':'btn-secondary'}">${{all:'الكل',paid:'مسددة',sent:'مرسلة',partial:'جزئي',overdue:'متأخرة',draft:'مسودة'}[s]}</button>`).join('')}
+    <div class="stat-card" style="cursor:default">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:6px">📅 أتعاب الشهر الحالي</div>
+      <div style="font-size:20px;font-weight:800;color:#d97706">${money(summary.current_month_due)}</div>
+      <div style="font-size:11px;color:#16a34a;margin-top:3px">محصّل: ${money(summary.current_month_paid)}</div>
     </div>
-    <button class="btn btn-primary" onclick="showInvoiceModal()">+ أتعاب جديدة</button>
-  </div>
-  <div class="card" style="overflow:hidden">
-    <table>
-      <thead><tr><th>رقم الفاتورة</th><th>العميل</th><th>تاريخ الإصدار</th><th>تاريخ الاستحقاق</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead>
-      <tbody>
-        ${invoicesData.length===0?`<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">
-          <div style="font-size:40px;margin-bottom:10px">💳</div>
-          <div style="font-weight:700;color:#475569;margin-bottom:6px">لا توجد فواتير</div>
-          <div style="font-size:12px">اضغط "+ أتعاب جديدة" لإنشاء أول فاتورة</div>
-        </td></tr>`:
-          invoicesData.map(inv=>`
-          <tr>
+  </div>` : '';
+
+  // Tab bar
+  const tabs = [
+    {id:'establishment', label:`🏗️ أتعاب التأسيس (${estData.length})`},
+    {id:'monthly_fee',   label:`🔄 أتعاب الحسابات (${mthData.length})`},
+    {id:'invoices',      label:`🧾 فواتير رسمية (${invoicesData.length})`},
+  ];
+  const tabBarHtml = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${tabs.map(t=>`<button onclick="_feesTab='${t.id}';renderInvoices(${summary?'_feesSummaryCache':null})"
+        class="btn btn-sm ${_feesTab===t.id?'btn-primary':'btn-secondary'}">${t.label}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      ${_feesTab==='invoices'
+        ? `<button class="btn btn-primary" onclick="showInvoiceModal()">+ فاتورة جديدة</button>`
+        : `<button class="btn btn-primary" onclick="showCollectionModal('${_feesTab}')">+ إضافة عقد</button>`}
+    </div>
+  </div>`;
+
+  // Content per tab
+  let bodyHtml = '';
+  if (_feesTab === 'invoices') {
+    const statusBadge = INV_STATUS_BADGE;
+    const statusLabel = INV_STATUS_LABEL;
+    bodyHtml = `<div class="card" style="overflow:hidden"><table>
+      <thead><tr><th>رقم الفاتورة</th><th>العميل</th><th>تاريخ الإصدار</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${invoicesData.length===0
+        ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد فواتير — اضغط "+ فاتورة جديدة"</td></tr>`
+        : invoicesData.map(inv=>`<tr>
             <td><span style="font-weight:700;color:#1a2472">${inv.invoice_number}</span></td>
-            <td style="font-weight:500;color:#374151">${inv.client_name||inv.client_id}</td>
+            <td style="font-weight:500">${escH(inv.client_name||'')}</td>
             <td>${dateAr(inv.issue_date)}</td>
-            <td style="color:${daysUntil(inv.due_date)<0&&inv.status!=='paid'?'#dc2626':'#374151'}">${dateAr(inv.due_date)}</td>
-            <td style="font-weight:700;color:#1e293b">${money(inv.total)}</td>
+            <td style="font-weight:700">${money(inv.total)}</td>
             <td style="color:#16a34a;font-weight:600">${money(inv.paid_amount)}</td>
             <td style="color:${inv.remaining>0?'#dc2626':'#16a34a'};font-weight:600">${money(inv.remaining)}</td>
             <td><span class="badge ${statusBadge[inv.status]||'badge-gray'}">${statusLabel[inv.status]||inv.status}</span></td>
-            <td>
-              <div style="display:flex;gap:5px">
-                ${inv.remaining>0&&inv.status!=='cancelled'?`<button class="btn btn-success btn-sm" onclick="showPaymentModal(${inv.id},${inv.remaining},'${inv.invoice_number}')">💵</button>`:''}
-                <button class="btn btn-secondary btn-sm" onclick="showInvoiceModal(${inv.id})">✏️</button>
-              </div>
-            </td>
+            <td><div style="display:flex;gap:5px">
+              ${inv.remaining>0&&inv.status!=='cancelled'?`<button class="btn btn-success btn-sm" onclick="showPaymentModal(${inv.id},${inv.remaining},'${inv.invoice_number}')">💵</button>`:''}
+              <button class="btn btn-secondary btn-sm" onclick="showInvoiceModal(${inv.id})">✏️</button>
+            </div></td>
           </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>`;
+      </tbody></table></div>`;
+  } else {
+    const rows = _feesTab === 'establishment' ? estData : mthData;
+    bodyHtml = `<div class="card" style="overflow:hidden"><table>
+      <thead><tr>
+        <th>العميل</th><th>الخدمة</th><th>المتفق عليه</th>
+        ${_feesTab==='monthly_fee'?'<th>الشهري</th>':''}
+        <th>المدفوع</th><th>المتبقي</th><th>آخر دفعة</th><th>الدفعات</th><th></th>
+      </tr></thead>
+      <tbody id="fees-tbody">
+        ${rows.length===0
+          ? `<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">لا توجد عقود — اضغط "+ إضافة عقد"</td></tr>`
+          : rows.map((c,idx)=>{
+              const lastPay = (c.payments||[]).length ? c.payments[c.payments.length-1] : null;
+              const payCount = (c.payments||[]).length;
+              return `<tr style="cursor:pointer" onclick="_toggleFeesExpand(${idx},'${c.id}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                <td style="font-weight:700;color:#1e293b">${escH(c.client_name||'—')}</td>
+                <td style="font-size:12px;color:#374151;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(c.title)}</td>
+                <td style="font-weight:700;color:#1a2472">${money(c.agreed_amount)}</td>
+                ${_feesTab==='monthly_fee'?`<td style="color:#5b8ec4;font-weight:600">${c.monthly_amount?money(c.monthly_amount)+'/شهر':'—'}</td>`:''}
+                <td style="color:#16a34a;font-weight:700">${money(c.total_paid)}</td>
+                <td style="color:${c.total_remaining>0?'#dc2626':'#16a34a'};font-weight:700">${money(c.total_remaining)}</td>
+                <td style="font-size:12px;color:#64748b">${lastPay?dateAr(lastPay.payment_date):'—'}</td>
+                <td><span style="background:#eef1fb;color:#1a2472;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px">${payCount} دفعة</span></td>
+                <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px">
+                  ${c.total_remaining>0?`<button class="btn btn-success btn-sm" onclick="showCollectionPaymentModal(${c.id},${c.total_remaining},'${escH(c.title)}',${c.collection_type==='monthly_fee'})">💵</button>`:''}
+                </div></td>
+              </tr>
+              <tr id="fees-expand-${idx}" style="display:none;background:#f8fafc">
+                <td colspan="9" style="padding:0">
+                  <div style="padding:12px 20px 16px">
+                    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📋 سجل الدفعات</div>
+                    ${!(c.payments||[]).length
+                      ? `<div style="color:#94a3b8;font-size:12px;padding:8px 0">لا توجد دفعات مسجلة بعد</div>`
+                      : `<table style="width:100%;border-collapse:collapse">
+                          <thead><tr style="border-bottom:1px solid #e2e8f0">
+                            <th style="text-align:right;padding:5px 10px;font-size:11px;color:#64748b;font-weight:600">المبلغ</th>
+                            <th style="text-align:right;padding:5px 10px;font-size:11px;color:#64748b;font-weight:600">التاريخ</th>
+                            <th style="text-align:right;padding:5px 10px;font-size:11px;color:#64748b;font-weight:600">طريقة الدفع</th>
+                            ${_feesTab==='monthly_fee'?'<th style="text-align:right;padding:5px 10px;font-size:11px;color:#64748b;font-weight:600">عن شهر</th>':''}
+                            <th style="text-align:right;padding:5px 10px;font-size:11px;color:#64748b;font-weight:600">المرجع</th>
+                          </tr></thead>
+                          <tbody>${(c.payments||[]).map(p=>`
+                            <tr style="border-bottom:1px solid #f1f5f9">
+                              <td style="padding:6px 10px;font-weight:700;color:#16a34a;font-size:13px">${money(p.amount)}</td>
+                              <td style="padding:6px 10px;font-size:12px;color:#374151">${dateAr(p.payment_date)}</td>
+                              <td style="padding:6px 10px;font-size:12px;color:#374151">${{cash:'نقدي',bank_transfer:'تحويل',check:'شيك',instapay:'InstaPay',vodafone_cash:'V.Cash'}[p.payment_method]||p.payment_method||'—'}</td>
+                              ${_feesTab==='monthly_fee'?`<td style="padding:6px 10px;font-size:11px;color:#5b8ec4">${p.period_month?(['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][p.period_month-1]+' '+p.period_year):'—'}</td>`:''}
+                              <td style="padding:6px 10px;font-size:11px;color:#94a3b8">${p.reference||'—'}</td>
+                            </tr>`).join('')}
+                          </tbody></table>`}
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+      </tbody></table></div>`;
+  }
+
+  // Cache summary for tab switching
+  if (summary) window._feesSummaryCache = summary;
+
+  main.innerHTML = kpiHtml + tabBarHtml + bodyHtml;
 }
+
+window._toggleFeesExpand = function(idx, id) {
+  const row = document.getElementById(`fees-expand-${idx}`);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+};
 
 async function showInvoiceModal(id=null, preClientId=null) {
   let inv=null, clients=[];
