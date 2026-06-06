@@ -6557,6 +6557,7 @@ async function loadSettings(activeTab) {
     ${tabBtn('notifications','📧','الإشعارات')}
     ${tabBtn('team','👥','الفريق')}
     ${tabBtn('import','📥','الاستيراد')}
+    ${tabBtn('backup','🗄️','النسخ الاحتياطي')}
   </div>
 
   <!-- General tab -->
@@ -6663,6 +6664,41 @@ async function loadSettings(activeTab) {
       </div>
     </div>
     <div id="importPreviewArea"></div>
+  </div>
+
+  <!-- Backup tab -->
+  <div id="stab-backup" style="display:${tab==='backup'?'block':'none'};max-width:700px">
+    <div class="card" style="padding:24px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+        <div style="width:48px;height:48px;background:#eef1fb;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px">🗄️</div>
+        <div>
+          <h2 style="font-size:18px;font-weight:800;color:#1a2472;margin:0">النسخ الاحتياطي</h2>
+          <p style="font-size:13px;color:#64748b;margin:4px 0 0">نسخة احتياطية تلقائية أسبوعية + تحميل يدوي</p>
+        </div>
+      </div>
+      <div style="background:#f0f7ff;border-right:4px solid #1a73e8;border-radius:8px;padding:14px 16px;margin-bottom:20px">
+        <div style="font-size:13px;font-weight:700;color:#1a2472;margin-bottom:4px">൑ النسخ الاحتياطي التلقائي</div>
+        <div style="font-size:12px;color:#475569;line-height:1.6">
+          • يعمل تلقائياً كل يوم <strong>الأحد الساعة 2 صباحاً</strong><br>
+          • يُرسَل ملف SQL مضغوط إلى بريد المدير الإلكتروني<br>
+          • يتطلب إعداد SMTP في تاب الإشعارات
+        </div>
+      </div>
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span style="font-size:14px;font-weight:700;color:#1e293b">النسخ المحفوظة محلياً</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadBackupList()">🔄 تحديث</button>
+        </div>
+        <div id="backupListArea" style="min-height:60px;background:#f8fafc;border-radius:8px;padding:12px;font-size:13px;color:#94a3b8;text-align:center">
+          جاري التحميل...
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="downloadBackup(this)">⬇️ تحميل نسخة الآن</button>
+        <button class="btn btn-secondary" onclick="triggerBackupEmail(this)">📧 إرسال نسخة بالبريد</button>
+      </div>
+      <div id="backupMsg" style="margin-top:12px"></div>
+    </div>
   </div>`;
 
   // Load team data if team tab is active
@@ -6670,13 +6706,14 @@ async function loadSettings(activeTab) {
 }
 
 function switchStab(tabId) {
-  ['general','notifications','team','import'].forEach(id => {
+  ['general','notifications','team','import','backup'].forEach(id => {
     const el = document.getElementById('stab-'+id);
     const btn = document.getElementById('stab-btn-'+id);
     if(el) el.style.display = id===tabId ? 'block' : 'none';
     if(btn){ btn.style.borderBottomColor = id===tabId?'#1a2472':'transparent'; btn.style.color = id===tabId?'#1a2472':'#64748b'; }
   });
   if(tabId==='team') _loadSettingsTeam();
+  if(tabId==='backup') loadBackupList();
 }
 
 async function _loadSettingsTeam() {
@@ -6957,6 +6994,57 @@ window.showEmployeeModal=showEmployeeModal;
 window.deactivateEmployee=deactivateEmployee;
 window.showAssignTaskModal=showAssignTaskModal;
 window.showEmployeeTasks=showEmployeeTasks;
+
+async function loadBackupList() {
+  const area = document.getElementById('backupListArea');
+  if(!area) return;
+  area.innerHTML = '<div style="text-align:center;color:#94a3b8">جاري التحميل...</div>';
+  try {
+    const d = await api('GET', '/api/backup/list');
+    if(!d.backups || !d.backups.length) {
+      area.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:10px">لا توجد نسخ محفوظة محلياً بعد</div>';
+      return;
+    }
+    area.innerHTML = d.backups.map(b =>
+      `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">
+        <span style="font-family:monospace;color:#374151">${escH(b.filename)}</span>
+        <span style="color:#64748b;margin-right:12px">${b.size_kb} KB — ${escH(b.created_at)}</span>
+      </div>`).join('');
+  } catch(e) {
+    area.innerHTML = '<div style="color:#dc2626;text-align:center;font-size:12px">تعذّر التحميل — '+escH(e.message)+'</div>';
+  }
+}
+
+async function downloadBackup(btn) {
+  btn.disabled=true; btn.textContent='⏳ جاري الإنشاء...';
+  try {
+    const token=localStorage.getItem('ms_token');
+    const resp=await fetch(getApiBase()+'/api/backup/download',{
+      headers:{'Authorization':'Bearer '+token},
+      signal:AbortSignal.timeout(180000),
+    });
+    if(!resp.ok){const e=await resp.json();throw new Error(e.detail||'فشل التحميل');}
+    const blob=await resp.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const ts=new Date().toISOString().slice(0,16).replace('T','_').replace(':','');
+    a.href=url; a.download='ms_backup_'+ts+'.sql.gz';
+    a.click(); URL.revokeObjectURL(url);
+    toast('تم تحميل النسخة الاحتياطية بنجاح');
+  } catch(e){toast(e.message,'error');}
+  finally{btn.disabled=false; btn.textContent='⬇️ تحميل نسخة الآن';}
+}
+
+async function triggerBackupEmail(btn) {
+  btn.disabled=true; btn.textContent='⏳ جاري الإرسال...';
+  try {
+    const r=await api('POST','/api/backup/trigger');
+    toast(r.message||'تم إرسال النسخة الاحتياطية');
+    setTimeout(loadBackupList,3000);
+  } catch(e){toast(e.message,'error');}
+  finally{btn.disabled=false; btn.textContent='📧 إرسال نسخة بالبريد';}
+}
+
 window.switchStab=switchStab;
 window._loadSettingsTeam=_loadSettingsTeam;
 window.oblTab='upcoming';
