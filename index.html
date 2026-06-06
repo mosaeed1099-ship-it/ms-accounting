@@ -3192,552 +3192,836 @@ async function showUploadModal(preClientId=null) {
 
 // ── TAX HUB ────────────────────────────────────────
 let taxData = [];
-let _taxTab = 'returns';  // returns | prepare | portals
+let _taxTab = 'dashboard';  // legacy compat
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAX CENTER — مركز الضرائب (Egyptian Law 91/2005 + Law 67/2016)
+// ═══════════════════════════════════════════════════════════════════════════
+let _tcTab = 'dashboard';
+let _tcClientId = null;
+let _tcClientName = '';
+let _tcYear = new Date().getFullYear();
+let _tcMonth = new Date().getMonth() + 1;
+
+const TC_MONTH_AR = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
 async function loadTax() {
   const main = document.getElementById('main');
   main.className = 'page';
   _renderTaxShell();
-  await _loadTaxTab(_taxTab);
+  await _tcLoadTab(_tcTab);
 }
 
 function _renderTaxShell() {
   const main = document.getElementById('main');
-  const tabBtn = (id, icon, label) => `<button id="ttab-${id}" onclick="switchTaxTab('${id}')"
-    style="display:flex;align-items:center;gap:7px;padding:10px 18px;font-size:13px;font-weight:700;font-family:inherit;border:none;border-bottom:2.5px solid ${_taxTab===id?'#1a2472':'transparent'};background:transparent;cursor:pointer;color:${_taxTab===id?'#1a2472':'#64748b'};margin-bottom:-2px;white-space:nowrap;transition:all .15s">
-    ${icon} ${label}</button>`;
+  const tabs = [
+    {id:'dashboard', icon:'📊', label:'لوحة التحكم'},
+    {id:'vat',       icon:'🧾', label:'ض.ق.م.'},
+    {id:'wht',       icon:'✂️',  label:'خصم وإضافة'},
+    {id:'corporate', icon:'🏢', label:'ضريبة الدخل'},
+    {id:'salary',    icon:'👤', label:'ضريبة المرتبات'},
+    {id:'calendar',  icon:'📅', label:'التقويم الضريبي'},
+    {id:'portals',   icon:'🌐', label:'البوابات'},
+  ];
+  const tabBtn = (t) => `<button id="ttab-${t.id}" onclick="switchTaxTab('${t.id}')"
+    style="display:flex;align-items:center;gap:6px;padding:10px 15px;font-size:12.5px;font-weight:700;font-family:inherit;border:none;border-bottom:2.5px solid ${_tcTab===t.id?'#1a2472':'transparent'};background:transparent;cursor:pointer;color:${_tcTab===t.id?'#1a2472':'#64748b'};margin-bottom:-2px;white-space:nowrap;transition:all .15s">
+    ${t.icon} ${t.label}</button>`;
+
   main.innerHTML = `
-  <div style="display:flex;gap:0;border-bottom:2px solid #e8edf3;margin-bottom:22px">
-    ${tabBtn('returns',  '📋', 'الإقرارات')}
-    ${tabBtn('prepare',  '⚡', 'إعداد إقرار ق.م.')}
-    ${tabBtn('portals',  '🌐', 'بوابات الضرائب')}
+  <!-- Client/Period selector bar -->
+  <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+    <div style="flex:1;min-width:160px">
+      <select id="tcClientSel" class="input" style="font-size:13px" onchange="tcClientChanged()">
+        <option value="">— اختر عميل —</option>
+      </select>
+    </div>
+    <div>
+      <select id="tcMonthSel" class="input" style="font-size:13px;width:110px" onchange="tcPeriodChanged()">
+        ${TC_MONTH_AR.slice(1).map((m,i)=>`<option value="${i+1}" ${_tcMonth===i+1?'selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+    <div>
+      <select id="tcYearSel" class="input" style="font-size:13px;width:90px" onchange="tcPeriodChanged()">
+        ${[2022,2023,2024,2025,2026].map(y=>`<option value="${y}" ${_tcYear===y?'selected':''}>${y}</option>`).join('')}
+      </select>
+    </div>
+    <div id="tcPeriodStatus" style="font-size:12px;color:#94a3b8"></div>
+  </div>
+  <!-- Tabs -->
+  <div style="display:flex;gap:0;border-bottom:2px solid #e8edf3;margin-bottom:20px;overflow-x:auto">
+    ${tabs.map(tabBtn).join('')}
   </div>
   <div id="taxTabContent"></div>`;
+
+  // Async load clients
+  getClients().then(clients => {
+    const sel = document.getElementById('tcClientSel');
+    if (!sel) return;
+    clients.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name;
+      if (c.id == _tcClientId) opt.selected = true;
+      sel.append(opt);
+    });
+  }).catch(()=>{});
 }
 
+window.tcClientChanged = function() {
+  const sel = document.getElementById('tcClientSel');
+  _tcClientId = sel?.value || null;
+  _tcClientName = sel?.selectedOptions[0]?.text || '';
+  _tcLoadTab(_tcTab);
+};
+window.tcPeriodChanged = function() {
+  _tcMonth = +document.getElementById('tcMonthSel')?.value || _tcMonth;
+  _tcYear  = +document.getElementById('tcYearSel')?.value  || _tcYear;
+  _tcLoadTab(_tcTab);
+};
+
 async function switchTaxTab(id) {
-  _taxTab = id;
+  _tcTab = id;
   document.querySelectorAll('[id^="ttab-"]').forEach(b => {
     const active = b.id === 'ttab-'+id;
     b.style.borderBottomColor = active ? '#1a2472' : 'transparent';
     b.style.color = active ? '#1a2472' : '#64748b';
   });
-  await _loadTaxTab(id);
+  await _tcLoadTab(id);
 }
 
-async function _loadTaxTab(id) {
+async function _tcLoadTab(id) {
   const el = document.getElementById('taxTabContent');
   if (!el) return;
   el.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
-    if (id === 'returns')  { await _renderTaxReturns(el); }
-    else if (id === 'prepare') { await _renderVatBuilder(el); }
-    else if (id === 'portals') { _renderTaxPortals(el); }
+    if      (id === 'dashboard') await _tcRenderDashboard(el);
+    else if (id === 'vat')       await _tcRenderVat(el);
+    else if (id === 'wht')       await _tcRenderWht(el);
+    else if (id === 'corporate') await _tcRenderCorporate(el);
+    else if (id === 'salary')    await _tcRenderSalary(el);
+    else if (id === 'calendar')  await _tcRenderCalendar(el);
+    else if (id === 'portals')   _tcRenderPortals(el);
   } catch(e) {
-    el.innerHTML = `<div style="color:#dc2626;padding:20px;background:white;border-radius:10px">❌ ${escH(e.message)}</div>`;
+    el.innerHTML = `<div style="color:#dc2626;padding:20px;background:white;border-radius:10px;border:1px solid #fca5a5">❌ ${escH(e.message)}</div>`;
   }
 }
 
-// ── TAB 1: قائمة الإقرارات ─────────────────────────────────────────────────
-async function _renderTaxReturns(el) {
-  const data = await api('GET', '/api/tax?page_size=200');
-  taxData = data?.items || [];
-  const typeLbl = {vat_monthly:'ق.م. شهري',vat_quarterly:'ق.م. ربعي',income_annual:'دخل سنوي',withholding:'خصم وإضافة',stamp:'دمغة'};
-  const sBadge  = {pending:'badge-yellow',in_progress:'badge-blue',submitted:'badge-green',late:'badge-red',cancelled:'badge-gray'};
-  const sLbl    = {pending:'قيد الإعداد',in_progress:'جاري',submitted:'مُقدَّم',late:'متأخر',cancelled:'ملغى'};
+// ── DASHBOARD ──────────────────────────────────────────────────────────────
+async function _tcRenderDashboard(el) {
+  if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
+  const d = await api('GET', `/api/tax-center/${_tcClientId}/dashboard?year=${_tcYear}`);
+
+  const kpi = (icon, label, value, color='#1a2472', sub='') => `
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:16px 18px">
+      <div style="font-size:24px;margin-bottom:6px">${icon}</div>
+      <div style="font-size:20px;font-weight:800;color:${color}">${value}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:3px">${label}</div>
+      ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${sub}</div>` : ''}
+    </div>`;
+
+  const vat = d.vat_summary || {};
+  const wht = d.wht_summary || {};
+  const corp = d.corporate || {};
+  const upcoming = d.upcoming_deadlines || [];
 
   el.innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-    <span style="font-size:13px;color:#64748b;font-weight:600">${taxData.length} إقرار ضريبي</span>
-    <button class="btn btn-primary" onclick="showTaxModal()">+ إقرار جديد</button>
-  </div>
-  <div class="card" style="overflow:hidden">
-    <table>
-      <thead><tr><th>العميل</th><th>نوع الإقرار</th><th>الفترة</th><th>مبلغ الضريبة</th><th>الاستحقاق</th><th>الحالة</th><th>إجراءات</th></tr></thead>
-      <tbody>
-        ${!taxData.length ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8">لا توجد إقرارات ضريبية بعد</td></tr>` :
-          taxData.map(t => `<tr>
-            <td style="font-weight:600;color:#1e293b">${escH(t.client_name||String(t.client_id))}</td>
-            <td><span class="badge badge-purple" style="font-size:11px">${typeLbl[t.return_type]||t.return_type}</span></td>
-            <td style="color:#374151">${t.period_year}${t.period_month?'/'+String(t.period_month).padStart(2,'0'):''}</td>
-            <td style="font-weight:700;color:#1e293b">${money(t.tax_amount)}</td>
-            <td style="color:${daysUntil(t.due_date)<=3&&t.status!=='submitted'?'#dc2626':'#374151'};font-weight:${daysUntil(t.due_date)<=3?'700':'400'}">${dateAr(t.due_date)}${daysUntil(t.due_date)<=3&&t.status!=='submitted'?' ⚠️':''}</td>
-            <td><span class="badge ${sBadge[t.status]||'badge-gray'}">${sLbl[t.status]||t.status}</span></td>
-            <td><div style="display:flex;gap:6px">
-              ${t.status==='pending'||t.status==='in_progress'?`<button class="btn btn-success btn-sm" onclick="submitTaxReturn(${t.id})">📤 تقديم</button>`:''}
-              <button class="btn btn-secondary btn-sm" onclick="showTaxModal(${t.id})">✏️</button>
-            </div></td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>`;
-}
-
-// ── TAB 2: بناء إقرار ق.م. ─────────────────────────────────────────────────
-let _vatBuilderState = { clientId: null, clientName: '', month: new Date().getMonth()+1, year: new Date().getFullYear(), data: null };
-
-async function _renderVatBuilder(el) {
-  const clients = await getClients();
-  const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-  const curYear = new Date().getFullYear();
-
-  el.innerHTML = `
-  <div style="max-width:860px">
-    <!-- Selector card -->
-    <div class="card" style="padding:20px;margin-bottom:20px">
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px;align-items:flex-end">
-        <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
-          <select id="vatBuilderClient" class="input" onchange="_vatClientChanged()">
-            <option value="">— اختر عميل —</option>
-            ${clients.map(c=>`<option value="${c.id}" ${_vatBuilderState.clientId==c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الشهر</label>
-          <select id="vatBuilderMonth" class="input">
-            ${monthNames.map((m,i)=>`<option value="${i+1}" ${_vatBuilderState.month==i+1?'selected':''}>${m}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">السنة</label>
-          <select id="vatBuilderYear" class="input">
-            ${[curYear-1,curYear].map(y=>`<option value="${y}" ${_vatBuilderState.year==y?'selected':''}>${y}</option>`).join('')}
-          </select>
-        </div>
-        <button class="btn btn-primary" style="white-space:nowrap" onclick="vatBuildAnalyze()">🔍 تحليل</button>
-      </div>
-    </div>
-    <!-- Result area -->
-    <div id="vatBuilderResult">${_vatBuilderState.data ? '' : `
-      <div style="text-align:center;padding:60px 20px;color:#94a3b8">
-        <div style="font-size:48px;margin-bottom:12px">⚡</div>
-        <div style="font-size:15px;font-weight:600;color:#64748b">اختر العميل والفترة ثم اضغط تحليل</div>
-        <div style="font-size:12px;margin-top:6px">سيتم جلب بيانات الإقرار من منظومة الفواتير الإلكترونية تلقائياً</div>
-      </div>`}
-    </div>
-  </div>`;
-
-  if (_vatBuilderState.data) {
-    _renderVatPreview(_vatBuilderState.data);
-  }
-}
-
-function _vatClientChanged() {
-  _vatBuilderState.clientId = null;
-  _vatBuilderState.data = null;
-  document.getElementById('vatBuilderResult').innerHTML = '';
-}
-
-window.vatBuildAnalyze = async function() {
-  const clientId = document.getElementById('vatBuilderClient')?.value;
-  const month    = +document.getElementById('vatBuilderMonth')?.value;
-  const year     = +document.getElementById('vatBuilderYear')?.value;
-  const clientName = document.getElementById('vatBuilderClient')?.selectedOptions[0]?.text || '';
-  if (!clientId) { toast('اختر العميل أولاً', 'error'); return; }
-
-  _vatBuilderState = { clientId, clientName, month, year, data: null };
-  const el = document.getElementById('vatBuilderResult');
-  el.innerHTML = '<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>';
-
-  try {
-    const d = await api('GET', `/api/eta/${clientId}/vat-return-preview?month=${month}&year=${year}`);
-    _vatBuilderState.data = d;
-    _renderVatPreview(d);
-  } catch(e) {
-    // If ETA not configured, fall back to manual entry mode
-    if (e.message?.includes('بيانات') || e.message?.includes('404') || e.message?.includes('credential')) {
-      el.innerHTML = `
-        <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#92400e">
-          ⚠️ <strong>منظومة الفاتورة الإلكترونية غير مربوطة لهذا العميل.</strong>
-          أدخل البيانات يدوياً أو
-          <a onclick="navigate('accounting')" style="color:#1a2472;cursor:pointer;font-weight:700">اربط ETA من المحاسبة</a>.
-        </div>
-        ${_vatManualForm(month, year, clientName)}`;
-    } else {
-      el.innerHTML = `<div style="color:#dc2626;padding:20px;background:white;border-radius:10px">❌ ${escH(e.message)}</div>`;
-    }
-  }
-};
-
-function _vatManualForm(month, year, clientName) {
-  const monthNames = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-  return `
-  <div class="card" style="padding:24px;max-width:560px">
-    <h3 style="font-size:15px;font-weight:800;color:#1a2472;margin:0 0 16px">📝 إدخال يدوي — ${escH(clientName)} | ${monthNames[month]} ${year}</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">إجمالي المبيعات (ج.م.)</label>
-        <input id="mSalesNet" class="input" type="number" placeholder="0"/></div>
-      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ض.ق.م. المبيعات (14%)</label>
-        <input id="mOutputVat" class="input" type="number" placeholder="0" oninput="vatAutoCalc()"/></div>
-      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">إجمالي المشتريات (ج.م.)</label>
-        <input id="mPurchNet" class="input" type="number" placeholder="0"/></div>
-      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ض.ق.م. المشتريات (14%)</label>
-        <input id="mInputVat" class="input" type="number" placeholder="0" oninput="vatAutoCalc()"/></div>
-    </div>
-    <div id="mVatResult" style="margin-top:16px;padding:14px;border-radius:10px;background:#f8fafc;text-align:center;font-size:14px;color:#64748b">أدخل الأرقام لحساب الضريبة</div>
-    <div style="display:flex;gap:10px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="vatManualPreview()">📋 معاينة الإقرار</button>
-    </div>
-  </div>`;
-}
-
-window.vatAutoCalc = function() {
-  const out = parseFloat(document.getElementById('mOutputVat')?.value)||0;
-  const inp = parseFloat(document.getElementById('mInputVat')?.value)||0;
-  const net = out - inp;
-  const el = document.getElementById('mVatResult');
-  if (!el) return;
-  el.style.background = net >= 0 ? '#fef2f2' : '#f0fdf4';
-  el.style.color = net >= 0 ? '#dc2626' : '#15803d';
-  el.innerHTML = `<strong>صافي الضريبة: ${money(Math.abs(net))}</strong> — ${net>=0?'مستحق على العميل':'رصيد دائن للعميل'}`;
-};
-
-window.vatManualPreview = function() {
-  const salesNet = parseFloat(document.getElementById('mSalesNet')?.value)||0;
-  const outputVat = parseFloat(document.getElementById('mOutputVat')?.value)||0;
-  const purchNet = parseFloat(document.getElementById('mPurchNet')?.value)||0;
-  const inputVat = parseFloat(document.getElementById('mInputVat')?.value)||0;
-  const net = outputVat - inputVat;
-  const month = _vatBuilderState.month;
-  const year = _vatBuilderState.year;
-  const monthNames = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-
-  // Build a fake preview data object
-  const fakeData = {
-    current: {
-      period_label: `${monthNames[month]} ${year}`,
-      is_zero: !salesNet && !purchNet,
-      sales: { net_sales: salesNet, output_vat: outputVat, invoices_net: salesNet, invoices_vat: outputVat, credit_notes_net: 0, credit_notes_vat: 0 },
-      purchases: { net_purchases: purchNet, input_vat: inputVat, invoices_net: purchNet, invoices_vat: inputVat, credit_notes_net: 0, credit_notes_vat: 0 },
-      net_vat: net,
-      net_vat_status: net >= 0 ? 'ضريبة مستحقة السداد' : 'رصيد دائن',
-      recommendation: net >= 0 ? `يجب سداد مبلغ ${money(net)} قبل اليوم 15 من الشهر التالي` : `رصيد دائن ${money(Math.abs(net))} يُخصم من الفترة القادمة`,
-      outgoing_invoices: 0, incoming_invoices: 0, credit_notes: 0, debit_notes: 0, cancelled_docs: 0, total_docs: 0,
-    },
-    previous: null,
-    changes: {}
-  };
-  _vatBuilderState.data = fakeData;
-  _renderVatPreview(fakeData);
-};
-
-function _renderVatPreview(d) {
-  const el = document.getElementById('vatBuilderResult');
-  if (!el) return;
-  const curr = d.current;
-  const prev = d.previous;
-  const changes = d.changes || {};
-  const net = curr.net_vat || 0;
-  const netPos = net >= 0;
-  const monthNames = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-
-  const pctBadge = (key) => {
-    if (!prev || changes[key] == null) return '';
-    const v = changes[key];
-    const color = key === 'net_vat' ? (v>0?'#dc2626':'#15803d') : (v>0?'#15803d':'#dc2626');
-    const arrow = v > 0 ? '↑' : '↓';
-    return `<span style="font-size:10px;background:${v>0?'#f0fdf4':'#fef2f2'};color:${color};border-radius:4px;padding:1px 5px;margin-right:4px">${arrow} ${Math.abs(v)}%</span>`;
-  };
-
-  const row = (label, curr_val, prev_val, key, bold=false, indent=false, color='#1e293b') => `
-    <tr style="border-bottom:1px solid #f1f5f9">
-      <td style="padding:9px 16px${indent?';padding-right:28px':''};color:#374151;font-weight:${bold?'700':'400'}">${label}</td>
-      <td style="padding:9px 16px;text-align:left;font-weight:${bold?'800':'600'};color:${color}">${pctBadge(key)}${curr_val}</td>
-      ${prev ? `<td style="padding:9px 16px;text-align:left;font-size:12px;color:#94a3b8">${prev_val}</td>` : ''}
-    </tr>`;
-
-  const sales = curr.sales || {};
-  const purch = curr.purchases || {};
-  const psales = prev?.sales || {};
-  const ppurch = prev?.purchases || {};
-
-  el.innerHTML = `
-  <!-- Header -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div>
-      <h3 style="font-size:17px;font-weight:800;color:#1a2472;margin:0">📋 إقرار ض.ق.م. — ${escH(curr.period_label||'')} — ${escH(_vatBuilderState.clientName)}</h3>
-      ${prev ? `<div style="font-size:12px;color:#64748b;margin-top:3px">مع مقارنة ${escH(prev.period_label||'')}</div>` : ''}
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة</button>
-      <button class="btn btn-primary" onclick="vatShowSubmitConfirm()" ${curr.is_zero?'disabled':''}>📤 مراجعة وتقديم</button>
-    </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+    ${kpi('🧾','ض.ق.م. مستحقة',money(vat.net_vat_due||0),'#dc2626')}
+    ${kpi('✂️','خصم وإضافة',money(wht.total_withholding||0),'#7c3aed')}
+    ${kpi('🏢','ضريبة الدخل',money(corp.gross_tax||0),'#1a2472')}
+    ${kpi('📅','مواعيد قادمة',upcoming.length,'#d97706',upcoming.length?`أقرب: ${dateAr(upcoming[0]?.due_date)}`:'لا يوجد')}
   </div>
 
-  ${curr.is_zero ? `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:20px;text-align:center;margin-bottom:16px">
-    <div style="font-size:40px;margin-bottom:8px">✅</div>
-    <div style="font-size:16px;font-weight:800;color:#15803d">إقرار صفري — لا توجد فواتير خلال ${escH(curr.period_label||'')}</div>
+  ${upcoming.length ? `
+  <div class="card" style="padding:16px;margin-bottom:16px">
+    <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px">📅 المواعيد القادمة</div>
+    <div style="display:grid;gap:8px">
+      ${upcoming.slice(0,5).map(ev => {
+        const days = Math.ceil((new Date(ev.due_date) - new Date()) / 86400000);
+        const urg = days <= 3 ? '#dc2626' : days <= 7 ? '#d97706' : '#64748b';
+        return `<div style="display:flex;align-items:center;gap:12px;padding:10px;background:#f8fafc;border-radius:8px;border-right:3px solid ${urg}">
+          <div style="flex:1;font-size:13px;font-weight:600;color:#1e293b">${escH(ev.title||ev.event_type||'')}</div>
+          <div style="font-size:12px;color:${urg};font-weight:700">${dateAr(ev.due_date)} ${days<=0?'⚠️ متأخر':days<=3?`(${days} أيام)`:''}</div>
+        </div>`;
+      }).join('')}
+    </div>
   </div>` : ''}
 
-  <!-- Stats mini cards -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:18px">
-    ${[
-      {l:'فواتير صادرة', v:curr.outgoing_invoices||0, c:'#15803d', bg:'#f0fdf4'},
-      {l:'فواتير واردة',  v:curr.incoming_invoices||0, c:'#1a2472', bg:'#eef1fb'},
-      {l:'إشعارات دائنة', v:curr.credit_notes||0,      c:'#d97706', bg:'#fef9c3'},
-      {l:'إشعارات مدينة', v:curr.debit_notes||0,        c:'#7c3aed', bg:'#ede9fe'},
-      {l:'إجمالي المستندات', v:curr.total_docs||0,      c:'#374151', bg:'white'},
-    ].map(k=>`<div style="background:${k.bg};border:1px solid #e8edf3;border-radius:8px;padding:10px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${k.c}">${k.v}</div>
-      <div style="font-size:10px;color:#64748b">${k.l}</div>
-    </div>`).join('')}
-  </div>
-
-  <!-- Table -->
-  <div style="max-width:700px">
-    ${prev ? `<div style="display:flex;justify-content:flex-end;margin-bottom:6px">
-      <span style="font-size:11px;color:#94a3b8">الأعمدة: الشهر الحالي | ${escH(prev.period_label||'')}</span>
-    </div>` : ''}
-    <!-- Section 1 -->
-    <div style="margin-bottom:14px">
-      <div style="background:#eef1fb;border-radius:8px 8px 0 0;padding:9px 16px;font-size:12px;font-weight:800;color:#1a2472;border:1px solid #c7d3ef;border-bottom:none">القسم الأول — المبيعات (الضريبة الناتجة)</div>
-      <div style="background:white;border-radius:0 0 8px 8px;overflow:hidden;border:1px solid #e8edf3">
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          ${row('فواتير المبيعات — صافي القيمة', money(sales.invoices_net||0), money(psales.invoices_net||0), 'sales_net', false, true)}
-          ${row('فواتير المبيعات — ض.ق.م.', money(sales.invoices_vat||0), money(psales.invoices_vat||0), 'output_vat', false, true, '#15803d')}
-          ${row('إشعارات دائنة صادرة — صافي', `(${money(sales.credit_notes_net||0)})`, `(${money(psales.credit_notes_net||0)})`, '', false, true, '#d97706')}
-          ${row('إشعارات دائنة صادرة — ض.ق.م.', `(${money(sales.credit_notes_vat||0)})`, `(${money(psales.credit_notes_vat||0)})`, '', false, true, '#d97706')}
-          ${row('صافي المبيعات الخاضعة', money(sales.net_sales||0), money(psales.net_sales||0), 'sales_net', true)}
-          ${row('إجمالي الضريبة الناتجة (Output Tax)', money(sales.output_vat||0), money(psales.output_vat||0), 'output_vat', true, false, '#15803d')}
-        </table>
-      </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card" style="padding:16px">
+      <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px">🧾 ض.ق.م. — ${_tcYear}</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr><th style="text-align:right;color:#64748b;padding:4px 0">الشهر</th><th style="text-align:left;color:#64748b;padding:4px 0">مستحق</th><th style="text-align:left;color:#64748b;padding:4px 0">الحالة</th></tr></thead>
+        <tbody>
+          ${(d.vat_by_month||[]).slice(0,6).map(m=>`<tr style="border-top:1px solid #f1f5f9">
+            <td style="padding:5px 0;color:#374151">${TC_MONTH_AR[m.period_month]||m.period_month}</td>
+            <td style="padding:5px 0;font-weight:700;color:${(m.net_vat_due||0)>0?'#dc2626':'#15803d'}">${money(m.net_vat_due||0)}</td>
+            <td style="padding:5px 0"><span class="badge ${m.status==='submitted'||m.status==='paid'?'badge-green':m.status==='approved'?'badge-blue':'badge-yellow'}" style="font-size:10px">${m.status||'draft'}</span></td>
+          </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:#94a3b8;padding:12px">لا بيانات</td></tr>'}
+        </tbody>
+      </table>
     </div>
-    <!-- Section 2 -->
-    <div style="margin-bottom:14px">
-      <div style="background:#eef1fb;border-radius:8px 8px 0 0;padding:9px 16px;font-size:12px;font-weight:800;color:#1a2472;border:1px solid #c7d3ef;border-bottom:none">القسم الثاني — المشتريات (ضريبة المدخلات)</div>
-      <div style="background:white;border-radius:0 0 8px 8px;overflow:hidden;border:1px solid #e8edf3">
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          ${row('فواتير الشراء — صافي القيمة', money(purch.invoices_net||0), money(ppurch.invoices_net||0), 'purch_net', false, true)}
-          ${row('فواتير الشراء — ض.ق.م.', money(purch.invoices_vat||0), money(ppurch.invoices_vat||0), 'input_vat', false, true, '#1a2472')}
-          ${row('إشعارات دائنة واردة — صافي', `(${money(purch.credit_notes_net||0)})`, `(${money(ppurch.credit_notes_net||0)})`, '', false, true, '#d97706')}
-          ${row('إشعارات دائنة واردة — ض.ق.م.', `(${money(purch.credit_notes_vat||0)})`, `(${money(ppurch.credit_notes_vat||0)})`, '', false, true, '#d97706')}
-          ${row('صافي المشتريات الخاضعة', money(purch.net_purchases||0), money(ppurch.net_purchases||0), 'purch_net', true)}
-          ${row('إجمالي ضريبة المدخلات (Input Tax)', money(purch.input_vat||0), money(ppurch.input_vat||0), 'input_vat', true, false, '#1a2472')}
-        </table>
-      </div>
-    </div>
-    <!-- Net result -->
-    <div style="background:${netPos?'#fef2f2':'#f0fdf4'};border:2px solid ${netPos?'#fca5a5':'#86efac'};border-radius:12px;padding:20px;text-align:center">
-      <div style="font-size:12px;color:#64748b;margin-bottom:8px">صافي الضريبة المستحقة (Output − Input)</div>
-      <div style="font-size:34px;font-weight:900;color:${netPos?'#dc2626':'#15803d'}">${money(Math.abs(net))}</div>
-      <div style="font-size:13px;font-weight:700;color:${netPos?'#dc2626':'#15803d'};margin-top:4px">${curr.net_vat_status||''}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:10px;padding:10px;background:white;border-radius:8px">${escH(curr.recommendation||'')}</div>
+    <div class="card" style="padding:16px">
+      <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px">🏢 تقدير ضريبة الدخل — ${_tcYear}</div>
+      ${corp.taxable_income != null ? `
+      <div style="display:grid;gap:6px;font-size:13px">
+        <div style="display:flex;justify-content:space-between;padding:6px;background:#f8fafc;border-radius:6px">
+          <span style="color:#64748b">الدخل الخاضع</span><strong>${money(corp.taxable_income||0)}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px;background:#f8fafc;border-radius:6px">
+          <span style="color:#64748b">إجمالي الضريبة</span><strong style="color:#dc2626">${money(corp.gross_tax||0)}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px;background:#f8fafc;border-radius:6px">
+          <span style="color:#64748b">صافي المستحق</span><strong style="color:#dc2626">${money(corp.final_tax_due||0)}</strong>
+        </div>
+      </div>` : `<div style="text-align:center;color:#94a3b8;padding:20px;font-size:13px">لم يُعدّ تقدير بعد<br><button class="btn btn-secondary" style="margin-top:8px;font-size:12px" onclick="switchTaxTab('corporate')">إعداد تقدير</button></div>`}
     </div>
   </div>`;
 }
 
-window.vatShowSubmitConfirm = function() {
-  if (!_vatBuilderState.clientId) return;
-  const d = _vatBuilderState.data;
-  if (!d) return;
-  const net = d.current.net_vat || 0;
-  const monthNames = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal" style="max-width:480px">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">📤 تأكيد تقديم الإقرار</h2>
+// ── VAT RETURNS ────────────────────────────────────────────────────────────
+async function _tcRenderVat(el) {
+  if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
+
+  el.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="font-size:15px;font-weight:700;color:#1e293b">🧾 إقرارات ض.ق.م. — ${escH(_tcClientName)}</div>
+    <button class="btn btn-primary" onclick="tcVatBuild()">⚡ بناء إقرار ${TC_MONTH_AR[_tcMonth]} ${_tcYear}</button>
+  </div>
+  <div id="tcVatArea"><div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div></div>`;
+
+  await _tcVatLoadList();
+}
+
+async function _tcVatLoadList() {
+  const el = document.getElementById('tcVatArea');
+  if (!el) return;
+  try {
+    const data = await api('GET', `/api/tax-center/${_tcClientId}/vat?year=${_tcYear}`);
+    const rows = data?.items || data || [];
+    el.innerHTML = `
+    <div class="card" style="overflow:hidden">
+      <table>
+        <thead><tr><th>الفترة</th><th>مبيعات خاضعة</th><th>ض.م. (Output)</th><th>ض.م. (Input)</th><th>صافي مستحق</th><th>الاستحقاق</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+        <tbody>
+          ${!rows.length ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد إقرارات — اضغط "بناء إقرار" لإنشاء إقرار الشهر الحالي</td></tr>` :
+            rows.map(r => `<tr>
+              <td style="font-weight:700">${TC_MONTH_AR[r.period_month]||r.period_month} ${r.period_year}</td>
+              <td>${money(r.out_std_taxable||0)}</td>
+              <td style="color:#15803d;font-weight:600">${money(r.total_output_vat||0)}</td>
+              <td style="color:#1a2472;font-weight:600">${money(r.total_input_vat||0)}</td>
+              <td style="font-weight:800;color:${(r.net_vat_due||0)>0?'#dc2626':'#15803d'}">${money(r.net_vat_due||0)}</td>
+              <td style="color:${daysUntil(r.due_date)<=3?'#dc2626':'#374151'}">${dateAr(r.due_date)}</td>
+              <td><span class="badge ${r.status==='paid'||r.status==='submitted'?'badge-green':r.status==='approved'?'badge-blue':r.status==='reviewed'?'badge-purple':'badge-yellow'}" style="font-size:10px">${r.status||'draft'}</span></td>
+              <td><div style="display:flex;gap:5px">
+                <button class="btn btn-secondary btn-sm" onclick="tcVatView(${r.id})">📋 عرض</button>
+                ${r.status==='draft'||r.status==='reviewed'?`<button class="btn btn-success btn-sm" onclick="tcVatApprove(${r.id})">✅ اعتماد</button>`:''}
+              </div></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:16px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+window.tcVatBuild = async function() {
+  const btn = event?.target;
+  if (btn) { btn.disabled=true; btn.textContent='جاري البناء...'; }
+  try {
+    const r = await api('POST', `/api/tax-center/${_tcClientId}/vat/build`, {
+      year: _tcYear, month: _tcMonth,
+      force_rebuild: true,
+    });
+    toast(`✅ تم بناء إقرار ${TC_MONTH_AR[_tcMonth]} ${_tcYear} — صافي مستحق: ${money(r.net_vat_due||0)}`);
+    await _tcVatLoadList();
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent=`⚡ بناء إقرار ${TC_MONTH_AR[_tcMonth]} ${_tcYear}`; }
+  }
+};
+
+window.tcVatView = async function(id) {
+  try {
+    const [ret, lines] = await Promise.all([
+      api('GET', `/api/tax-center/vat/${id}`),
+      api('GET', `/api/tax-center/vat/${id}/lines`),
+    ]);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const lineRows = (lines||[]).slice(0,50).map(l => `<tr style="border-top:1px solid #f1f5f9">
+      <td style="padding:5px 8px;font-size:11px;color:#64748b">${l.line_type||''}</td>
+      <td style="padding:5px 8px;font-size:12px">${escH(l.counterparty_name||'')}</td>
+      <td style="padding:5px 8px;font-size:11px;font-family:monospace">${escH(l.counterparty_tin||'')}</td>
+      <td style="padding:5px 8px;font-size:12px;text-align:left">${money(l.taxable_amount||0)}</td>
+      <td style="padding:5px 8px;font-size:12px;text-align:left;font-weight:700;color:${l.line_type?.startsWith('output')?'#15803d':'#1a2472'}">${money(l.vat_amount||0)}</td>
+    </tr>`).join('');
+
+    overlay.innerHTML = `<div class="modal" style="max-width:780px;max-height:90vh;overflow-y:auto">
+      <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:white;z-index:1">
+        <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">🧾 إقرار ض.ق.م. — ${TC_MONTH_AR[ret.period_month]} ${ret.period_year}</h2>
         <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
       </div>
-      <div style="padding:24px">
-        <div style="background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:16px">
-          <div style="display:grid;gap:8px;font-size:13px">
-            <div style="display:flex;justify-content:space-between"><span style="color:#64748b">العميل:</span><strong>${escH(_vatBuilderState.clientName)}</strong></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:#64748b">الفترة:</span><strong>${monthNames[_vatBuilderState.month]} ${_vatBuilderState.year}</strong></div>
-            <div style="display:flex;justify-content:space-between"><span style="color:#64748b">صافي الضريبة:</span><strong style="color:${net>=0?'#dc2626':'#15803d'}">${money(Math.abs(net))} ${net>=0?'(مستحق)':'(دائن)'}</strong></div>
+      <div style="padding:16px 20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:13px">
+          <div style="background:#f0fdf4;border-radius:10px;padding:14px">
+            <div style="font-weight:700;color:#15803d;margin-bottom:8px">الضريبة الناتجة (Output)</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>مبيعات خاضعة</span><strong>${money(ret.out_std_taxable||0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>ض.ق.م. مبيعات</span><strong style="color:#15803d">${money(ret.out_std_vat||0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#d97706"><span>إشعارات دائنة</span><strong>(${money(ret.out_credit_vat||0)})</strong></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid #86efac;padding-top:6px;margin-top:6px"><span style="font-weight:700">إجمالي الناتجة</span><strong style="color:#15803d;font-size:15px">${money(ret.total_output_vat||0)}</strong></div>
+          </div>
+          <div style="background:#eef1fb;border-radius:10px;padding:14px">
+            <div style="font-weight:700;color:#1a2472;margin-bottom:8px">ضريبة المدخلات (Input)</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>مشتريات خاضعة</span><strong>${money(ret.in_std_taxable||0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>ض.ق.م. مشتريات</span><strong style="color:#1a2472">${money(ret.in_std_vat||0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#d97706"><span>إشعارات دائنة</span><strong>(${money(ret.in_credit_vat||0)})</strong></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid #c7d3ef;padding-top:6px;margin-top:6px"><span style="font-weight:700">إجمالي المدخلات</span><strong style="color:#1a2472;font-size:15px">${money(ret.total_input_vat||0)}</strong></div>
           </div>
         </div>
-        <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;margin-bottom:16px">
-          ⚠️ بالضغط على "تأكيد التقديم" سيتم تسجيل هذا الإقرار كـ <strong>مُقدَّم</strong> في السجلات.
+        <div style="background:${(ret.net_vat_due||0)>0?'#fef2f2':'#f0fdf4'};border-radius:12px;padding:16px;text-align:center;margin-bottom:16px">
+          <div style="font-size:12px;color:#64748b;margin-bottom:6px">صافي الضريبة المستحقة</div>
+          <div style="font-size:32px;font-weight:900;color:${(ret.net_vat_due||0)>0?'#dc2626':'#15803d'}">${money(ret.net_vat_due||0)}</div>
+          ${ret.carry_forward_amount>0?`<div style="font-size:12px;color:#15803d;margin-top:4px">رصيد دائن للفترة القادمة: ${money(ret.carry_forward_amount)}</div>`:''}
+          <div style="font-size:12px;color:#64748b;margin-top:4px">تاريخ الاستحقاق: ${dateAr(ret.due_date)} — ${ret.late_days>0?`<span style="color:#dc2626">متأخر ${ret.late_days} يوم</span>`:'في الموعد'}</div>
         </div>
-        <div style="display:flex;gap:10px">
-          <button class="btn btn-secondary" style="flex:1" onclick="this.closest('.modal-overlay').remove()">مراجعة مرة أخرى</button>
-          <button class="btn btn-success" style="flex:1" id="confirmSubmitBtn" onclick="vatConfirmSubmit()">✅ تأكيد التقديم</button>
+        ${lines?.length ? `<div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">مستندات الإقرار (${lines.length})</div>
+        <div style="overflow-x:auto;max-height:250px;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="background:#f8fafc;position:sticky;top:0"><tr><th style="padding:6px 8px">النوع</th><th style="padding:6px 8px">الطرف المقابل</th><th style="padding:6px 8px">الرقم الضريبي</th><th style="padding:6px 8px;text-align:left">الخاضع</th><th style="padding:6px 8px;text-align:left">الضريبة</th></tr></thead>
+            <tbody>${lineRows}</tbody>
+          </table>
+        </div>` : ''}
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+          <button class="btn btn-secondary" onclick="window.open('https://mytax.eta.gov.eg','_blank')">🌐 فتح mytax</button>
+          ${ret.status==='draft'?`<button class="btn btn-primary" onclick="tcVatApprove(${ret.id});this.closest('.modal-overlay').remove()">✅ مراجعة واعتماد</button>`:''}
         </div>
       </div>
     </div>`;
-  document.body.append(overlay);
-  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+    document.body.append(overlay);
+    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  } catch(e) { toast(e.message, 'error'); }
 };
 
-window.vatConfirmSubmit = async function() {
-  const btn = document.getElementById('confirmSubmitBtn');
-  if (btn) { btn.disabled=true; btn.textContent='جاري التسجيل...'; }
+window.tcVatApprove = async function(id) {
   try {
-    const today = new Date().toISOString().split('T')[0];
-    await api('POST', '/api/tax', {
-      client_id: parseInt(_vatBuilderState.clientId),
-      return_type: 'vat_monthly',
-      period_year: _vatBuilderState.year,
-      period_month: _vatBuilderState.month,
-      tax_amount: Math.max(0, _vatBuilderState.data?.current?.net_vat || 0),
-      due_date: today,
-      status: 'submitted',
-      submission_date: today,
-    });
-    document.querySelector('.modal-overlay')?.remove();
-    toast('✅ تم تقديم الإقرار وتسجيله بنجاح');
-    _vatBuilderState.data = null;
-    switchTaxTab('returns');
+    await api('PUT', `/api/tax-center/vat/${id}/review`);
+    await api('PUT', `/api/tax-center/vat/${id}/approve`);
+    toast('✅ تم اعتماد الإقرار — يمكن الآن التقديم عبر mytax.eta.gov.eg');
+    await _tcVatLoadList();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// ── WITHHOLDING ─────────────────────────────────────────────────────────────
+async function _tcRenderWht(el) {
+  if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
+
+  el.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="font-size:15px;font-weight:700;color:#1e293b">✂️ الخصم والإضافة — ${escH(_tcClientName)}</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" onclick="tcWhtAddEntry()">+ قيد جديد</button>
+      <button class="btn btn-primary" onclick="tcWhtBuildReturn()">🏗️ بناء الإقرار الشهري</button>
+    </div>
+  </div>
+  <div id="tcWhtArea"><div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div></div>`;
+
+  await _tcWhtLoad();
+}
+
+async function _tcWhtLoad() {
+  const el = document.getElementById('tcWhtArea');
+  if (!el) return;
+  try {
+    const [entries, returns, types] = await Promise.all([
+      api('GET', `/api/tax-center/${_tcClientId}/wht/entries?year=${_tcYear}&month=${_tcMonth}`),
+      api('GET', `/api/tax-center/${_tcClientId}/wht/returns?year=${_tcYear}`),
+      api('GET', '/api/tax-center/wht/types'),
+    ]);
+    window._tcWhtTypes = types?.items || types || [];
+    const eRows = (entries?.items || entries || []);
+    const rRows = (returns?.items || returns || []);
+
+    el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">قيود ${TC_MONTH_AR[_tcMonth]} ${_tcYear} (${eRows.length})</div>
+        <div class="card" style="overflow:hidden">
+          <table style="font-size:12px">
+            <thead><tr><th>نوع الخدمة</th><th>المستفيد</th><th>المبلغ</th><th>ض.خ.</th><th>%</th></tr></thead>
+            <tbody>
+              ${!eRows.length ? `<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8">لا قيود — اضغط "+ قيد جديد"</td></tr>` :
+                eRows.map(e=>`<tr>
+                  <td style="padding:5px 8px">${escH(e.transaction_type||'')}</td>
+                  <td style="padding:5px 8px">${escH(e.payee_name||'')}</td>
+                  <td style="padding:5px 8px;text-align:left">${money(e.gross_amount||0)}</td>
+                  <td style="padding:5px 8px;text-align:left;font-weight:700;color:#7c3aed">${money(e.withholding_amount||0)}</td>
+                  <td style="padding:5px 8px">${e.rate||0}%</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">إقرارات شهرية ${_tcYear}</div>
+        <div class="card" style="overflow:hidden">
+          <table style="font-size:12px">
+            <thead><tr><th>الشهر</th><th>إجمالي</th><th>ضريبة</th><th>الاستحقاق</th><th>الحالة</th></tr></thead>
+            <tbody>
+              ${!rRows.length ? `<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8">لا إقرارات — ابدأ بإضافة قيود</td></tr>` :
+                rRows.map(r=>`<tr>
+                  <td style="padding:5px 8px;font-weight:600">${TC_MONTH_AR[r.period_month]||r.period_month}</td>
+                  <td style="padding:5px 8px;text-align:left">${money(r.total_gross||0)}</td>
+                  <td style="padding:5px 8px;text-align:left;font-weight:700;color:#7c3aed">${money(r.total_withholding||0)}</td>
+                  <td style="padding:5px 8px;font-size:11px">${dateAr(r.due_date)}</td>
+                  <td style="padding:5px 8px"><span class="badge ${r.status==='submitted'?'badge-green':'badge-yellow'}" style="font-size:10px">${r.status||'draft'}</span></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
   } catch(e) {
-    if (btn) { btn.disabled=false; btn.textContent='✅ تأكيد التقديم'; }
-    toast(e.message, 'error');
+    el.innerHTML = `<div style="color:#dc2626;padding:16px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+window.tcWhtAddEntry = async function() {
+  const types = window._tcWhtTypes || [];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" style="max-width:500px">
+    <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:16px;font-weight:700;margin:0">✂️ قيد خصم وإضافة جديد</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px;display:grid;gap:12px">
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">نوع الخدمة / المعاملة *</label>
+        <select id="whtType" class="input" onchange="whtCalc()">
+          <option value="">— اختر —</option>
+          ${types.map(t=>`<option value="${t.code}">${escH(t.name_ar||t.code)}</option>`).join('')}
+        </select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">نوع المستفيد</label>
+          <select id="whtPayeeType" class="input" onchange="whtCalc()">
+            <option value="company">شركة (0.5%)</option>
+            <option value="individual">فرد</option>
+            <option value="foreign">أجنبي (20%)</option>
+          </select></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">اسم المستفيد</label>
+          <input id="whtPayeeName" class="input" placeholder="اسم المستفيد"/></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">المبلغ الإجمالي (ج.م.) *</label>
+          <input id="whtGross" class="input" type="number" placeholder="0" oninput="whtCalc()"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">تاريخ المعاملة</label>
+          <input id="whtDate" class="input" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+      </div>
+      <div id="whtCalcResult" style="background:#f8fafc;border-radius:8px;padding:12px;font-size:13px;color:#64748b;text-align:center">أدخل المبلغ لحساب الضريبة تلقائياً</div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">ملاحظات</label>
+        <input id="whtNotes" class="input" placeholder="وصف اختياري"/></div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="whtSaveBtn" class="btn btn-primary">💾 حفظ القيد</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  window.whtCalc = function() {
+    const gross = parseFloat(document.getElementById('whtGross')?.value)||0;
+    const typeCode = document.getElementById('whtType')?.value;
+    const payeeType = document.getElementById('whtPayeeType')?.value || 'company';
+    const el = document.getElementById('whtCalcResult');
+    if (!el || !typeCode || !gross) return;
+    const t = types.find(x=>x.code===typeCode);
+    const rate = payeeType==='company'?(t?.rate_company||0):payeeType==='individual'?(t?.rate_individual||0):(t?.rate_foreign||20);
+    const wht = gross < 300 ? 0 : Math.round(gross * rate / 100 * 100)/100;
+    const net = gross - wht;
+    el.style.background = wht>0?'#fef9c3':'#f0fdf4';
+    el.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+      <div><div style="font-weight:800;color:#1e293b">${money(gross)}</div><div style="font-size:11px;color:#64748b">إجمالي</div></div>
+      <div><div style="font-weight:800;color:#7c3aed">${money(wht)}</div><div style="font-size:11px;color:#64748b">ضريبة (${rate}%)</div></div>
+      <div><div style="font-weight:800;color:#15803d">${money(net)}</div><div style="font-size:11px;color:#64748b">صافي للمستفيد</div></div>
+    </div>${gross<300?'<div style="margin-top:6px;font-size:11px;color:#94a3b8">المبلغ أقل من حد التطبيق (300 ج.م.)</div>':''}`;
+    window._whtCurrent = {rate, wht, net};
+  };
+
+  document.getElementById('whtSaveBtn').onclick = async() => {
+    const btn = document.getElementById('whtSaveBtn');
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    const gross = parseFloat(document.getElementById('whtGross')?.value)||0;
+    const txType = document.getElementById('whtType')?.value;
+    if (!txType || !gross) { toast('أدخل نوع المعاملة والمبلغ','error'); btn.disabled=false; return; }
+    try {
+      await api('POST', `/api/tax-center/${_tcClientId}/wht/entries`, {
+        transaction_type: txType,
+        payee_type: document.getElementById('whtPayeeType')?.value,
+        payee_name: document.getElementById('whtPayeeName')?.value,
+        gross_amount: gross,
+        transaction_date: document.getElementById('whtDate')?.value,
+        period_year: _tcYear, period_month: _tcMonth,
+        notes: document.getElementById('whtNotes')?.value,
+      });
+      toast('✅ تم حفظ قيد الخصم والإضافة');
+      overlay.remove();
+      await _tcWhtLoad();
+    } catch(e) { toast(e.message,'error'); btn.disabled=false; btn.textContent='💾 حفظ القيد'; }
+  };
+};
+
+window.tcWhtBuildReturn = async function() {
+  try {
+    const r = await api('POST', `/api/tax-center/${_tcClientId}/wht/build`, {year:_tcYear, month:_tcMonth});
+    toast(`✅ تم بناء إقرار ${TC_MONTH_AR[_tcMonth]} — إجمالي ضريبة: ${money(r.total_withholding||0)}`);
+    await _tcWhtLoad();
+  } catch(e) { toast(e.message,'error'); }
+};
+
+// ── CORPORATE TAX ───────────────────────────────────────────────────────────
+async function _tcRenderCorporate(el) {
+  if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
+  let est = null;
+  try { est = await api('GET', `/api/tax-center/${_tcClientId}/corporate/${_tcYear}`); } catch(e) {}
+
+  const f = (id, label, val=0, hint='') => `
+    <div>
+      <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">${label}${hint?`<span style="color:#94a3b8;font-weight:400"> (${hint})</span>`:''}</label>
+      <input id="corp_${id}" class="input" type="number" value="${val||0}" style="font-size:13px"/>
+    </div>`;
+
+  el.innerHTML = `
+  <div style="max-width:900px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:15px;font-weight:700;color:#1e293b">🏢 تقدير ضريبة الدخل — ${escH(_tcClientName)} — ${_tcYear}</div>
+      <button class="btn btn-primary" onclick="tcCorpSave()">💾 حساب وحفظ</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <!-- Revenues -->
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:12px">📈 الإيرادات</div>
+        <div style="display:grid;gap:8px">
+          ${f('revenue_domestic_taxable','إيرادات محلية خاضعة',est?.revenue_domestic_taxable)}
+          ${f('revenue_domestic_exempt','إيرادات محلية معفاة',est?.revenue_domestic_exempt)}
+          ${f('revenue_export','إيرادات تصدير',est?.revenue_export)}
+          ${f('revenue_other','إيرادات أخرى',est?.revenue_other)}
+          ${f('cogs','تكلفة البضاعة المباعة',est?.cogs)}
+        </div>
+      </div>
+      <!-- Expenses -->
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#1a2472;margin-bottom:12px">📉 المصروفات القابلة للخصم</div>
+        <div style="display:grid;gap:8px">
+          ${f('exp_salaries','مرتبات وأجور',est?.exp_salaries)}
+          ${f('exp_social_insurance','تأمينات اجتماعية',est?.exp_social_insurance)}
+          ${f('exp_rent','إيجارات',est?.exp_rent)}
+          ${f('exp_utilities','مرافق وخدمات',est?.exp_utilities)}
+          ${f('exp_depreciation_accounting','إهلاك محاسبي',est?.exp_depreciation_accounting)}
+          ${f('exp_depreciation_tax','إهلاك ضريبي',est?.exp_depreciation_tax,'م.25 ق.91')}
+          ${f('exp_advertising','إعلانات وتسويق',est?.exp_advertising)}
+          ${f('exp_other_deductible','مصروفات أخرى مقبولة',est?.exp_other_deductible)}
+        </div>
+      </div>
+      <!-- Non-deductible -->
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:12px">🚫 المصروفات غير مقبولة ضريبياً</div>
+        <div style="display:grid;gap:8px">
+          ${f('nd_entertainment','استضافة وترفيه (50% غير مقبول)',est?.nd_entertainment)}
+          ${f('nd_fines_penalties','غرامات وعقوبات',est?.nd_fines_penalties)}
+          ${f('nd_donations_non_approved','تبرعات غير معتمدة',est?.nd_donations_non_approved)}
+          ${f('nd_other','أخرى غير مقبولة',est?.nd_other)}
+        </div>
+      </div>
+      <!-- Other -->
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:12px">🔧 تسويات أخرى</div>
+        <div style="display:grid;gap:8px">
+          ${f('exempt_dividends','أرباح موزعة معفاة',est?.exempt_dividends)}
+          ${f('exempt_other','إعفاءات أخرى',est?.exempt_other)}
+          ${f('prior_year_losses','خسائر سنوات سابقة',est?.prior_year_losses,'تُرحَّل 5 سنوات')}
+          ${f('withholding_credited','خصم وإضافة محتسب',est?.withholding_credited)}
+          ${f('advance_payments_made','دفعات مقدمة',est?.advance_payments_made)}
+        </div>
+      </div>
+    </div>
+
+    ${est ? `
+    <div style="background:#f8fafc;border:2px solid #e8edf3;border-radius:12px;padding:20px;margin-top:16px">
+      <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:14px">📊 نتائج الحساب</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;font-size:13px">
+        ${[
+          ['الربح المحاسبي', est.accounting_profit, '#374151'],
+          ['الدخل الخاضع', est.taxable_income, '#1a2472'],
+          ['إجمالي الضريبة (22.5%)', est.gross_tax, '#dc2626'],
+          ['صافي الضريبة المستحقة', est.final_tax_due, '#dc2626'],
+          ['ضريبة مؤجلة صافية', est.deferred_tax_net, '#7c3aed'],
+        ].map(([l,v,c])=>`<div style="background:white;border-radius:8px;padding:12px;border:1px solid #e8edf3">
+          <div style="font-size:11px;color:#64748b;margin-bottom:4px">${l}</div>
+          <div style="font-size:17px;font-weight:800;color:${c}">${money(v||0)}</div>
+        </div>`).join('')}
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">📅 الدفعات المقدمة الربعية</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          ${[['Q1','15 أبريل',est.q1_tax_amount],['Q2','15 يوليو',est.q2_tax_amount],['Q3','15 أكتوبر',est.q3_tax_amount],['Q4','15 يناير',est.q4_tax_amount]].map(([q,d,v])=>`
+          <div style="background:white;border-radius:8px;padding:10px;border:1px solid #e8edf3;text-align:center">
+            <div style="font-size:12px;font-weight:700;color:#1a2472">${q}</div>
+            <div style="font-size:15px;font-weight:800;color:#dc2626;margin:4px 0">${money(v||0)}</div>
+            <div style="font-size:10px;color:#94a3b8">${d}</div>
+          </div>`).join('')}
+        </div>
+        <div style="font-size:12px;color:#64748b;margin-top:8px">📋 موعد الإقرار السنوي: 30 أبريل ${_tcYear+1} — التقديم عبر <a href="https://mytax.eta.gov.eg" target="_blank" style="color:#1a2472">mytax.eta.gov.eg</a></div>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+window.tcCorpSave = async function() {
+  const btn = event?.target;
+  if (btn) { btn.disabled=true; btn.textContent='جاري الحساب...'; }
+  const fields = ['revenue_domestic_taxable','revenue_domestic_exempt','revenue_export','revenue_other','cogs',
+    'exp_salaries','exp_social_insurance','exp_rent','exp_utilities','exp_depreciation_accounting',
+    'exp_depreciation_tax','exp_advertising','exp_other_deductible',
+    'nd_entertainment','nd_fines_penalties','nd_donations_non_approved','nd_other',
+    'exempt_dividends','exempt_other','prior_year_losses','withholding_credited','advance_payments_made'];
+  const body = {};
+  fields.forEach(f => body[f] = parseFloat(document.getElementById('corp_'+f)?.value)||0);
+  try {
+    await api('POST', `/api/tax-center/${_tcClientId}/corporate/${_tcYear}`, body);
+    toast('✅ تم حساب وحفظ تقدير ضريبة الدخل');
+    await _tcRenderCorporate(document.getElementById('taxTabContent'));
+  } catch(e) {
+    toast(e.message,'error');
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='💾 حساب وحفظ'; }
   }
 };
 
-// ── TAB 3: بوابات الضرائب ──────────────────────────────────────────────────
-function _renderTaxPortals(el) {
-  const portals = [
-    {
-      icon: '🧾',
-      title: 'منظومة الفواتير الإلكترونية',
-      subtitle: 'ETA e-Invoice Portal',
-      desc: 'رفع الفواتير، الإشعارات، مزامنة المستندات، إدارة بيانات الـ API',
-      url: 'https://invoicing.eta.gov.eg',
-      color: '#1a2472',
-      bg: '#eef1fb',
-      action: 'فتح المنظومة',
-    },
-    {
-      icon: '📊',
-      title: 'mytax — بوابة الإقرارات الضريبية',
-      subtitle: 'mytax.eta.gov.eg',
-      desc: 'تقديم إقرار ق.م.م، ضريبة الدخل، الخصم والإضافة، الدمغة النسبية',
-      url: 'https://mytax.eta.gov.eg',
-      color: '#15803d',
-      bg: '#f0fdf4',
-      action: 'فتح بوابة mytax',
-    },
-    {
-      icon: '🏛️',
-      title: 'منظومة الضرائب القديمة (emps)',
-      subtitle: 'emps.taxes.gov.eg',
-      desc: 'الإقرارات القديمة، نموذج 1، الخصم والإضافة، تسوية الضرائب السابقة',
-      url: 'https://emps.taxes.gov.eg',
-      color: '#7c3aed',
-      bg: '#ede9fe',
-      action: 'فتح النظام القديم',
-    },
-    {
-      icon: '📝',
-      title: 'بوابة التسجيل الضريبي',
-      subtitle: 'taxregistration.taxes.gov.eg',
-      desc: 'تسجيل الشركات الجديدة، تحديث البيانات، إلغاء التسجيل',
-      url: 'https://www.taxes.gov.eg',
-      color: '#d97706',
-      bg: '#fef9c3',
-      action: 'فتح بوابة التسجيل',
-    },
-    {
-      icon: '🔗',
-      title: 'الموقع الرسمي لمصلحة الضرائب',
-      subtitle: 'taxes.gov.eg',
-      desc: 'الاطلاع على القرارات، التشريعات، والتعليمات الضريبية الرسمية',
-      url: 'https://www.taxes.gov.eg',
-      color: '#475569',
-      bg: '#f8fafc',
-      action: 'فتح الموقع',
-    },
-  ];
+// ── SALARY TAX ──────────────────────────────────────────────────────────────
+async function _tcRenderSalary(el) {
+  el.innerHTML = `
+  <div style="max-width:700px">
+    <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:16px">👤 حاسبة ضريبة المرتبات — قانون 91/2005 (تعديل 2023)</div>
+    <div class="card" style="padding:20px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">الراتب الأساسي (ج.م./شهر) *</label>
+          <input id="salBase" class="input" type="number" placeholder="0" oninput="tcSalCalc()"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">متغيرات (بونص/حوافز)</label>
+          <input id="salVar" class="input" type="number" placeholder="0" oninput="tcSalCalc()"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">بدلات معفاة</label>
+          <input id="salAllow" class="input" type="number" placeholder="0" oninput="tcSalCalc()"/></div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="tcSalCalcServer()">🧮 احسب تفصيلياً</button>
+    </div>
+    <div id="salResult" style="display:none"></div>
 
+    <div style="background:#eef1fb;border-radius:10px;padding:14px;margin-top:16px;font-size:12px;color:#374151">
+      <div style="font-weight:700;margin-bottom:8px">📋 شرائح ضريبة المرتبات (تعديل يوليو 2023)</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#1a2472;color:white"><th style="padding:6px;text-align:right">الشريحة السنوية</th><th style="padding:6px">النسبة</th></tr></thead>
+        <tbody>
+          ${[['0 – 40,000','0%'],['40,001 – 55,000','10%'],['55,001 – 75,000','15%'],['75,001 – 95,000','20%'],['95,001 – 195,000','22.5%'],['195,001 – 400,000','25%'],['أكثر من 400,000','27.5%']].map(([r,p],i)=>`<tr style="background:${i%2?'#f8fafc':'white'}"><td style="padding:5px 8px">${r}</td><td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a2472">${p}</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:8px;color:#64748b">الإعفاء الشخصي: 20,000 ج.م./سنة | تأمينات الموظف: 11% | التأمينات الاجتماعية: 18.75%</div>
+    </div>
+  </div>`;
+}
+
+window.tcSalCalc = function() {
+  const base = parseFloat(document.getElementById('salBase')?.value)||0;
+  const varPay = parseFloat(document.getElementById('salVar')?.value)||0;
+  const allow = parseFloat(document.getElementById('salAllow')?.value)||0;
+  const gross = base + varPay;
+  const insBase = Math.min(Math.max(base, 2500), 9400);
+  const insEmp = Math.round(insBase * 0.11 * 100)/100;
+  const taxable = Math.max(0, gross - allow - insEmp - 1666.67);
+  const annualTax = _calcProgressiveTax(taxable * 12);
+  const monthlyTax = Math.round(annualTax / 12 * 100)/100;
+  const net = Math.round((gross - insEmp - monthlyTax) * 100)/100;
+
+  const el = document.getElementById('salResult');
+  if (!el) return;
+  el.style.display = 'block';
+  el.innerHTML = `<div class="card" style="padding:16px">
+    <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">نتيجة الحساب الأولي</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px">
+      ${[['راتب إجمالي',money(gross),'#1e293b'],['تأمينات موظف (11%)',money(insEmp),'#7c3aed'],['ضريبة شهرية',money(monthlyTax),'#dc2626'],['صافي الراتب',money(net),'#15803d']].map(([l,v,c])=>`
+      <div style="background:#f8fafc;border-radius:8px;padding:10px;text-align:center;border:1px solid #e8edf3">
+        <div style="font-size:16px;font-weight:800;color:${c}">${v}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px">${l}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+};
+
+function _calcProgressiveTax(annualTaxable) {
+  const exempt = 20000;
+  let taxable = Math.max(0, annualTaxable - exempt);
+  const brackets = [[40000,0],[15000,10],[20000,15],[20000,20],[100000,22.5],[205000,25]];
+  let tax = 0;
+  for (const [size, rate] of brackets) {
+    if (taxable <= 0) break;
+    const portion = Math.min(taxable, size);
+    tax += Math.round(portion * rate / 100 * 100)/100;
+    taxable -= portion;
+  }
+  if (taxable > 0) tax += Math.round(taxable * 27.5 / 100 * 100)/100;
+  return tax;
+}
+
+window.tcSalCalcServer = async function() {
+  const base = parseFloat(document.getElementById('salBase')?.value)||0;
+  if (!base) { toast('أدخل الراتب الأساسي','error'); return; }
+  const varPay = parseFloat(document.getElementById('salVar')?.value)||0;
+  const allow = parseFloat(document.getElementById('salAllow')?.value)||0;
+  if (!_tcClientId) { tcSalCalc(); return; }
+  try {
+    const r = await api('POST', `/api/tax-center/${_tcClientId}/salary/calculate`, {
+      gross_monthly: base, variable_pay: varPay, allowances: allow,
+    });
+    const el = document.getElementById('salResult');
+    el.style.display = 'block';
+    el.innerHTML = `<div class="card" style="padding:16px">
+      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">📊 نتيجة الحساب التفصيلي (Server)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+        ${[['راتب إجمالي',money(r.gross_salary),'#1e293b'],['وعاء التأمينات',money(r.social_insurance_base),'#374151'],['تأمينات موظف (11%)',money(r.insurance_employee),'#7c3aed'],['تأمينات شركة (18.75%)',money(r.insurance_company),'#5b8ec4'],['وعاء الضريبة الشهري',money(r.taxable_monthly),'#374151'],['ضريبة دخل شهرية',money(r.monthly_income_tax),'#dc2626'],['صافي الراتب',money(r.net_salary),'#15803d'],].map(([l,v,c])=>`
+        <div style="background:#f8fafc;border-radius:8px;padding:10px;border:1px solid #e8edf3">
+          <div style="font-size:11px;color:#64748b;margin-bottom:2px">${l}</div>
+          <div style="font-size:16px;font-weight:800;color:${c}">${v}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  } catch(e) { tcSalCalc(); }
+};
+
+// ── CALENDAR ────────────────────────────────────────────────────────────────
+async function _tcRenderCalendar(el) {
+  if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
+  try {
+    const events = await api('GET', `/api/tax-center/${_tcClientId}/calendar?year=${_tcYear}`);
+    const items = events?.items || events || [];
+    const today = new Date();
+    const grouped = {};
+    items.forEach(ev => {
+      const m = ev.due_date?.substring(5,7) || '00';
+      if (!grouped[m]) grouped[m] = [];
+      grouped[m].push(ev);
+    });
+
+    const urgColor = (dateStr) => {
+      const d = new Date(dateStr);
+      const diff = Math.ceil((d - today) / 86400000);
+      if (diff < 0) return '#dc2626';
+      if (diff <= 3) return '#dc2626';
+      if (diff <= 7) return '#d97706';
+      return '#15803d';
+    };
+
+    const statusBadge = s => `<span class="badge ${s==='done'||s==='paid'?'badge-green':s==='late'?'badge-red':'badge-yellow'}" style="font-size:10px">${s}</span>`;
+
+    el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:15px;font-weight:700;color:#1e293b">📅 التقويم الضريبي ${_tcYear} — ${escH(_tcClientName)}</div>
+      <button class="btn btn-secondary" onclick="tcGenCalendar()">🔄 توليد التقويم التلقائي</button>
+    </div>
+    ${!items.length ? `<div style="text-align:center;padding:40px;color:#94a3b8">
+      <div style="font-size:40px;margin-bottom:8px">📅</div>
+      <div>لا يوجد تقويم ضريبي — اضغط "توليد التقويم التلقائي"</div>
+    </div>` : `<div style="display:grid;gap:12px">
+      ${Object.keys(grouped).sort().map(m => `
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#1a2472;margin-bottom:10px">${TC_MONTH_AR[+m]||m} ${_tcYear}</div>
+        <div style="display:grid;gap:6px">
+          ${grouped[m].map(ev => `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f8fafc;border-radius:8px;border-right:3px solid ${urgColor(ev.due_date)}">
+            <div style="font-size:18px">${ev.event_type?.includes('vat')?'🧾':ev.event_type?.includes('wht')?'✂️':ev.event_type?.includes('corp')?'🏢':'📋'}</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(ev.title||ev.event_type||'')}</div>
+              <div style="font-size:11px;color:#64748b">${dateAr(ev.due_date)} ${ev.amount?'— '+money(ev.amount):''}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              ${statusBadge(ev.status||'pending')}
+              ${ev.status!=='done'?`<button class="btn btn-secondary btn-sm" style="font-size:10px" onclick="tcCalDone(${ev.id})">✅</button>`:''}
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>`).join('')}
+    </div>`}`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:16px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+window.tcGenCalendar = async function() {
+  if (!_tcClientId) return;
+  try {
+    await api('POST', `/api/tax-center/${_tcClientId}/calendar/generate`, {year: _tcYear});
+    toast('✅ تم توليد التقويم الضريبي');
+    await _tcRenderCalendar(document.getElementById('taxTabContent'));
+  } catch(e) { toast(e.message,'error'); }
+};
+window.tcCalDone = async function(id) {
+  try {
+    await api('PUT', `/api/tax-center/calendar/${id}/done`);
+    toast('✅ تم تسجيل الإنجاز');
+    await _tcRenderCalendar(document.getElementById('taxTabContent'));
+  } catch(e) { toast(e.message,'error'); }
+};
+
+// ── PORTALS ─────────────────────────────────────────────────────────────────
+function _tcRenderPortals(el) {
+  const portals = [
+    {icon:'🧾',title:'منظومة الفواتير الإلكترونية',sub:'invoicing.eta.gov.eg',desc:'رفع الفواتير والإشعارات، مزامنة المستندات، إدارة API',url:'https://invoicing.eta.gov.eg',color:'#1a2472',bg:'#eef1fb',btn:'فتح المنظومة'},
+    {icon:'📊',title:'mytax — بوابة الإقرارات',sub:'mytax.eta.gov.eg',desc:'تقديم ق.م.م، ضريبة الدخل، الخصم والإضافة، الدمغة',url:'https://mytax.eta.gov.eg',color:'#15803d',bg:'#f0fdf4',btn:'فتح mytax'},
+    {icon:'🏛️',title:'منظومة الضرائب (emps)',sub:'emps.taxes.gov.eg',desc:'الإقرارات القديمة، نموذج 1، تسوية الضرائب السابقة',url:'https://emps.taxes.gov.eg',color:'#7c3aed',bg:'#ede9fe',btn:'فتح النظام'},
+    {icon:'📝',title:'بوابة التسجيل الضريبي',sub:'taxes.gov.eg',desc:'تسجيل شركات جديدة، تحديث البيانات، إلغاء التسجيل',url:'https://www.taxes.gov.eg',color:'#d97706',bg:'#fef9c3',btn:'فتح البوابة'},
+    {icon:'🧾',title:'منظومة الإيصالات الإلكترونية',sub:'receipts.eta.gov.eg',desc:'إدارة نقاط البيع، الإيصالات، بيانات الـ POS',url:'https://receipts.eta.gov.eg',color:'#0369a1',bg:'#eff6ff',btn:'فتح المنظومة'},
+  ];
   el.innerHTML = `
   <div style="max-width:800px">
-    <div style="background:#f0f7ff;border-right:4px solid #1a73e8;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#1a2472">
-      💡 اضغط على أي بوابة لفتحها في نافذة جديدة. يمكنك بعدها العودة هنا لتسجيل نتيجة الإقرار.
+    <div style="background:#f0f7ff;border-right:4px solid #1a73e8;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#1a2472">
+      💡 <strong>تنبيه:</strong> تقديم الإقرارات الضريبية يتم يدوياً عبر البوابات الرسمية. يقوم النظام بإعداد الأرقام فقط.
     </div>
-    <div style="display:grid;gap:14px">
+    <div style="display:grid;gap:12px">
       ${portals.map(p => `
-      <div style="background:white;border-radius:12px;padding:18px 20px;border:1.5px solid #e8edf3;display:flex;align-items:center;gap:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);cursor:pointer;transition:all .15s"
+      <div style="background:white;border-radius:12px;padding:16px 18px;border:1.5px solid #e8edf3;display:flex;align-items:center;gap:14px;cursor:pointer;transition:all .15s"
         onclick="window.open('${p.url}','_blank')"
         onmouseover="this.style.borderColor='${p.color}';this.style.boxShadow='0 4px 12px rgba(0,0,0,.08)'"
-        onmouseout="this.style.borderColor='#e8edf3';this.style.boxShadow='0 1px 4px rgba(0,0,0,.04)'">
-        <div style="width:52px;height:52px;background:${p.bg};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">${p.icon}</div>
+        onmouseout="this.style.borderColor='#e8edf3';this.style.boxShadow='none'">
+        <div style="width:48px;height:48px;background:${p.bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">${p.icon}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:15px;font-weight:700;color:#1e293b">${p.title}</div>
-          <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;font-family:monospace">${p.subtitle}</div>
-          <div style="font-size:12px;color:#64748b">${p.desc}</div>
+          <div style="font-size:14px;font-weight:700;color:#1e293b">${p.title}</div>
+          <div style="font-size:10px;color:#94a3b8;font-family:monospace">${p.sub}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px">${p.desc}</div>
         </div>
         <button class="btn btn-primary" style="flex-shrink:0;font-size:12px;background:${p.color};border-color:${p.color}"
-          onclick="event.stopPropagation();window.open('${p.url}','_blank')">${p.action}</button>
+          onclick="event.stopPropagation();window.open('${p.url}','_blank')">${p.btn} ↗</button>
       </div>`).join('')}
     </div>
   </div>`;
 }
 
+// ── HELPERS ─────────────────────────────────────────────────────────────────
+function _tcNeedClient() {
+  return `<div style="text-align:center;padding:60px 20px;color:#94a3b8">
+    <div style="font-size:48px;margin-bottom:12px">👆</div>
+    <div style="font-size:15px;font-weight:600;color:#64748b">اختر عميلاً من القائمة أعلاه</div>
+  </div>`;
+}
+
+// Legacy compat
 async function submitTaxReturn(id) {
   try {
     await api('PUT', `/api/tax/${id}`, {status:'submitted', submission_date: new Date().toISOString().split('T')[0]});
     toast('تم تقديم الإقرار الضريبي بنجاح');
-    await _loadTaxTab('returns');
   } catch(e) { toast(e.message, 'error'); }
 }
+function showTaxModal() { switchTaxTab('vat'); }
 
-function showTaxModal(id=null) {
-  const t = id ? taxData.find(x=>x.id===id) : null;
-  let clients = [];
-  getClients().then(r=>clients=r).catch(()=>{});
-  setTimeout(()=>{
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `<div class="modal" style="max-width:500px">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${t?'تعديل إقرار':'إقرار ضريبي جديد'}</h2>
-        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
-      </div>
-      <div style="padding:20px 24px">
-        <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
-          <select id="taxClient" class="input"><option value="">— اختر عميل —</option>${clients.map(c=>`<option value="${c.id}" ${t?.client_id==c.id?'selected':''}>${escH(c.name)}</option>`).join('')}</select></div>
-        <div class="form-row" style="margin-bottom:14px">
-          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الإقرار</label>
-            <select id="taxType" class="input">
-              <option value="vat_monthly" ${t?.return_type==='vat_monthly'?'selected':''}>ق.م. شهري</option>
-              <option value="vat_quarterly" ${t?.return_type==='vat_quarterly'?'selected':''}>ق.م. ربعي</option>
-              <option value="income_annual" ${t?.return_type==='income_annual'?'selected':''}>دخل سنوي</option>
-              <option value="withholding" ${t?.return_type==='withholding'?'selected':''}>خصم وإضافة</option>
-            </select></div>
-          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">السنة</label>
-            <input id="taxYear" class="input" type="number" value="${t?.period_year||new Date().getFullYear()}" min="2020" max="2030"/></div>
-        </div>
-        <div class="form-row" style="margin-bottom:14px">
-          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الشهر</label>
-            <input id="taxMonth" class="input" type="number" value="${t?.period_month||''}" min="1" max="12" placeholder="1-12"/></div>
-          <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">مبلغ الضريبة (ج.م.)</label>
-            <input id="taxAmount" class="input" type="number" value="${t?.tax_amount||''}" placeholder="0"/></div>
-        </div>
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
-          <input id="taxDue" class="input" type="date" value="${t?.due_date||''}"/></div>
-      </div>
-      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
-        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
-        <button id="saveTaxBtn" class="btn btn-primary">💾 ${t?'حفظ':'إضافة'}</button>
-      </div>
-    </div>`;
-    document.body.append(overlay);
-    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
-    document.getElementById('saveTaxBtn').onclick = async()=>{
-      const btn = document.getElementById('saveTaxBtn');
-      btn.disabled=true; btn.textContent='جاري الحفظ...';
-      try {
-        const body={
-          client_id: parseInt($('#taxClient',overlay).value),
-          return_type: $('#taxType',overlay).value,
-          period_year: parseInt($('#taxYear',overlay).value),
-          period_month: parseInt($('#taxMonth',overlay).value)||null,
-          tax_amount: parseFloat($('#taxAmount',overlay).value)||0,
-          due_date: $('#taxDue',overlay).value||null,
-          status: 'pending',
-        };
-        if(!body.client_id){toast('اختر العميل','error');btn.disabled=false;return;}
-        if(t) await api('PUT',`/api/tax/${t.id}`,body);
-        else await api('POST','/api/tax',body);
-        toast(t?'تم تحديث الإقرار':'تم إضافة الإقرار بنجاح');
-        overlay.remove(); _loadTaxTab('returns');
-      } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent=`💾 ${t?'حفظ':'إضافة'}`;}
-    };
-  },200);
-}
 
 // ── REPORTS ────────────────────────────────────────
 async function loadReports() {
@@ -7521,11 +7805,6 @@ async function triggerBackupEmail(btn) {
 }
 
 window.switchTaxTab=switchTaxTab;
-window.vatBuildAnalyze=vatBuildAnalyze;
-window.vatShowSubmitConfirm=vatShowSubmitConfirm;
-window.vatConfirmSubmit=vatConfirmSubmit;
-window.vatAutoCalc=vatAutoCalc;
-window.vatManualPreview=vatManualPreview;
 window.submitTaxReturn=submitTaxReturn;
 window.showTaxModal=showTaxModal;
 window.switchStab=switchStab;
