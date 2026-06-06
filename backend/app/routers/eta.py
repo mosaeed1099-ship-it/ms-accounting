@@ -320,6 +320,63 @@ def get_vat_return(
     return build_vat_return(docs, month, year)
 
 
+@router.get("/{client_id}/vat-return-preview")
+def get_vat_return_preview(
+    client_id: int,
+    month:     int,
+    year:      int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    معاينة إقرار ق.م. مع مقارنة الشهر السابق — لشاشة إعداد الإقرار.
+    يرجع: الشهر الحالي + الشهر السابق + نسب التغيير.
+    """
+    from calendar import monthrange
+
+    # Current period
+    curr_docs = db.query(ETADocument).filter(
+        ETADocument.client_id    == client_id,
+        ETADocument.period_month == month,
+        ETADocument.period_year  == year,
+    ).all()
+    current = build_vat_return(curr_docs, month, year)
+
+    # Previous period
+    if month == 1:
+        prev_month, prev_year = 12, year - 1
+    else:
+        prev_month, prev_year = month - 1, year
+
+    prev_docs = db.query(ETADocument).filter(
+        ETADocument.client_id    == client_id,
+        ETADocument.period_month == prev_month,
+        ETADocument.period_year  == prev_year,
+    ).all()
+    previous = build_vat_return(prev_docs, prev_month, prev_year)
+
+    # Change percentages
+    def pct_change(curr_val, prev_val):
+        if not prev_val:
+            return None
+        return round((curr_val - prev_val) / abs(prev_val) * 100, 1)
+
+    curr_net = current["net_vat"]
+    prev_net = previous["net_vat"]
+
+    return {
+        "current":  current,
+        "previous": previous,
+        "changes": {
+            "sales_net":    pct_change(current["sales"]["net_sales"],    previous["sales"]["net_sales"]),
+            "output_vat":   pct_change(current["sales"]["output_vat"],   previous["sales"]["output_vat"]),
+            "purch_net":    pct_change(current["purchases"]["net_purchases"], previous["purchases"]["net_purchases"]),
+            "input_vat":    pct_change(current["purchases"]["input_vat"], previous["purchases"]["input_vat"]),
+            "net_vat":      pct_change(curr_net, prev_net),
+        },
+    }
+
+
 # ── Dashboard / Analytics ─────────────────────────────────────────────────────
 
 @router.get("/{client_id}/dashboard")

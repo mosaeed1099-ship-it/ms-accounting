@@ -14,7 +14,7 @@ backend/__pycache__/
 backend/backups/
 backend/desktop_test.db
 backend/uploads/
-backend/{app/
+backend/[{]app/
 __pycache__/
 *.pyc
 *.pyo

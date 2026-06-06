@@ -1,13 +1,9 @@
 FROM python:3.11-slim
 
-# Cache-bust: 2026-06-06
-ARG CACHEBUST=2026-06-06
+# Cache-bust: 2026-06-06b
+ARG CACHEBUST=2026-06-06b
 
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr tesseract-ocr-ara \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
