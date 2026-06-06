@@ -473,11 +473,12 @@ def _send_via_resend(to_email: str, subject: str, html_body: str, cfg: EmailConf
     return True
 
 
-def _send_via_smtp(to_email: str, subject: str, html_body: str, cfg: EmailConfig) -> bool:
+def _send_via_smtp(to_email: str, subject: str, html_body: str, cfg: EmailConfig, from_name: str = None) -> bool:
     """Send via SMTP (Gmail App Password). Fallback when Resend is not configured."""
+    display_name = from_name or cfg.from_name
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
-    msg['From'] = f"{cfg.from_name} <{cfg.from_email}>"
+    msg['From'] = f"{display_name} <{cfg.from_email}>"
     msg['To'] = to_email
     msg['Date'] = formatdate(localtime=True)
     msg['Message-ID'] = make_msgid(domain=cfg.from_email.split('@')[-1] if '@' in cfg.from_email else 'ms-accounting.com')
@@ -520,7 +521,7 @@ def _send_via_smtp(to_email: str, subject: str, html_body: str, cfg: EmailConfig
     raise Exception(f"SMTP failed on all ports: {last_err}")
 
 
-def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
+def send_email_sync(to_email: str, subject: str, html_body: str, from_name: str = None) -> bool:
     """
     Send email synchronously.
     Priority: Gmail SMTP first (proper DKIM signing) → API fallbacks.
@@ -530,6 +531,8 @@ def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
     a valid DKIM signature for gmail.com. Sending via SendGrid/Resend/Brevo
     with a @gmail.com From causes SPF/DKIM failure → email goes to spam.
     Gmail SMTP on port 587 (STARTTLS) is confirmed to work on Railway.
+
+    from_name: override the display name (e.g. "عمرو شعبان" for personal client emails)
     """
     import os
     cfg = get_config()
@@ -540,7 +543,7 @@ def send_email_sync(to_email: str, subject: str, html_body: str) -> bool:
     # 1. Gmail SMTP — correct DKIM for @gmail.com sender → inbox not spam
     if cfg.smtp_user and cfg.smtp_pass:
         try:
-            return _send_via_smtp(to_email, subject, html_body, cfg)
+            return _send_via_smtp(to_email, subject, html_body, cfg, from_name=from_name)
         except Exception as e:
             logger.warning(f"SMTP failed: {e} — trying API providers")
 

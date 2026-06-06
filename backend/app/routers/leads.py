@@ -393,79 +393,57 @@ async def send_lead_quote_email(
     deliver_docs = _parse_docs(lead.quote_deliver_docs)
     req_docs     = _parse_docs(lead.quote_required_docs)
 
-    # ── Build HTML sections ───────────────────────────────────────────────────
-    def _row(label, val):
-        return (
-            f"<tr>"
-            f"<td style='padding:10px 14px;font-size:13px;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;width:40%'>{label}</td>"
-            f"<td style='padding:10px 14px;font-size:13px;font-weight:700;color:#1a2472;border-bottom:1px solid #e2e8f0'>{val}</td>"
-            f"</tr>"
+    # ── Build plain-style personal email (avoids spam filters) ──────────────
+    # Marketing/newsletter templates trigger spam. Personal plain style works better.
+
+    info_lines = ""
+    if legal_entity:
+        info_lines += f"<tr><td style='padding:7px 12px;color:#555;width:38%'>الكيان القانوني</td><td style='padding:7px 12px;color:#111;font-weight:600'>{legal_entity}</td></tr>"
+    if activity:
+        info_lines += f"<tr><td style='padding:7px 12px;color:#555'>النشاط</td><td style='padding:7px 12px;color:#111;font-weight:600'>{activity}</td></tr>"
+    if location:
+        info_lines += f"<tr><td style='padding:7px 12px;color:#555'>مقر النشاط</td><td style='padding:7px 12px;color:#111;font-weight:600'>{location}</td></tr>"
+    if capital:
+        info_lines += f"<tr><td style='padding:7px 12px;color:#555'>رأس المال</td><td style='padding:7px 12px;color:#111;font-weight:600'>{capital:,.0f} جنيه</td></tr>"
+
+    info_table = (
+        f"<table style='width:100%;border-collapse:collapse;border:1px solid #ddd;border-radius:6px;margin:12px 0 20px'>"
+        f"{info_lines}</table>"
+    ) if info_lines else ""
+
+    total_block = ""
+    if total:
+        total_block = (
+            f"<p style='margin:20px 0 8px;font-size:14px;color:#333'>"
+            f"<strong>السعر الإجمالي شامل التأسيس والأتعاب:</strong></p>"
+            f"<p style='margin:0 0 20px;font-size:22px;font-weight:700;color:#1a5e20'>"
+            f"{total:,.0f} جنيه مصري</p>"
         )
 
-    info_rows = ""
-    if legal_entity:
-        info_rows += _row("الكيان القانوني", legal_entity)
-    if activity:
-        info_rows += _row("النشاط", activity)
-    if location:
-        info_rows += _row("مقر النشاط", location)
-    if capital:
-        info_rows += _row("رأس المال", f"{capital:,.0f} جنيه")
+    deliver_block = ""
+    if deliver_docs:
+        items = "".join(f"<li style='margin:5px 0'>{d}</li>" for d in deliver_docs)
+        deliver_block = (
+            f"<p style='margin:20px 0 6px;font-size:14px;color:#333'><strong>حضرتك هتستلم مننا:</strong></p>"
+            f"<ul style='margin:0 0 20px;padding-right:24px;color:#333;font-size:14px;line-height:1.8'>{items}</ul>"
+        )
 
-    deliver_items = "".join(
-        f"<li style='margin:8px 0;font-size:14px;color:#1e293b;line-height:1.7'>{d}</li>"
-        for d in deliver_docs
-    )
-    req_items = "".join(
-        f"<li style='margin:8px 0;font-size:14px;color:#1e293b;line-height:1.7'>{d}</li>"
-        for d in req_docs
-    )
+    req_block = ""
+    if req_docs:
+        items = "".join(f"<li style='margin:5px 0'>{d}</li>" for d in req_docs)
+        req_block = (
+            f"<p style='margin:20px 0 6px;font-size:14px;color:#333'><strong>المطلوب من حضرتكم:</strong></p>"
+            f"<ul style='margin:0 0 20px;padding-right:24px;color:#333;font-size:14px;line-height:1.8'>{items}</ul>"
+        )
 
-    notes_section = ""
+    notes_block = ""
     if lead.notes and lead.notes.strip():
-        notes_section = f"""
-        <div style="margin:0 0 24px;background:#fffbeb;border-right:4px solid #f59e0b;border-radius:8px;padding:14px 18px;">
-          <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">ملاحظات</div>
-          <div style="font-size:13px;color:#374151;line-height:1.7">{lead.notes.strip()}</div>
-        </div>"""
+        notes_block = (
+            f"<p style='margin:20px 0 6px;font-size:14px;color:#333'><strong>ملاحظات:</strong></p>"
+            f"<p style='margin:0 0 20px;font-size:14px;color:#444;line-height:1.7'>{lead.notes.strip()}</p>"
+        )
 
-    total_section = ""
-    if total:
-        total_section = f"""
-        <div style="margin:0 0 28px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:12px;padding:20px 24px;text-align:center;">
-          <div style="font-size:13px;color:#15803d;font-weight:600;margin-bottom:8px">السعر شامل التأسيس والأتعاب</div>
-          <div style="font-size:32px;font-weight:800;color:#15803d;letter-spacing:-1px">{total:,.0f}</div>
-          <div style="font-size:14px;color:#16a34a;font-weight:600;margin-top:2px">جنيه مصري</div>
-        </div>"""
-
-    deliver_section = ""
-    if deliver_items:
-        deliver_section = f"""
-        <div style="margin:0 0 24px;border-radius:10px;overflow:hidden;border:1.5px solid #c7d2fe;">
-          <div style="background:#1a2472;color:white;padding:12px 20px;font-size:14px;font-weight:700;">
-            📄 حضرتك هتستلم مننا
-          </div>
-          <div style="padding:16px 22px;background:#f8faff;">
-            <ul style="margin:0;padding-right:20px;">{deliver_items}</ul>
-          </div>
-        </div>"""
-
-    req_section = ""
-    if req_items:
-        req_section = f"""
-        <div style="margin:0 0 24px;border-radius:10px;overflow:hidden;border:1.5px solid #fde68a;">
-          <div style="background:#d97706;color:white;padding:12px 20px;font-size:14px;font-weight:700;">
-            📋 المطلوب من حضرتكم
-          </div>
-          <div style="padding:16px 22px;background:#fffdf5;">
-            <ul style="margin:0;padding-right:20px;">{req_items}</ul>
-          </div>
-        </div>"""
-
-    from datetime import datetime as _dt
-    today_str = _dt.now().strftime("%Y/%m/%d")
-
-    subject = f"عرض سعر تأسيس شركة — {lead.name}"
+    subject = f"عرض السعر - {lead.name}"
     html_body = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -473,66 +451,28 @@ async def send_lead_quote_email(
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{subject}</title>
 </head>
-<body style="margin:0;padding:20px;background:#f1f5f9;font-family:'Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);">
+<body style="margin:0;padding:0;background:#ffffff;font-family:Arial,sans-serif;direction:rtl;">
+  <div style="max-width:580px;margin:0 auto;padding:32px 24px;color:#222;font-size:14px;line-height:1.8">
 
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1a2472 0%,#0f1848 100%);padding:30px 32px 24px;text-align:center;">
-      <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:.5px;">MS Accounting</div>
-      <div style="font-size:13px;color:#b3c4e8;margin-top:6px;">مكتب المحاسبة والاستشارات الضريبية</div>
-      <div style="margin-top:12px;display:inline-block;background:rgba(255,255,255,.12);border-radius:20px;padding:5px 18px;">
-        <span style="color:#fbbf24;font-size:12px;font-weight:700;">عرض سعر</span>
-        <span style="color:#94a3b8;font-size:11px;margin-right:8px;">{today_str}</span>
-      </div>
-    </div>
+    <p style="margin:0 0 16px">مساء الخير،</p>
+    <p style="margin:0 0 20px">أستاذ / <strong>{lead.name or ''}</strong> — مع حضرتك المستشار عمرو شعبان</p>
 
-    <!-- Body -->
-    <div style="padding:32px;">
+    {info_table}
+    {total_block}
+    {deliver_block}
+    {req_block}
+    {notes_block}
 
-      <!-- Greeting -->
-      <p style="font-size:16px;font-weight:700;color:#1e293b;margin:0 0 4px;">مساء الخير،</p>
-      <p style="font-size:14px;color:#64748b;margin:0 0 28px;">
-        أستاذ / <strong style="color:#1a2472">{lead.name or ''}</strong> —
-        مع حضرتك <strong style="color:#1a2472">المستشار عمرو شعبان</strong>
-      </p>
-
-      <!-- Info table -->
-      {"<div style='margin:0 0 28px;border-radius:10px;overflow:hidden;border:1.5px solid #e2e8f0;'><table style='width:100%;border-collapse:collapse;'>" + info_rows + "</table></div>" if info_rows else ""}
-
-      <!-- Total -->
-      {total_section}
-
-      <!-- Deliver docs -->
-      {deliver_section}
-
-      <!-- Required docs -->
-      {req_section}
-
-      <!-- Notes -->
-      {notes_section}
-
-      <!-- Signature -->
-      <div style="margin-top:28px;padding-top:20px;border-top:2px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-size:15px;font-weight:800;color:#1a2472;">المستشار / عمرو شعبان</div>
-          <div style="font-size:12px;color:#64748b;margin-top:3px;">مكتب MS Accounting للمحاسبة والاستشارات الضريبية</div>
-        </div>
-        <div style="background:#eef1fb;border-radius:50%;width:52px;height:52px;display:flex;align-items:center;justify-content:center;font-size:22px;">🏛️</div>
-      </div>
-
-    </div><!-- /body -->
-
-    <!-- Footer -->
-    <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 32px;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#94a3b8;">هذا البريد أُرسل تلقائياً من نظام MS Accounting</p>
-    </div>
+    <p style="margin:28px 0 4px;color:#444">مع خالص الشكر والتقدير،</p>
+    <p style="margin:0 0 4px;font-weight:700;color:#222">المستشار / عمرو شعبان</p>
+    <p style="margin:0;font-size:12px;color:#777">مكتب MS Accounting للمحاسبة والاستشارات الضريبية</p>
 
   </div>
 </body>
 </html>"""
 
     try:
-        send_email_sync(to_email, subject, html_body)
+        send_email_sync(to_email, subject, html_body, from_name="عمرو شعبان")
         db.add(LeadActivity(lead_id=lead_id, user_id=current_user.id,
                             action="quote_sent", description=f"تم إرسال عرض السعر إلى {to_email}"))
         db.commit()

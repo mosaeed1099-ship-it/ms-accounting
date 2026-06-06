@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
-# Cache-bust: 2026-06-04
-ARG CACHEBUST=2026-06-04
+# Cache-bust: 2026-06-06
+ARG CACHEBUST=2026-06-06
 
 WORKDIR /app
 
