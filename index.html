@@ -324,7 +324,7 @@ const _RT_ENTITY_MAP = {
   invoices:      { pages:['invoices'],        fn:()=>loadInvoices(true),     dash:true  },
   tasks:         { pages:['tasks'],           fn:()=>loadTasks(true),        dash:true  },
   establishment: { pages:['establishment'],   fn:()=>loadEstablishment(true),dash:false },
-  obligations:   { pages:['obligations'],     fn:()=>loadObligations(true),  dash:false },
+  obligations:   { pages:['obligations'],     fn:()=>loadObligations(true),  dash:true  },
   documents:     { pages:['documents'],       fn:()=>loadDocuments(true),    dash:false },
   payroll:       { pages:['payroll'],         fn:()=>loadPayroll(true),      dash:false },
   settlements:   { pages:['settlements'],     fn:()=>loadSettlements(true),  dash:false },
@@ -1281,7 +1281,7 @@ async function loadDashboard(silent=false) {
     </div>`;}
 
   try {
-    const [stats, chartData, activity, oblStats, oblUpcoming, leadsRaw, fmStats] = await Promise.all([
+    const [stats, chartData, activity, oblStats, oblUpcoming, leadsRaw, fmStats, oblAll] = await Promise.all([
       api('GET','/api/dashboard/stats'),
       api('GET','/api/dashboard/revenue-chart?months=12'),
       api('GET','/api/dashboard/recent-activity'),
@@ -1289,6 +1289,7 @@ async function loadDashboard(silent=false) {
       api('GET','/api/obligations/upcoming?days=14').catch(()=>[]),
       api('GET','/api/leads?page_size=500').catch(()=>({items:[]})),
       api('GET','/api/formation/stats').catch(()=>null),
+      api('GET','/api/obligations?page_size=1000').catch(()=>({items:[]})),
     ]);
     if(!stats) return;
 
@@ -1311,6 +1312,15 @@ async function loadDashboard(silent=false) {
     const fStageData = fmStats?.stages||{};
 
     const lCount = s => leads.filter(l=>l.status===s).length;
+
+    // ── Obligation breakdown by type ─────────────────
+    const _oblList = Array.isArray(oblAll) ? oblAll : (oblAll?.items||[]);
+    const _vatClients = new Set(_oblList.filter(o=>o.obligation_type==='vat_monthly').map(o=>o.client_id)).size;
+    const _payrollClients = new Set(_oblList.filter(o=>o.obligation_type==='payroll_monthly').map(o=>o.client_id)).size;
+    const _withholdingClients = new Set(_oblList.filter(o=>o.obligation_type==='withholding_monthly').map(o=>o.client_id)).size;
+    const _incomeClients = new Set(_oblList.filter(o=>o.obligation_type==='income_annual').map(o=>o.client_id)).size;
+    const _totalClients = stats.clients.total||0;
+
     const revVals  = months12.map(m=>m.invoiced||0);
     const collVals = months12.map(m=>m.revenue||m.collected||0);
     const clientVals = months12.map(m=>m.new_clients||m.clients||0);
@@ -1416,6 +1426,37 @@ async function loadDashboard(silent=false) {
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- ══ SECTION 1.5 — CLIENT OBLIGATIONS BREAKDOWN ══ -->
+    <div class="ea-in ea-white-card" style="animation-delay:.05s;padding:20px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-size:14px;font-weight:800;color:#0f172a">توزيع العملاء على الالتزامات</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px">إجمالي العملاء النشطين في المنظومة</div>
+        </div>
+        <button onclick="navigate('obligations')" style="background:#eef1fb;border:1px solid #c7d2fe;color:#1a2472;font-size:11px;font-weight:700;padding:5px 14px;border-radius:10px;cursor:pointer;font-family:inherit">إدارة الالتزامات ←</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+        ${[
+          {label:'إجمالي العملاء',val:_totalClients,icon:'👥',color:'#1a2472',bg:'#eef1fb',border:'#c7d2fe',page:'clients'},
+          {label:'ض ق م شهري',val:_vatClients,icon:'🧾',color:'#0369a1',bg:'#e0f2fe',border:'#bae6fd',page:'obligations'},
+          {label:'توحيد مرتبات',val:_payrollClients,icon:'👔',color:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe',page:'obligations'},
+          {label:'تسهيلات (خ+إ)',val:_withholdingClients,icon:'⚖️',color:'#0f766e',bg:'#f0fdfa',border:'#99f6e4',page:'obligations'},
+          {label:'دخل سنوي',val:_incomeClients,icon:'📊',color:'#b45309',bg:'#fffbeb',border:'#fde68a',page:'obligations'},
+        ].map(k=>`
+          <div onclick="navigate('${k.page}')" style="background:${k.bg};border:1.5px solid ${k.border};border-radius:14px;padding:16px 14px;cursor:pointer;transition:all .2s;text-align:center"
+            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 6px 18px rgba(0,0,0,.1)'"
+            onmouseout="this.style.transform='';this.style.boxShadow=''">
+            <div style="font-size:24px;margin-bottom:8px">${k.icon}</div>
+            <div style="font-size:32px;font-weight:900;color:${k.color};line-height:1;letter-spacing:-1px">${k.val}</div>
+            <div style="font-size:10.5px;font-weight:700;color:${k.color};opacity:.75;margin-top:6px;line-height:1.3">${k.label}</div>
+            <div style="margin-top:8px;height:3px;border-radius:99px;background:${k.color};opacity:.2">
+              <div style="height:100%;border-radius:99px;background:${k.color};width:${_totalClients>0?Math.round(k.val/_totalClients*100):0}%"></div>
+            </div>
+            <div style="font-size:9px;color:${k.color};opacity:.6;margin-top:3px;font-weight:700">${_totalClients>0?Math.round(k.val/_totalClients*100):0}% من الإجمالي</div>
+          </div>`).join('')}
       </div>
     </div>
 
@@ -2235,9 +2276,46 @@ function showClientModal(id=null) {
         activity_end_date:$('#cActivityEnd',overlay)?.value||null,
       };
       if(!body.name){toast('الاسم مطلوب','error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`;return}
-      if(c) await api('PUT',`/api/clients/${c.id}`,body);
-      else await api('POST','/api/clients',body);
-      toast(c?'تم تحديث بيانات العميل':'تم إضافة العميل بنجاح');
+
+      const DUE_DAYS={vat_monthly:30,vat_quarterly:30,payroll_monthly:14,withholding_monthly:14,insurance_monthly:14,stamp_quarterly:30,income_annual:30,corporate_tax:30,form_41:30,commercial_register_renewal:30};
+
+      let savedClient;
+      if(c){
+        savedClient = await api('PUT',`/api/clients/${c.id}`,body);
+      } else {
+        savedClient = await api('POST','/api/clients',body);
+      }
+      const clientId = savedClient?.id || c?.id;
+
+      // ── Auto-create obligations for selected types ──────────────────────
+      if(clientId && selectedObls.length){
+        // Fetch existing obligations for this client to avoid duplicates
+        let existingObls = [];
+        try { existingObls = await api('GET',`/api/obligations?client_id=${clientId}&page_size=100`); }
+        catch(_) {}
+        const existingTypes = new Set(
+          (Array.isArray(existingObls)?existingObls:(existingObls?.items||[])).map(o=>o.obligation_type)
+        );
+        const creates = selectedObls.filter(t=>!existingTypes.has(t));
+        if(creates.length){
+          await Promise.allSettled(creates.map(otype=>
+            api('POST','/api/obligations',{
+              client_id:clientId,
+              obligation_type:otype,
+              due_day:DUE_DAYS[otype]||30,
+              alert_days_before:10,
+              notes:'أُنشئ تلقائياً عند إضافة العميل',
+            })
+          ));
+        }
+      }
+
+      // ── Auto-create folder for new clients ──────────────────────────────
+      if(!c && clientId){
+        try { await api('POST','/api/folders',{name:body.name,client_id:clientId,parent_id:null}); } catch(_) {}
+      }
+
+      toast(c?'تم تحديث بيانات العميل':'✅ تم إضافة العميل والتزاماته وفولدره');
       overlay.remove();
       invalidateClientsCache();
       loadClients(true);
