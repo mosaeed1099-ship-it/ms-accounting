@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from pydantic import BaseModel
 
 from app.database import get_db
@@ -134,6 +134,43 @@ def lead_to_dict(lead: Lead) -> dict:
     }
 
 
+# ── Date filter helper ─────────────────────────────
+def _resolve_date_range(date_filter: Optional[str], date_from: Optional[str], date_to: Optional[str]):
+    """Return (dt_from, dt_to) as datetime or None."""
+    today = date.today()
+    if date_filter == 'today':
+        return datetime(today.year, today.month, today.day), datetime(today.year, today.month, today.day, 23, 59, 59)
+    elif date_filter == 'yesterday':
+        y = today - timedelta(days=1)
+        return datetime(y.year, y.month, y.day), datetime(y.year, y.month, y.day, 23, 59, 59)
+    elif date_filter == 'this_week':
+        start = today - timedelta(days=today.weekday())
+        return datetime(start.year, start.month, start.day), None
+    elif date_filter == 'last_week':
+        start = today - timedelta(days=today.weekday() + 7)
+        end = start + timedelta(days=6)
+        return datetime(start.year, start.month, start.day), datetime(end.year, end.month, end.day, 23, 59, 59)
+    elif date_filter == 'this_month':
+        return datetime(today.year, today.month, 1), None
+    elif date_filter == 'last_month':
+        first_this = date(today.year, today.month, 1)
+        last_m_end = first_this - timedelta(days=1)
+        last_m_start = date(last_m_end.year, last_m_end.month, 1)
+        return datetime(last_m_start.year, last_m_start.month, 1), datetime(last_m_end.year, last_m_end.month, last_m_end.day, 23, 59, 59)
+    elif date_filter == 'this_year':
+        return datetime(today.year, 1, 1), None
+    elif date_filter == 'last_year':
+        return datetime(today.year - 1, 1, 1), datetime(today.year - 1, 12, 31, 23, 59, 59)
+    elif date_filter == 'all':
+        return None, None
+    elif date_from or date_to:
+        df = datetime.fromisoformat(date_from) if date_from else None
+        dt = datetime.fromisoformat(date_to) if date_to else None
+        return df, dt
+    # Default: this_month
+    return datetime(today.year, today.month, 1), None
+
+
 # ── Leads CRUD ────────────────────────────────────
 @router.get("")
 def list_leads(
@@ -141,7 +178,10 @@ def list_leads(
     status: Optional[str] = None,
     assigned_to: Optional[int] = None,
     source: Optional[str] = None,
-    limit: int = 50,
+    date_filter: Optional[str] = None,   # today/yesterday/this_week/last_week/this_month/last_month/this_year/last_year/all
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 10000,
     offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -159,6 +199,13 @@ def list_leads(
         query = query.filter(Lead.assigned_to == assigned_to)
     if source:
         query = query.filter(Lead.source == source)
+
+    # Date range filter
+    dt_from, dt_to = _resolve_date_range(date_filter, date_from, date_to)
+    if dt_from:
+        query = query.filter(Lead.created_at >= dt_from)
+    if dt_to:
+        query = query.filter(Lead.created_at <= dt_to)
 
     total = query.count()
     leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
@@ -182,20 +229,37 @@ def get_pipeline(db: Session = Depends(get_db), current_user: User = Depends(get
 
 
 @router.get("/stats")
-def get_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    total = db.query(func.count(Lead.id)).scalar()
-    new = db.query(func.count(Lead.id)).filter(Lead.status == LeadStatus.NEW).scalar()
-    in_progress = db.query(func.count(Lead.id)).filter(
+def get_stats(
+    date_filter: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    base = db.query(Lead)
+    dt_from, dt_to = _resolve_date_range(date_filter, date_from, date_to)
+    if dt_from:
+        base = base.filter(Lead.created_at >= dt_from)
+    if dt_to:
+        base = base.filter(Lead.created_at <= dt_to)
+
+    total = base.count()
+    new = base.filter(Lead.status == LeadStatus.NEW).count()
+    in_progress = base.filter(
         Lead.status.in_([LeadStatus.INTERESTED, LeadStatus.MEETING, LeadStatus.QUOTATION_SENT])
-    ).scalar()
-    converted = db.query(func.count(Lead.id)).filter(
+    ).count()
+    converted = base.filter(
         Lead.status.in_([LeadStatus.PAID, LeadStatus.UNDER_ESTABLISHMENT,
                           LeadStatus.TAX_REGISTERED, LeadStatus.ACCOUNTING_CLIENT])
-    ).scalar()
-    lost = db.query(func.count(Lead.id)).filter(Lead.status == LeadStatus.LOST).scalar()
+    ).count()
+    lost = base.filter(Lead.status == LeadStatus.LOST).count()
+    quotation = base.filter(Lead.status == LeadStatus.QUOTATION_SENT).count()
+    interested = base.filter(Lead.status == LeadStatus.INTERESTED).count()
+    not_answered = base.filter(Lead.status.in_(['not_answered', 'call_later', 'wrong_number'])).count()
     return {
         "total": total, "new": new, "in_progress": in_progress,
-        "converted": converted, "lost": lost,
+        "converted": converted, "lost": lost, "quotation": quotation,
+        "interested": interested, "not_answered": not_answered,
         "conversion_rate": round(converted / total * 100, 1) if total else 0
     }
 
