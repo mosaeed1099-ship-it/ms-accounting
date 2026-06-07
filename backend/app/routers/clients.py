@@ -153,6 +153,12 @@ async def list_clients(
 ):
     query = db.query(Client)
 
+    # Default: exclude inactive (soft-deleted) clients unless explicitly requested
+    if status:
+        query = query.filter(Client.status == status)
+    else:
+        query = query.filter(Client.status != ClientStatus.INACTIVE)
+
     if q:
         query = query.filter(
             or_(
@@ -163,8 +169,6 @@ async def list_clients(
                 Client.commercial_register.ilike(f"%{q}%"),
             )
         )
-    if status:
-        query = query.filter(Client.status == status)
     if client_type:
         query = query.filter(Client.client_type == client_type)
     if assigned_to:

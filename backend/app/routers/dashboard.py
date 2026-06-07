@@ -20,10 +20,11 @@ async def dashboard_stats(db: Session = Depends(get_db), current_user: User = De
     month_start = date(now.year, now.month, 1)
     today = date.today()
 
-    # Clients
-    total_clients = db.query(func.count(Client.id)).scalar() or 0
+    # Clients — exclude inactive (soft-deleted) clients from all counts
     active_clients = db.query(func.count(Client.id)).filter(Client.status == ClientStatus.ACTIVE).scalar() or 0
+    total_clients = active_clients  # total = active only (inactive = effectively deleted)
     new_clients_month = db.query(func.count(Client.id)).filter(
+        Client.status == ClientStatus.ACTIVE,
         func.date(Client.created_at) >= month_start
     ).scalar() or 0
 
