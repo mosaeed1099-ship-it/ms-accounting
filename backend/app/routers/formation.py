@@ -216,6 +216,39 @@ def create_case(
                current_user, new_stage="name_reservation")
     db.commit()
     db.refresh(case)
+
+    # Auto-generate formation obligations from default template
+    try:
+        from app.models.service_template import ServiceTemplate, FormationObligation
+        from datetime import timedelta
+        type_map = {
+            "llc":    "تأسيس شركة ذ.م.م",
+            "ngo":    "جمعية أهلية",
+            "branch": "فرع شركة أجنبية",
+        }
+        tpl_name = type_map.get(case.company_type)
+        if tpl_name:
+            tpl = db.query(ServiceTemplate).filter_by(name=tpl_name).first()
+            if tpl and tpl.steps:
+                now = datetime.utcnow()
+                cumulative = 0
+                for step in tpl.steps:
+                    cumulative += step.default_days
+                    db.add(FormationObligation(
+                        case_id=case.id,
+                        template_id=tpl.id,
+                        step_id=step.id,
+                        name=step.name,
+                        description=step.description,
+                        status="not_started",
+                        order_index=step.order_index,
+                        due_date=now + timedelta(days=cumulative),
+                        required_docs=step.required_docs,
+                    ))
+                db.commit()
+    except Exception:
+        pass  # Do not block case creation if template generation fails
+
     return _case_to_dict(case)
 
 
