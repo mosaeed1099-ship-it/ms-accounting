@@ -167,8 +167,8 @@ def _resolve_date_range(date_filter: Optional[str], date_from: Optional[str], da
         df = datetime.fromisoformat(date_from) if date_from else None
         dt = datetime.fromisoformat(date_to) if date_to else None
         return df, dt
-    # Default: this_month
-    return datetime(today.year, today.month, 1), None
+    # Default: no filter (return all)
+    return None, None
 
 
 # ── Leads CRUD ────────────────────────────────────
