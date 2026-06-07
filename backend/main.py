@@ -34,6 +34,7 @@ from app.routers import client_portal as client_portal_router
 from app.routers import office_services as office_services_router
 from app.routers import tax_center as tax_center_router
 from app.routers import formation as formation_router
+from app.routers.realtime import router as realtime_router, manager as realtime_manager, ENTITY_MAP, SKIP_ENTITIES, DASHBOARD_ENTITIES
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -481,6 +482,35 @@ app.add_middleware(
 )
 
 
+# ── Real-time broadcast middleware ────────────────────────────────────────────
+@app.middleware("http")
+async def realtime_broadcast_middleware(request: Request, call_next):
+    """After any successful mutation, broadcast a live-sync event to all WS clients."""
+    response = await call_next(request)
+    try:
+        if (
+            request.method in ("POST", "PUT", "PATCH", "DELETE")
+            and 200 <= response.status_code < 300
+            and realtime_manager.connection_count > 0
+        ):
+            parts = [p for p in request.url.path.split("/") if p]
+            if len(parts) >= 2 and parts[0] == "api":
+                raw_entity = parts[1]
+                if raw_entity not in SKIP_ENTITIES:
+                    entity = ENTITY_MAP.get(raw_entity, raw_entity)
+                    entity_id = parts[2] if len(parts) > 2 and parts[2].lstrip("-").isdigit() else None
+                    asyncio.create_task(realtime_manager.broadcast({
+                        "entity":           entity,
+                        "raw_entity":       raw_entity,
+                        "action":           request.method.lower(),
+                        "id":               entity_id,
+                        "affects_dashboard": raw_entity in DASHBOARD_ENTITIES,
+                    }))
+    except Exception:
+        pass  # Never let broadcast logic affect the HTTP response
+    return response
+
+
 # ── Global exception handler (prevents unhandled 500s) ───────────────────────
 
 @app.exception_handler(Exception)
@@ -530,6 +560,7 @@ app.include_router(client_portal_router.router)
 app.include_router(office_services_router.router)
 app.include_router(tax_center_router.router)
 app.include_router(formation_router.router)
+app.include_router(realtime_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
