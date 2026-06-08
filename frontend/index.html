@@ -2650,7 +2650,7 @@ async function loadInvoices(silent=false) {
   try {
     const [summary, colData, invData] = await Promise.all([
       api('GET', '/api/collections/summary').catch(()=>null),
-      api('GET', '/api/collections?page_size=200').catch(()=>({items:[]})),
+      api('GET', '/api/collections?page_size=100').catch(()=>({items:[]})),
       api('GET', '/api/invoices?page_size=100').catch(()=>({items:[]})),
     ]);
     _feesCollData = colData.items || [];
