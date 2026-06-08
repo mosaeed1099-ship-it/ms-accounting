@@ -167,6 +167,8 @@ async def list_clients(
                 Client.phone.ilike(f"%{q}%"),
                 Client.code.ilike(f"%{q}%"),
                 Client.commercial_register.ilike(f"%{q}%"),
+                Client.email.ilike(f"%{q}%"),
+                Client.trade_name.ilike(f"%{q}%"),
             )
         )
     if client_type:
