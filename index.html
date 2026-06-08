@@ -859,8 +859,169 @@ const navGroups = [
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
 ];
 
+// ── Client Portal Mode ─────────────────────────────
+let portalToken = localStorage.getItem('ms_portal_token');
+let portalUser = JSON.parse(localStorage.getItem('ms_portal_user') || 'null');
+
+function isPortalMode() {
+  return new URLSearchParams(window.location.search).has('portal') || !!portalToken;
+}
+
+function renderPortalLogin() {
+  document.getElementById('app').innerHTML = `
+  <div style="min-height:100vh;background:linear-gradient(135deg,#0d1540 0%,#1a2472 50%,#5b8ec4 100%);display:flex;align-items:center;justify-content:center;padding:16px">
+    <div style="width:100%;max-width:400px">
+      <div style="text-align:center;margin-bottom:32px">
+        <div style="width:90px;height:90px;background:white;border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:10px">
+          <img src="assets/logo.svg" alt="MS Logo" style="width:70px;height:70px;object-fit:contain"/>
+        </div>
+        <h1 style="color:white;font-size:22px;font-weight:800;margin:0 0 4px">بوابة عملاء MS</h1>
+        <p style="color:rgba(255,255,255,.7);font-size:12px;margin:0">تتبع ملفاتك ومستحقاتك</p>
+      </div>
+      <div style="background:white;border-radius:18px;padding:28px;box-shadow:0 25px 60px rgba(0,0,0,.2)">
+        <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin:0 0 20px;text-align:center">🔑 دخول العملاء</h2>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">اسم المستخدم</label>
+          <input id="puLoginUser" class="input" placeholder="اسم المستخدم"/>
+        </div>
+        <div style="margin-bottom:20px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">كلمة المرور</label>
+          <input id="puLoginPass" class="input" type="password" placeholder="••••••••"/>
+        </div>
+        <button id="puLoginBtn" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:15px">🔐 دخول</button>
+        <div id="puLoginErr" style="color:#dc2626;font-size:13px;text-align:center;margin-top:10px;min-height:18px"></div>
+        <div style="margin-top:16px;text-align:center">
+          <a href="?" style="font-size:12px;color:#94a3b8;text-decoration:none">دخول الإدارة ←</a>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  const doLogin = async () => {
+    const btn=document.getElementById('puLoginBtn');
+    const err=document.getElementById('puLoginErr');
+    err.textContent=''; btn.disabled=true; btn.textContent='جاري الدخول...';
+    try {
+      const fd=new URLSearchParams();
+      fd.append('username', document.getElementById('puLoginUser').value);
+      fd.append('password', document.getElementById('puLoginPass').value);
+      const res=await fetch(BASE_URL+'/api/portal/login',{method:'POST',body:fd,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.detail||'خطأ في الدخول');
+      portalToken=data.access_token;
+      portalUser={client_id:data.client_id,client_name:data.client_name,permissions:data.permissions};
+      localStorage.setItem('ms_portal_token',portalToken);
+      localStorage.setItem('ms_portal_user',JSON.stringify(portalUser));
+      renderPortalDashboard();
+    } catch(e){ err.textContent=e.message; btn.disabled=false; btn.innerHTML='🔐 دخول'; }
+  };
+  document.getElementById('puLoginBtn').onclick=doLogin;
+  document.getElementById('puLoginPass').onkeydown=e=>{if(e.key==='Enter')doLogin();};
+}
+
+async function renderPortalDashboard() {
+  if(!portalToken||!portalUser){renderPortalLogin();return;}
+  document.getElementById('app').innerHTML=`
+  <div style="min-height:100vh;background:#f1f5f9;font-family:inherit">
+    <div style="background:linear-gradient(135deg,#0f1f6b,#1a2472);padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;background:rgba(255,255,255,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px">🔑</div>
+        <div>
+          <div style="color:white;font-size:14px;font-weight:700">${escH(portalUser.client_name||'')}</div>
+          <div style="color:rgba(255,255,255,.6);font-size:11px">بوابة العملاء</div>
+        </div>
+      </div>
+      <button onclick="portalLogout()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit">خروج</button>
+    </div>
+    <div style="max-width:900px;margin:0 auto;padding:20px 16px">
+      <div id="portalContent"><div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div></div>
+    </div>
+  </div>`;
+  await loadPortalContent();
+}
+
+async function loadPortalContent() {
+  const el=document.getElementById('portalContent');
+  if(!el) return;
+  const perm=portalUser?.permissions||{};
+  const headers={'Authorization':'Bearer '+portalToken};
+  try {
+    const [profile, invoices, tasks, oblInst] = await Promise.all([
+      fetch(BASE_URL+'/api/portal/my-profile',{headers}).then(r=>r.json()).catch(()=>null),
+      perm.can_see_invoices?fetch(BASE_URL+'/api/portal/my-invoices',{headers}).then(r=>r.json()).catch(()=>[]):[],
+      perm.can_see_tasks?fetch(BASE_URL+'/api/portal/my-tasks',{headers}).then(r=>r.json()).catch(()=>[]):[],
+      perm.can_see_obligations?fetch(BASE_URL+'/api/obligations/upcoming?days=60&client_id='+(portalUser.client_id||''),{headers}).then(r=>r.json()).catch(()=>[]):[],
+    ]);
+    const money=v=>v!=null?(+v).toLocaleString('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:2})+' ج.م.':'—';
+    const date=d=>d?new Date(d).toLocaleDateString('ar-EG',{year:'numeric',month:'short',day:'numeric'}):'—';
+    const statusColors={unpaid:'#dc2626',partial:'#d97706',paid:'#16a34a',cancelled:'#94a3b8',overdue:'#7c3aed'};
+    const statusLabels={unpaid:'غير مدفوع',partial:'جزئي',paid:'مدفوع',cancelled:'ملغي',overdue:'متأخر',pending:'في الانتظار',open:'مفتوح',done:'منتهي',completed:'منتهي',in_progress:'جاري'};
+    const invList=Array.isArray(invoices)?invoices:[];
+    const taskList=Array.isArray(tasks)?tasks:[];
+    const oblList=Array.isArray(oblInst)?oblInst:(oblInst?.items||[]);
+    el.innerHTML=`
+    ${profile?`<div class="card" style="margin-bottom:16px;padding:16px">
+      <div style="font-weight:700;color:#1e293b;margin-bottom:4px">${escH(profile.name||'')}</div>
+      ${profile.tax_number?`<div style="font-size:12px;color:#64748b">الرقم الضريبي: ${escH(profile.tax_number)}</div>`:''}
+      ${profile.phone?`<div style="font-size:12px;color:#64748b">📞 ${escH(profile.phone)}</div>`:''}
+    </div>`:''}
+    ${perm.can_see_invoices?`
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:700;color:#1e293b;margin-bottom:14px;font-size:14px">🧾 الفواتير والتحصيلات</div>
+      ${!invList.length?'<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">لا توجد فواتير</div>':
+      `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f8fafc"><th style="padding:8px 10px;text-align:right;color:#64748b">رقم الفاتورة</th><th style="padding:8px;text-align:right;color:#64748b">التاريخ</th><th style="padding:8px;text-align:right;color:#64748b">المبلغ</th><th style="padding:8px;text-align:right;color:#64748b">المدفوع</th><th style="padding:8px;text-align:right;color:#64748b">المتبقي</th><th style="padding:8px;text-align:right;color:#64748b">الحالة</th></tr></thead>
+        <tbody>${invList.map(i=>`<tr style="border-bottom:1px solid #f1f5f9">
+          <td style="padding:8px 10px;font-weight:600">${escH(i.invoice_number||String(i.id))}</td>
+          <td style="padding:8px;color:#64748b">${date(i.issue_date)}</td>
+          <td style="padding:8px;font-weight:600">${money(i.total)}</td>
+          <td style="padding:8px;color:#16a34a;font-weight:600">${money(i.paid_amount)}</td>
+          <td style="padding:8px;color:${(i.remaining||0)>0?'#dc2626':'#16a34a'};font-weight:600">${money(i.remaining)}</td>
+          <td style="padding:8px"><span style="background:${statusColors[i.status]||'#94a3b8'}20;color:${statusColors[i.status]||'#94a3b8'};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">${statusLabels[i.status]||i.status}</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+    </div>`:''}
+    ${perm.can_see_obligations?`
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:700;color:#1e293b;margin-bottom:14px;font-size:14px">📋 الالتزامات القادمة</div>
+      ${!oblList.length?'<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">لا توجد التزامات قادمة</div>':
+      `<div style="display:flex;flex-direction:column;gap:8px">${oblList.slice(0,20).map(o=>{
+        const days=o.days_remaining;
+        const urgColor=days<0?'#dc2626':days<=3?'#f59e0b':days<=7?'#d97706':'#16a34a';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;border-right:3px solid ${urgColor}">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#1e293b">${escH(o.obligation_name||o.name_ar||o.obligation_type||'')}</div>
+            <div style="font-size:11px;color:#64748b">الاستحقاق: ${date(o.due_date)}</div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${urgColor}">${days<0?'متأخر '+Math.abs(days)+' يوم':days===0?'اليوم':days+' يوم'}</span>
+        </div>`;
+      }).join('')}</div>`}
+    </div>`:''}
+    ${perm.can_see_tasks?`
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:700;color:#1e293b;margin-bottom:14px;font-size:14px">✅ المهام</div>
+      ${!taskList.length?'<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">لا توجد مهام</div>':
+      `<div style="display:flex;flex-direction:column;gap:6px">${taskList.slice(0,20).map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px">
+        <div style="font-size:13px;font-weight:500;color:#1e293b">${escH(t.title||'')}</div>
+        <span style="font-size:11px;font-weight:700;background:#eef1fb;color:#1a2472;padding:2px 8px;border-radius:20px">${statusLabels[t.status]||t.status}</span>
+      </div>`).join('')}</div>`}
+    </div>`:''}`;
+  } catch(e){el.innerHTML=`<div style="text-align:center;padding:40px;color:#dc2626">${e.message}</div>`;}
+}
+
+function portalLogout() {
+  portalToken=null; portalUser=null;
+  localStorage.removeItem('ms_portal_token');
+  localStorage.removeItem('ms_portal_user');
+  renderPortalLogin();
+}
+
 // ── App Shell ──────────────────────────────────────
 function renderApp() {
+  if(isPortalMode()) {
+    if(portalToken) renderPortalDashboard();
+    else renderPortalLogin();
+    return;
+  }
   if (!token) { renderLogin(); return; }
   document.getElementById('app').innerHTML = `
   <div style="display:flex;min-height:100vh;background:#f1f5f9">
@@ -1365,7 +1526,7 @@ async function loadDashboard(silent=false) {
     </div>`;}
 
   try {
-    const [stats, chartData, activity, oblStats, oblUpcoming, leadsRaw, fmStats, oblAll, fmOblStats] = await Promise.all([
+    const [stats, chartData, activity, oblStats, oblUpcoming, leadsRaw, fmStats, oblAll, fmOblStats, collSummary] = await Promise.all([
       api('GET','/api/dashboard/stats'),
       api('GET','/api/dashboard/revenue-chart?months=12'),
       api('GET','/api/dashboard/recent-activity'),
@@ -1375,6 +1536,7 @@ async function loadDashboard(silent=false) {
       api('GET','/api/formation/stats').catch(()=>null),
       api('GET','/api/obligations?page_size=1000').catch(()=>({items:[]})),
       api('GET','/api/formation-obligations/stats').catch(()=>null),
+      api('GET','/api/collections/summary').catch(()=>null),
     ]);
     if(!stats) return;
 
@@ -1383,9 +1545,13 @@ async function loadDashboard(silent=false) {
 
     const months12   = Array.isArray(chartData) ? chartData : (chartData?.months||[]);
     const invStatus  = chartData?.invoice_status||{};
-    const collected  = stats.financial.total_collected||0;
-    const invoiced   = stats.financial.total_invoiced||1;
-    const outstand   = stats.financial.total_outstanding||0;
+    // Use collections summary for financial stats (more complete than invoice-only data)
+    const collTotalCollected = collSummary?.total_collected||0;
+    const collTotalAgreed    = collSummary?.total_agreed||0;
+    const collTotalRemaining = collSummary?.total_remaining||0;
+    const collected  = Math.max(stats.financial.total_collected||0, collTotalCollected);
+    const invoiced   = Math.max(stats.financial.total_invoiced||0, collTotalAgreed)||1;
+    const outstand   = collTotalRemaining||(stats.financial.total_outstanding||0);
     const overdueAmt = stats.financial.total_overdue||0;
     const collPct    = Math.min(100,Math.round(collected/invoiced*100));
     const leads      = leadsRaw?.items||[];
@@ -1511,7 +1677,7 @@ async function loadDashboard(silent=false) {
             <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:6px;font-weight:600">إجمالي المحصّل</div>
             <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
               ${trendBadge(collDiff)}
-              <span style="font-size:11px;color:rgba(255,255,255,.5)">مقارنة بالشهر الماضي</span>
+              <span style="font-size:11px;color:rgba(255,255,255,.5)">${collSummary?'هذا الشهر: '+money(collSummary.current_month_paid||0):'مقارنة بالشهر الماضي'}</span>
             </div>
           </div>
         </div>
@@ -1527,7 +1693,7 @@ async function loadDashboard(silent=false) {
             <div style="font-size:26px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.5px">${money(outstand)}</div>
             <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:6px;font-weight:600">المتبقي للتحصيل</div>
             <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-              <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">${overdueAmt>0?money(overdueAmt)+' متأخر':collPct+'% نسبة التحصيل'}</span>
+              <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.8)">${collSummary&&collSummary.current_month_due>0?'هذا الشهر: '+money(collSummary.current_month_due):overdueAmt>0?money(overdueAmt)+' متأخر':collPct+'% نسبة التحصيل'}</span>
             </div>
           </div>
         </div>
@@ -2589,6 +2755,8 @@ function renderInvoices(summary) {
                 <td><span style="background:#eef1fb;color:#1a2472;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px">${payCount} دفعة</span></td>
                 <td onclick="event.stopPropagation()"><div style="display:flex;gap:4px">
                   ${c.total_remaining>0?`<button class="btn btn-success btn-sm" onclick="showCollectionPaymentModal(${c.id},${c.total_remaining},'${escH(c.title)}',${c.collection_type==='monthly_fee'})">💵</button>`:''}
+                  <button class="btn btn-secondary btn-sm" onclick="showCollectionEditModal(${c.id})" title="تعديل">✏️</button>
+                  <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="deleteCollectionContract(${c.id},'${escH(c.title)}')" title="حذف">🗑</button>
                 </div></td>
               </tr>
               <tr id="fees-expand-${idx}" style="display:none;background:#f8fafc">
@@ -7367,7 +7535,9 @@ function renderCollections(summary) {
             <td>
               <div style="display:flex;gap:5px">
                 ${c.total_remaining>0?`<button class="btn btn-success btn-sm" onclick="showCollectionPaymentModal(${c.id},${c.total_remaining},'${escH(c.title)}',${c.collection_type==='monthly_fee'})">💵 دفعة</button>`:''}
-                <button class="btn btn-secondary btn-sm" onclick="showCollectionDetail(${c.id})">👁</button>
+                <button class="btn btn-secondary btn-sm" onclick="showCollectionDetail(${c.id})" title="تفاصيل">👁</button>
+                <button class="btn btn-secondary btn-sm" onclick="showCollectionEditModal(${c.id})" title="تعديل">✏️</button>
+                <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="deleteCollectionContract(${c.id},'${escH(c.title)}')" title="حذف">🗑</button>
               </div>
             </td>
           </tr>`).join('')}
@@ -7514,6 +7684,79 @@ async function showCollectionPaymentModal(contractId, remaining, title, isMonthl
       overlay.remove(); loadCollections(true);
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💵 تسجيل الدفعة';}
   };
+}
+
+async function showCollectionEditModal(contractId) {
+  let c;
+  try { c = await api('GET',`/api/collections/${contractId}`); } catch(e){toast(e.message,'error');return;}
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:500px">
+    <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">✏️ تعديل العقد</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="padding:18px 22px;display:flex;flex-direction:column;gap:12px">
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">وصف العقد / الخدمة *</label>
+        <input id="ceTitle" class="input" value="${escH(c.title||'')}"/></div>
+      <div class="form-row">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المبلغ المتفق عليه (ج.م.) *</label>
+          <input id="ceAgreed" class="input" type="number" value="${c.agreed_amount||0}"/></div>
+        ${c.collection_type==='monthly_fee'?`<div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المبلغ الشهري (ج.م.)</label>
+          <input id="ceMonthly" class="input" type="number" value="${c.monthly_amount||0}"/></div>`:''}
+      </div>
+      <div class="form-row">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ البداية</label>
+          <input id="ceStart" class="input" type="date" value="${c.start_date||''}"/></div>
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ النهاية</label>
+          <input id="ceEnd" class="input" type="date" value="${c.end_date||''}"/></div>
+      </div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
+        <textarea id="ceNotes" class="input" rows="2" style="resize:vertical">${escH(c.notes||'')}</textarea></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="ceActive" ${c.is_active?'checked':''} style="width:16px;height:16px;accent-color:#1a2472"/>
+        <label for="ceActive" style="font-size:13px;font-weight:600;color:#374151;cursor:pointer">عقد نشط</label>
+      </div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveColEditBtn" class="btn btn-primary">💾 حفظ التعديلات</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+  document.getElementById('saveColEditBtn').onclick=async()=>{
+    const btn=document.getElementById('saveColEditBtn');
+    const title=document.getElementById('ceTitle').value.trim();
+    if(!title){toast('وصف العقد مطلوب','error');return;}
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      const body={
+        title,
+        agreed_amount:parseFloat(document.getElementById('ceAgreed').value)||0,
+        start_date:document.getElementById('ceStart').value||null,
+        end_date:document.getElementById('ceEnd').value||null,
+        notes:document.getElementById('ceNotes').value.trim()||null,
+        is_active:document.getElementById('ceActive').checked,
+      };
+      if(c.collection_type==='monthly_fee'){
+        const mEl=document.getElementById('ceMonthly');
+        if(mEl) body.monthly_amount=parseFloat(mEl.value)||0;
+      }
+      await api('PUT',`/api/collections/${contractId}`,body);
+      toast('تم تحديث العقد بنجاح');
+      overlay.remove(); loadCollections(true);
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💾 حفظ التعديلات';}
+  };
+}
+
+async function deleteCollectionContract(contractId, title) {
+  if(!confirm(`هل تريد حذف العقد "${title}"؟\nسيتم حذف جميع الدفعات المسجلة المرتبطة به.`)) return;
+  try {
+    await api('DELETE',`/api/collections/${contractId}`);
+    toast('تم حذف العقد بنجاح');
+    loadCollections(true);
+  } catch(e){toast(e.message,'error');}
 }
 
 async function showCollectionDetail(contractId) {
@@ -9429,6 +9672,8 @@ window._switchFeesTab=function(tabId){_feesTab=tabId;renderInvoices(window._fees
 window.showCollectionModal=showCollectionModal;
 window.showCollectionPaymentModal=showCollectionPaymentModal;
 window.showCollectionDetail=showCollectionDetail;
+window.showCollectionEditModal=showCollectionEditModal;
+window.deleteCollectionContract=deleteCollectionContract;
 window.renderCollections=renderCollections;
 window.switchCollTab=function(tab){collectionsTab=tab;renderCollections();};
 // import
