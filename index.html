@@ -119,20 +119,70 @@
       /* Stat cards: 2 columns */
       .stats-grid{grid-template-columns:1fr 1fr!important}
       /* Page padding */
-      #main{padding:16px!important}
+      #main{padding:12px!important}
       /* Modal full width */
       .modal{max-width:100%!important;margin:0;border-radius:14px 14px 0 0;position:fixed;bottom:0;right:0;left:0;max-height:92vh}
       .modal-overlay{align-items:flex-end}
       /* Topbar */
       .topbar-date{display:none}
+      .topbar-extra-btn{display:none!important}
+      #globalSearchWrap .search-placeholder-text{display:none}
       /* Login card */
       .login-card{margin:12px!important;padding:24px!important}
+
+      /* ── Dashboard responsive grids ── */
+      .dash-kpi-grid{grid-template-columns:1fr 1fr!important}
+      .dash-obl-breakdown{grid-template-columns:repeat(3,1fr)!important}
+      .dash-charts-row{grid-template-columns:1fr!important}
+      .dash-2col{grid-template-columns:1fr!important}
+      .dash-formation-pipeline{grid-template-columns:repeat(5,1fr)!important;overflow-x:auto}
+
+      /* KPI card: smaller font on mobile */
+      .ea-kpi .kpi-number{font-size:26px!important;letter-spacing:-.5px!important}
+      .ea-kpi{padding:16px 14px!important}
+
+      /* Charts: scrollable wrapper */
+      .ea-white-card{overflow-x:auto}
+
+      /* Topbar: compact on mobile */
+      #topbar-wrap{padding:10px 12px!important}
+      #pageTitle{font-size:15px!important}
+      /* Search: icon-only on mobile */
+      #globalSearchWrap>div{padding:0 10px!important;min-width:38px;width:38px}
+      .search-placeholder-text{display:none!important}
+
+      /* Form rows */
+      .form-row{grid-template-columns:1fr!important}
+      .form-group{margin-bottom:12px}
+
+      /* Leads table mobile fix */
+      .leads-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
     }
 
     @media(max-width:480px){
       .stats-grid{grid-template-columns:1fr!important}
+      .dash-kpi-grid{grid-template-columns:1fr!important}
+      .dash-obl-breakdown{grid-template-columns:repeat(2,1fr)!important}
+      .dash-formation-pipeline{grid-template-columns:repeat(3,1fr)!important}
       thead th{font-size:10px;padding:8px}
       tbody td{font-size:12px;padding:8px}
+      #main{padding:8px!important}
+    }
+
+    /* ── Global responsive grids for all pages ── */
+    @media(max-width:600px){
+      /* Any 4+ column grids become 2 columns on mobile */
+      #main [style*="grid-template-columns:repeat(4"]{grid-template-columns:repeat(2,1fr)!important}
+      #main [style*="grid-template-columns:repeat(5"]{grid-template-columns:repeat(2,1fr)!important}
+      #main [style*="grid-template-columns:repeat(10"]{grid-template-columns:repeat(3,1fr)!important;overflow-x:auto}
+      /* 3-column grids become 2 */
+      #main [style*="grid-template-columns:repeat(3"]{grid-template-columns:repeat(2,1fr)!important}
+      /* Multi-fr side-by-side layouts stack */
+      #main [style*="grid-template-columns:3fr"]{grid-template-columns:1fr!important}
+      #main [style*="grid-template-columns:2fr 1fr"]{grid-template-columns:1fr!important}
+      #main [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
+      /* Inputs full-width in forms */
+      .form-row,[class*="form-grid"]{grid-template-columns:1fr!important}
     }
 
     /* ─── Bottom Navigation Bar (Mobile only) ─── */
@@ -280,6 +330,31 @@
       /* لا تقطع الصفوف */
       tr { break-inside:avoid; page-break-inside:avoid; }
     }
+  </style>
+  <style>
+    /* منع Browser Autofill تماماً على جداول الـ Leads */
+    #leadsGrid input:-webkit-autofill,
+    #leadsGrid input:-webkit-autofill:hover,
+    #leadsGrid input:-webkit-autofill:focus,
+    #leadsGrid input:-webkit-autofill:active,
+    [data-field]:-webkit-autofill,
+    [data-expand-field]:-webkit-autofill {
+      -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+      -webkit-text-fill-color: #0f172a !important;
+      background-color: #ffffff !important;
+      border-color: transparent !important;
+      outline: none !important;
+    }
+    /* إخفاء autofill dropdown icon */
+    #leadsGrid input::-webkit-contacts-auto-fill-button,
+    #leadsGrid input::-webkit-credentials-auto-fill-button,
+    #leadsGrid input::-webkit-strong-password-auto-fill-button { display:none !important; visibility:hidden !important; pointer-events:none !important; }
+    /* منع أي outline زيادة على الـ leads inputs */
+    #leadsGrid input { outline: none !important; }
+    /* إخفاء أسهم spinner على number inputs في Safari/Chrome */
+    #leadsGrid input[type="number"]::-webkit-inner-spin-button,
+    #leadsGrid input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
+    #leadsGrid input[type="number"] { -moz-appearance: textfield !important; }
   </style>
 </head>
 <body>
@@ -756,7 +831,8 @@ const navItems = [
   {id:'invoices'     ,icon:'💰',label:'الأتعاب والتحصيلات'},
   {id:'tax'          ,icon:'🧾',label:'الإقرارات'},
   {id:'tasks'        ,icon:'✅',label:'المهام'},
-  {id:'obligations'  ,icon:'🔔',label:'الالتزامات الضريبية'},
+  {id:'obligations'         ,icon:'🧾',label:'الالتزامات الضريبية'},
+  {id:'formation_obligations',icon:'🏗️',label:'التزامات التأسيس'},
   {id:'documents'    ,icon:'📁',label:'الأرشيف'},
   {id:'payroll'      ,icon:'👔',label:'الرواتب والموظفين'},
   {id:'settlements'  ,icon:'👷',label:'تسويات الموظفين'},
@@ -770,7 +846,7 @@ const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
   {label:'CRM & المبيعات', items:['clients','leads','establishment']},
   {label:'المالية', items:['invoices','tax','obligations']},
-  {label:'التشغيل', items:['tasks','documents']},
+  {label:'التشغيل', items:['tasks','formation_obligations','documents']},
   {label:'الموارد البشرية', items:['payroll','settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
 ];
@@ -847,18 +923,18 @@ function renderApp() {
           <div id="globalSearchWrap" style="position:relative">
             <div style="display:flex;align-items:center;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;padding:0 12px;gap:8px;height:38px;cursor:text" onclick="openGlobalSearch()" title="بحث عالمي (Ctrl+K)">
               <span style="font-size:14px;color:#94a3b8">🔍</span>
-              <span id="searchPlaceholder" style="font-size:12px;color:#94a3b8;white-space:nowrap">بحث... (Ctrl+K)</span>
+              <span id="searchPlaceholder" class="search-placeholder-text" style="font-size:12px;color:#94a3b8;white-space:nowrap">بحث... (Ctrl+K)</span>
             </div>
           </div>
           <!-- Language toggle -->
-          <button id="langToggleBtn" onclick="toggleLanguage()" title="تبديل اللغة / Switch Language" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;padding:0 10px;height:38px;cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:#374151;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
+          <button id="langToggleBtn" onclick="toggleLanguage()" title="تبديل اللغة / Switch Language" class="topbar-extra-btn" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;padding:0 10px;height:38px;cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:#374151;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
             <span id="langToggleIcon">🌐</span>
             <span id="langToggleLabel">EN</span>
           </button>
           <!-- Print button -->
-          <button onclick="printCurrentPage()" title="طباعة الصفحة الحالية" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">🖨️</button>
+          <button onclick="printCurrentPage()" title="طباعة الصفحة الحالية" class="topbar-extra-btn" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">🖨️</button>
           <!-- Quick compose email button -->
-          <button onclick="navigate('mail')" title="إرسال بريد إلكتروني" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">📧</button>
+          <button onclick="navigate('mail')" title="إرسال بريد إلكتروني" class="topbar-extra-btn" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">📧</button>
           <!-- Notification Bell -->
           <div id="notifBellWrap" style="position:relative">
             <button id="notifBellBtn" onclick="toggleNotifDropdown()" title="الإشعارات" style="position:relative;background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">
@@ -1189,7 +1265,7 @@ async function _checkConn() {
       toast('✅ تم استعادة الاتصال بالخادم');
       if(window._connMonitorNormal) window._connMonitorNormal();
       // Refresh current page silently
-      const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,payroll:loadPayroll,client_portal:loadClientPortal,permissions:loadPermissions};
+      const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,payroll:loadPayroll,client_portal:loadClientPortal,permissions:loadPermissions};
       if(pages[currentPage]) try{ pages[currentPage](); }catch(e){}
     }
 
@@ -1256,13 +1332,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions};
   if(pages[page]) pages[page]();
 }
 
@@ -1281,7 +1357,7 @@ async function loadDashboard(silent=false) {
     </div>`;}
 
   try {
-    const [stats, chartData, activity, oblStats, oblUpcoming, leadsRaw, fmStats, oblAll] = await Promise.all([
+    const [stats, chartData, activity, oblStats, oblUpcoming, leadsRaw, fmStats, oblAll, fmOblStats] = await Promise.all([
       api('GET','/api/dashboard/stats'),
       api('GET','/api/dashboard/revenue-chart?months=12'),
       api('GET','/api/dashboard/recent-activity'),
@@ -1290,6 +1366,7 @@ async function loadDashboard(silent=false) {
       api('GET','/api/leads?page_size=500').catch(()=>({items:[]})),
       api('GET','/api/formation/stats').catch(()=>null),
       api('GET','/api/obligations?page_size=1000').catch(()=>({items:[]})),
+      api('GET','/api/formation-obligations/stats').catch(()=>null),
     ]);
     if(!stats) return;
 
@@ -1355,13 +1432,33 @@ async function loadDashboard(silent=false) {
       .ea-white-card{background:#fff;border-radius:18px;border:1px solid #e8edf3;box-shadow:0 2px 12px rgba(0,0,0,.05)}
       .ea-label{font-size:11px;font-weight:800;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px}
       .ea-label::after{content:'';flex:1;height:1px;background:linear-gradient(to left,transparent,#e2e8f0)}
+      /* Dashboard mobile */
+      @media(max-width:768px){
+        .dash-kpi-grid{grid-template-columns:1fr 1fr!important;gap:10px!important}
+        .dash-obl-breakdown{grid-template-columns:repeat(3,1fr)!important;gap:8px!important}
+        .dash-charts-row{grid-template-columns:1fr!important}
+        .dash-2col{grid-template-columns:1fr!important}
+        .dash-formation-pipeline{grid-template-columns:repeat(5,1fr)!important;overflow-x:auto}
+        .ea-kpi{padding:14px 12px!important}
+        .ea-in{margin-bottom:0}
+        .rev-stats-bar{flex-wrap:wrap!important;gap:8px!important}
+        .rev-stats-bar>*{flex:1 1 40%!important;min-width:0}
+        .rev-stats-bar .bar-divider{display:none!important}
+      }
+      @media(max-width:480px){
+        .dash-kpi-grid{grid-template-columns:1fr!important}
+        .dash-obl-breakdown{grid-template-columns:repeat(2,1fr)!important}
+        .dash-formation-pipeline{grid-template-columns:repeat(3,1fr)!important}
+        .ea-kpi .big-num{font-size:28px!important}
+      }
     </style>
 
     <!-- ══ SECTION 1 — EXECUTIVE SUMMARY ══ -->
     <div class="ea-in" style="animation-delay:.02s">
       <div class="ea-label">Executive Summary</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+      <div class="dash-kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
 
+        <!-- kpi-grid start (dash-kpi-grid injected above) -->
         <!-- Clients -->
         <div class="ea-kpi" onclick="navigate('clients')"
           style="background:linear-gradient(135deg,#0f1f6b 0%,#1a2472 60%,#2540c0 100%)">
@@ -1370,7 +1467,7 @@ async function loadDashboard(silent=false) {
               <div style="width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px">👥</div>
               ${sparkPath(clientVals)}
             </div>
-            <div style="font-size:38px;font-weight:900;color:#fff;line-height:1;letter-spacing:-1.5px">${stats.clients.active||stats.clients.total}</div>
+            <div class="big-num" style="font-size:38px;font-weight:900;color:#fff;line-height:1;letter-spacing:-1.5px">${stats.clients.active||stats.clients.total}</div>
             <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:6px;font-weight:600">إجمالي العملاء</div>
             <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
               <span style="font-size:11px;color:rgba(255,255,255,.5)">${stats.clients.active} نشط</span>
@@ -1386,7 +1483,7 @@ async function loadDashboard(silent=false) {
               <div style="width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px">✨</div>
               ${sparkPath(clientVals,'rgba(255,255,255,.5)')}
             </div>
-            <div style="font-size:38px;font-weight:900;color:#fff;line-height:1;letter-spacing:-1.5px">${stats.clients.new_this_month}</div>
+            <div class="big-num" style="font-size:38px;font-weight:900;color:#fff;line-height:1;letter-spacing:-1.5px">${stats.clients.new_this_month}</div>
             <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:6px;font-weight:600">عميل جديد هذا الشهر</div>
             <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
               <span style="font-size:11px;color:rgba(255,255,255,.5)">${leads.length} محتمل في الانتظار</span>
@@ -1439,7 +1536,7 @@ async function loadDashboard(silent=false) {
         </div>
         <button onclick="navigate('obligations')" style="background:#eef1fb;border:1px solid #c7d2fe;color:#1a2472;font-size:11px;font-weight:700;padding:5px 14px;border-radius:10px;cursor:pointer;font-family:inherit">إدارة الالتزامات ←</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+      <div class="dash-obl-breakdown" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
         ${[
           {label:'إجمالي العملاء',val:_totalClients,icon:'👥',color:'#1a2472',bg:'#eef1fb',border:'#c7d2fe',page:'clients'},
           {label:'ض ق م شهري',val:_vatClients,icon:'🧾',color:'#0369a1',bg:'#e0f2fe',border:'#bae6fd',page:'obligations'},
@@ -1462,7 +1559,7 @@ async function loadDashboard(silent=false) {
     </div>
 
     <!-- ══ SECTION 2 — REVENUE + COLLECTIONS ══ -->
-    <div class="ea-in" style="animation-delay:.07s;display:grid;grid-template-columns:3fr 2fr;gap:16px">
+    <div class="ea-in dash-charts-row" style="animation-delay:.07s;display:grid;grid-template-columns:3fr 2fr;gap:16px">
 
       <!-- Revenue Chart -->
       <div class="ea-white-card" style="padding:24px">
@@ -1478,7 +1575,7 @@ async function loadDashboard(silent=false) {
               </span>`).join('')}
           </div>
         </div>
-        <div style="display:flex;gap:24px;padding:12px 16px;background:#f8fafc;border-radius:12px;margin-bottom:16px">
+        <div class="rev-stats-bar" style="display:flex;gap:24px;padding:12px 16px;background:#f8fafc;border-radius:12px;margin-bottom:16px">
           ${[
             {l:'إجمالي الإيرادات',v:money(invoiced),c:'#1a2472'},
             {l:'إجمالي المحصّل',v:money(collected),c:'#10b981'},
@@ -1488,7 +1585,7 @@ async function loadDashboard(silent=false) {
             <div style="flex:1;text-align:center">
               <div style="font-size:15px;font-weight:900;color:${x.c}">${x.v}</div>
               <div style="font-size:10px;color:#94a3b8;font-weight:600;margin-top:3px">${x.l}</div>
-            </div>`).join('<div style="width:1px;background:#e2e8f0"></div>')}
+            </div>`).join('<div class="bar-divider" style="width:1px;background:#e2e8f0"></div>')}
         </div>
         <canvas id="revChart" style="max-height:200px"></canvas>
       </div>
@@ -1521,7 +1618,7 @@ async function loadDashboard(silent=false) {
     </div>
 
     <!-- ══ SECTION 3 — SALES FUNNEL + CLIENT GROWTH ══ -->
-    <div class="ea-in" style="animation-delay:.1s;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="ea-in dash-2col" style="animation-delay:.1s;display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
       <!-- Sales Funnel -->
       <div class="ea-white-card" style="padding:24px">
@@ -1586,7 +1683,7 @@ async function loadDashboard(silent=false) {
         </div>
         <button onclick="navigate('establishment')" style="background:#eef1fb;border:1px solid #c7d2fe;color:#1a2472;font-size:12px;font-weight:700;padding:7px 16px;border-radius:10px;cursor:pointer;font-family:inherit">عرض الكل ←</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:8px;margin-bottom:14px">
+      <div class="dash-formation-pipeline" style="display:grid;grid-template-columns:repeat(10,1fr);gap:8px;margin-bottom:14px">
         ${[
           {k:'name_reservation',l:'حجز الاسم',i:'📝',c:'#6366f1',g:'linear-gradient(135deg,#4338ca,#6366f1)'},
           {k:'name_approved',l:'قبول الاسم',i:'✅',c:'#8b5cf6',g:'linear-gradient(135deg,#6d28d9,#8b5cf6)'},
@@ -1630,7 +1727,7 @@ async function loadDashboard(silent=false) {
     </div>`:''}
 
     <!-- ══ SECTION 5 — ACTIVITY + SMART ALERTS ══ -->
-    <div class="ea-in" style="animation-delay:.15s;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="ea-in dash-2col" style="animation-delay:.15s;display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
       <!-- Activity -->
       <div class="ea-white-card" style="padding:24px">
@@ -1662,7 +1759,37 @@ async function loadDashboard(silent=false) {
         </div>
       </div>
       <div id="dashObl" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px"></div>
-    </div>`;
+    </div>
+
+    <!-- ══ SECTION 7 — FORMATION OBLIGATIONS ══ -->
+    ${fmOblStats&&(fmOblStats.total_open>0||fmOblStats.completed>0)?`
+    <div class="ea-in ea-white-card" style="animation-delay:.2s;padding:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#0f172a">🏗️ التزامات التأسيس</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:3px">تقدم ملفات التأسيس النشطة</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${fmOblStats.late>0?`<span style="background:linear-gradient(135deg,#dc2626,#f87171);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px">${fmOblStats.late} متأخر</span>`:''}
+          <span style="background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px">${fmOblStats.total_open} مفتوح</span>
+          <button onclick="navigate('formation_obligations')" style="background:#eef1fb;border:1px solid #c7d2fe;color:#1a2472;font-size:11px;font-weight:700;padding:5px 14px;border-radius:10px;cursor:pointer;font-family:inherit">عرض الكل ←</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${(fmOblStats.cases_with_progress||[]).slice(0,5).map(cp=>`
+        <div onclick="navigate('formation_obligations')" style="padding:12px 16px;border-radius:12px;background:#f8fafc;border:1px solid #f1f5f9;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:13px;font-weight:700;color:#0f172a">${escH(cp.company_name||'')}</span>
+            <span style="font-size:12px;font-weight:800;color:${cp.progress_pct>=80?'#10b981':cp.progress_pct>=40?'#f59e0b':'#64748b'}">${cp.progress_pct}%</span>
+          </div>
+          <div style="height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:${cp.progress_pct}%;background:${cp.progress_pct>=80?'#10b981':cp.progress_pct>=40?'#f59e0b':'#6366f1'};border-radius:99px;transition:width .3s"></div>
+          </div>
+          <div style="font-size:10.5px;color:#94a3b8;margin-top:6px">${cp.completed_steps}/${cp.total_steps} خطوة${cp.remaining&&cp.remaining.length?` — متبقي: ${cp.remaining.slice(0,2).join(' • ')}${cp.remaining.length>2?` +${cp.remaining.length-2}`:''}`:''}</div>
+        </div>`).join('')}
+      </div>
+    </div>`:''}
+`;
 
     // ══ Charts ════════════════════════════════════════════
     // Revenue Chart
@@ -4488,15 +4615,34 @@ const COMPANY_TYPE_FULL={'':'',llc:'شركة ذات مسؤولية محدودة'
 function escH(v){if(v==null)return '';return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 let leadsData=[], leadsSearch='', leadsStatusFilter='', leadsUsersData=[], _leadNewSaving=false;
+let leadsDateFilter='all', leadsDateFrom='', leadsDateTo='';
+let _newRowCounter=0; // counter for unique temp IDs for new rows
+
+const LEADS_DATE_LABELS={
+  today:'اليوم', yesterday:'أمس', this_week:'هذا الأسبوع', last_week:'الأسبوع الماضي',
+  this_month:'هذا الشهر', last_month:'الشهر الماضي', this_year:'هذه السنة',
+  last_year:'السنة الماضية', all:'جميع البيانات', custom:'تاريخ مخصص'
+};
 
 async function loadLeads(silent=false) {
   try {
-    const p=new URLSearchParams({limit:'200'});
+    const p=new URLSearchParams({limit:'10000'});
     if(leadsSearch) p.append('q',leadsSearch);
     if(leadsStatusFilter) p.append('status',leadsStatusFilter);
+    if(leadsDateFilter && leadsDateFilter!=='custom') p.append('date_filter',leadsDateFilter);
+    if(leadsDateFilter==='custom'){
+      if(leadsDateFrom) p.append('date_from',leadsDateFrom);
+      if(leadsDateTo)   p.append('date_to',leadsDateTo+'T23:59:59');
+    }
+    const statsP=new URLSearchParams();
+    if(leadsDateFilter && leadsDateFilter!=='custom') statsP.append('date_filter',leadsDateFilter);
+    if(leadsDateFilter==='custom'){
+      if(leadsDateFrom) statsP.append('date_from',leadsDateFrom);
+      if(leadsDateTo)   statsP.append('date_to',leadsDateTo+'T23:59:59');
+    }
     const [data,stats,users]=await Promise.all([
       api('GET',`/api/leads?${p}`),
-      api('GET','/api/leads/stats'),
+      api('GET',`/api/leads/stats?${statsP}`),
       api('GET','/api/users'),
     ]);
     if(!data) return;
@@ -4510,13 +4656,27 @@ function renderLeads(stats) {
   const main=document.getElementById('main');
   main.className='page';
   main.innerHTML=`
-  ${stats?`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px">
-    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#1a2472">${stats.total}</div><div style="font-size:12px;color:#64748b;margin-top:3px">الإجمالي 🎯</div></div>
-    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#5b8ec4">${stats.new}</div><div style="font-size:12px;color:#64748b;margin-top:3px">جديد</div></div>
-    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#d97706">${stats.in_progress}</div><div style="font-size:12px;color:#64748b;margin-top:3px">قيد المتابعة</div></div>
-    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#16a34a">${stats.converted}</div><div style="font-size:12px;color:#64748b;margin-top:3px">تحوّل لعميل ✅</div></div>
-    <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#dc2626">${stats.lost}</div><div style="font-size:12px;color:#64748b;margin-top:3px">خسارة</div></div>
+  ${stats?`<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:18px">
+    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='';loadLeads()"><div style="font-size:22px;font-weight:800;color:#1a2472">${stats.total}</div><div style="font-size:11px;color:#64748b;margin-top:3px">الإجمالي 🎯</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='new';loadLeads()"><div style="font-size:22px;font-weight:800;color:#5b8ec4">${stats.new}</div><div style="font-size:11px;color:#64748b;margin-top:3px">جديد</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='interested';loadLeads()"><div style="font-size:22px;font-weight:800;color:#7c3aed">${stats.interested||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">مهتم ⭐</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='quotation_sent';loadLeads()"><div style="font-size:22px;font-weight:800;color:#f97316">${stats.quotation||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">عرض سعر 📄</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='not_answered';loadLeads()"><div style="font-size:22px;font-weight:800;color:#94a3b8">${stats.not_answered||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">لم يرد 📵</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='accounting_client';loadLeads()"><div style="font-size:22px;font-weight:800;color:#16a34a">${stats.converted}</div><div style="font-size:11px;color:#64748b;margin-top:3px">تحوّل لعميل ✅</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='lost';loadLeads()"><div style="font-size:22px;font-weight:800;color:#dc2626">${stats.lost}</div><div style="font-size:11px;color:#64748b;margin-top:3px">خسارة ❌</div></div>
   </div>`:''}
+  <!-- Date filter bar -->
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+    ${[['all','الكل'],['today','اليوم'],['yesterday','أمس'],['this_week','هذا الأسبوع'],['this_month','هذا الشهر'],['last_month','الشهر الماضي'],['this_year','هذه السنة'],['custom','📅 مخصص']].map(([k,lbl])=>`
+      <button onclick="leadsDateFilter='${k}';loadLeads()" style="padding:4px 12px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${leadsDateFilter===k?'#1a2472':'#e2e8f0'};background:${leadsDateFilter===k?'#1a2472':'#f8fafc'};color:${leadsDateFilter===k?'#fff':'#64748b'}">${lbl}</button>
+    `).join('')}
+    <div id="leadsCustomRange" style="display:${leadsDateFilter==='custom'?'flex':'none'};align-items:center;gap:6px">
+      <input type="date" class="input" style="width:140px;font-size:12px" value="${leadsDateFrom}" onchange="leadsDateFrom=this.value;loadLeads()"/>
+      <span style="color:#94a3b8;font-size:12px">→</span>
+      <input type="date" class="input" style="width:140px;font-size:12px" value="${leadsDateTo}" onchange="leadsDateTo=this.value;loadLeads()"/>
+    </div>
+  </div>
+  <!-- Search & status & actions bar -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input id="leadsSearchInput" class="input" style="width:200px" placeholder="🔍 بحث بالاسم أو الهاتف..." value="${escH(leadsSearch)}"/>
@@ -4524,7 +4684,7 @@ function renderLeads(stats) {
         <option value="">كل الحالات</option>
         ${Object.entries(LEAD_STATUS_LABEL).map(([v,l])=>`<option value="${v}" ${leadsStatusFilter===v?'selected':''}>${l}</option>`).join('')}
       </select>
-      <span style="font-size:13px;color:#94a3b8;font-weight:500">${leadsData.length} عميل</span>
+      <span style="font-size:13px;color:#94a3b8;font-weight:500">${leadsData.length} عميل — <span style="color:#1a2472;font-weight:700">${LEADS_DATE_LABELS[leadsDateFilter]||'مخصص'}</span></span>
     </div>
     <button class="btn btn-primary" onclick="addLeadRow()">+ إضافة صف</button>
   </div>
@@ -4545,13 +4705,13 @@ function renderLeads(stats) {
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:132px">حالة العميل</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">موظف مسؤول</th>
           <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:150px">ملاحظات</th>
-          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:90px">إجراءات</th>
+          <th style="padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:106px">إجراءات</th>
           <th style="padding:10px 6px;width:34px"></th>
         </tr>
       </thead>
       <tbody id="leadsGridBody">
         ${leadsData.map(l=>_buildLeadRow(l)).join('')}
-        ${leadsData.length===0?`<tr><td colspan="15" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:14px">لا يوجد عملاء محتملين — اضغط "+ إضافة صف"</div></td></tr>`:''}
+        ${leadsData.length===0?`<tr><td colspan="15" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:15px;font-weight:600;color:#475569;margin-bottom:6px">لا يوجد عملاء في هذه الفترة</div><div style="font-size:13px;color:#94a3b8">${leadsDateFilter!=='all'?`الفلتر الحالي: <b>${LEADS_DATE_LABELS[leadsDateFilter]||'مخصص'}</b> — جرّب <span onclick="leadsDateFilter='all';loadLeads()" style="color:#1a2472;cursor:pointer;text-decoration:underline">عرض جميع البيانات</span>`:'اضغط "+ إضافة صف" لإضافة عميل جديد'}</div></td></tr>`:''}
       </tbody>
     </table>
   </div>`;
@@ -4621,16 +4781,12 @@ function _initLeadsColResize() {
 
 // ── LEADS: Keyboard nav — Enter/Tab on last cell adds a new row ───────────────
 function _addLeadRowWhenReady() {
-  // Poll until the current "new" row finishes saving, then add a fresh empty row
+  // Poll until the current "new" row finishes saving, then add a fresh row
   const start = Date.now();
   function poll() {
     const saving = document.querySelector('#leadsGridBody tr[data-id="new"]');
-    if (!saving) {
-      addLeadRow();
-    } else if (Date.now() - start < 4000) {
-      setTimeout(poll, 80);
-    }
-    // else: timed out (save failed / no name) — don't add
+    if (!saving) { addLeadRow(); }
+    else if (Date.now() - start < 3000) { setTimeout(poll, 80); }
   }
   poll();
 }
@@ -4672,7 +4828,7 @@ function _initLeadsKeyboard() {
 }
 
 function _cellInput(field,val,extra=''){
-  return `<input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="${field}" value="${escH(val||'')}" ${extra} onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)"/>`;
+  return `<input autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="${field}" value="${escH(val||'')}" ${extra} onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)"/>`;
 }
 function _cellSelect(field,optsHtml,extraStyle=''){
   return `<select style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:5px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;cursor:pointer;${extraStyle}" data-field="${field}" onchange="saveLeadCell(this)">${optsHtml}</select>`;
@@ -4697,18 +4853,18 @@ function _buildLeadRow(l){
     <td style="padding:4px 10px;white-space:nowrap"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
     <td style="padding:3px 6px">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
     <td style="padding:3px 6px">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr"')}</td>
-    <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;direction:ltr;transition:border-color .15s,background .15s" data-field="email" type="email" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:3px 6px"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;direction:ltr;transition:border-color .15s,background .15s" data-field="email" type="text" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
     <td style="padding:3px 6px">${_cellInput('company_activities',l.company_activities,'placeholder="تجارة، خدمات..."')}</td>
     <td style="padding:3px 6px">${ctSelect}</td>
-    <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:12px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="شركة ذات مسؤولية محدودة..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
-    <td style="padding:3px 6px"><input style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;text-align:left;direction:ltr" data-field="quote_total_fees" type="number" value="${escH(String(totalFeesVal))}" placeholder="0" onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:3px 6px"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:12px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="شركة ذات مسؤولية محدودة..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:3px 6px"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;font-size:13px;font-family:inherit;background:transparent;outline:none;text-align:left;direction:ltr" data-field="quote_total_fees" type="number" value="${escH(String(totalFeesVal))}" placeholder="0" onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
     <td style="padding:3px 6px">${_cellInput('estimated_capital',l.estimated_capital!=null?l.estimated_capital:'','type="number" placeholder="0" style="direction:ltr"')}</td>
     <td style="padding:3px 6px">${_cellInput('quote_location',l.quote_location||'','placeholder="القاهرة، شارة..."')}</td>
     <td style="padding:3px 6px">${_cellSelect('status',statOpts,`background:${sc}18;color:${sc};font-weight:700;border-color:${sc}44`)}</td>
     <td style="padding:3px 6px">${_cellSelect('assigned_to',usersOpts)}</td>
     <td style="padding:3px 6px">${_cellInput('notes',l.notes,'placeholder="ملاحظات..."')}</td>
-    <td style="padding:3px 6px;text-align:center">
-      ${l.id ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px">
+    <td style="padding:3px 6px;text-align:center;white-space:nowrap">
+      ${l.id ? `<div style="display:flex;align-items:center;justify-content:center;gap:3px;flex-wrap:nowrap">
         <button onclick="toggleLeadExpand(${l.id})" id="expand-btn-${l.id}"
           style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s"
           title="توسيع — عرض السعر والإرسال">▾</button>
@@ -4718,9 +4874,12 @@ function _buildLeadRow(l){
         <button onclick="sendLeadEmailDirect(${l.id})"
           style="background:#1a2472;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center"
           title="بريد إلكتروني">✉️</button>
-      </div>` : '—'}
+      </div>` : `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+        <span style="font-size:9px;color:#94a3b8;line-height:1.2">اكتب الاسم للحفظ 💾</span>
+        <button onclick="saveLeadAsNotAnswered(this)" style="background:#6b7280;color:white;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='#4b5563'" onmouseout="this.style.background='#6b7280'" title="احفظ برقم لم يرد وأرسل واتساب">📵 لم يرد</button>
+      </div>`}
     </td>
-    <td style="padding:3px 6px;text-align:center"><button onclick="deleteLeadRow(${l.id||0})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px" title="حذف" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>
+    <td style="padding:3px 6px;text-align:center"><button onclick="${l.id?`deleteLeadRow(${l.id})`:`this.closest('tr[data-id]').remove()`}" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px" title="حذف" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'">✕</button></td>
   </tr>`;
 
   const expandRow = l.id ? `<tr id="${expandId}" style="display:none"><td colspan="15" style="padding:0;border-bottom:2px solid #c7d3ef">${_buildLeadExpandPanel(l)}</td></tr>` : '';
@@ -4781,6 +4940,7 @@ function _getLeadExpandState(l) {
 function _buildLeadExpandPanel(l) {
   const st = _getLeadExpandState(l);
   const inp = (field, val, extra='') => `<input
+    autocomplete="off" autocorrect="off" spellcheck="false"
     style="width:100%;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px;font-size:12.5px;font-family:inherit;outline:none;transition:border-color .15s"
     data-expand-id="${l.id}" data-expand-field="${field}" value="${escH(String(val||''))}" ${extra}
     onfocus="this.style.borderColor='#1a2472'"
@@ -4808,7 +4968,7 @@ function _buildLeadExpandPanel(l) {
     <div style="display:grid;grid-template-columns:repeat(3,1fr) repeat(2,1fr);gap:10px;margin-bottom:16px">
       <div>
         <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">البريد الإلكتروني</div>
-        ${inp('email', st.email, 'type="email" placeholder="example@email.com" style="direction:ltr"')}
+        ${inp('email', st.email, 'type="text" placeholder="example@email.com" style="direction:ltr"')}
       </div>
       <div>
         <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">الكيان القانوني</div>
@@ -4830,14 +4990,14 @@ function _buildLeadExpandPanel(l) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <div>
         <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">ملاحظات إضافية</div>
-        <textarea data-expand-id="${l.id}" data-expand-field="notes2"
+        <textarea autocomplete="off" spellcheck="false" data-expand-id="${l.id}" data-expand-field="notes2"
           style="width:100%;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:56px"
           placeholder="ملاحظات تضاف لنهاية الرسالة..."
           onfocus="this.style.borderColor='#1a2472'" onblur="this.style.borderColor='#e2e8f0';_saveLeadExpandField(${l.id},'notes2',this.value)">${escH(st.notes2)}</textarea>
       </div>
       <div>
         <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px">تفاصيل إضافية</div>
-        <textarea data-expand-id="${l.id}" data-expand-field="extra"
+        <textarea autocomplete="off" spellcheck="false" data-expand-id="${l.id}" data-expand-field="extra"
           style="width:100%;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:56px"
           placeholder="أي تفاصيل أخرى..."
           onfocus="this.style.borderColor='#1a2472'" onblur="this.style.borderColor='#e2e8f0';_saveLeadExpandField(${l.id},'extra',this.value)">${escH(st.extra)}</textarea>
@@ -5024,11 +5184,11 @@ async function saveLeadCell(el) {
   else if(el.type==='number') value=el.value!==''?parseFloat(el.value):null;
   else value=el.value||null;
 
-  if(rowId==='new'){
+  if(rowId==='new' || rowId.startsWith('new-')){
     const nameEl=row.querySelector('[data-field="name"]');
     if(!nameEl||!nameEl.value.trim()) return;
-    if(_leadNewSaving) return;
-    _leadNewSaving=true;
+    if(row._saving) return;
+    row._saving=true;
     const body={status:'new'};
     row.querySelectorAll('[data-field]').forEach(inp=>{
       const f=inp.dataset.field;
@@ -5038,16 +5198,34 @@ async function saveLeadCell(el) {
     });
     try {
       const result=await api('POST','/api/leads',body);
-      _leadNewSaving=false;
+      row._saving=false;
       if(!result) return;
       leadsData.push(result);
-      // Replace single new-row with full two-row structure (main + expand)
-      const tmp2=document.createElement('table');
-      tmp2.innerHTML=`<tbody>${_buildLeadRow(result)}</tbody>`;
-      const newRows=tmp2.querySelectorAll('tr');
-      row.replaceWith(...newRows);
-      toast('تم إضافة العميل المحتمل');
-    } catch(err){_leadNewSaving=false;toast(err.message,'error');}
+      // ── In-place upgrade: keep existing inputs intact, just update IDs and state ──
+      row.dataset.id = result.id; // assign real DB id — no HTML rebuild
+      // Update code badge
+      const codeBadge=row.querySelector('td:first-child span');
+      if(codeBadge) codeBadge.textContent=result.code||'';
+      // Update row border to normal (was blue for new rows)
+      row.style.borderBottom='1px solid #f1f5f9';
+      // Replace "اكتب الاسم" placeholder with real action buttons
+      const actionTd=row.querySelector('td:nth-last-child(2)');
+      if(actionTd) actionTd.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;gap:3px;flex-wrap:nowrap">
+        <button onclick="toggleLeadExpand(${result.id})" id="expand-btn-${result.id}" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s" title="توسيع">▾</button>
+        <button onclick="sendLeadWhatsApp(${result.id})" style="background:#25d366;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center" title="واتساب">📱</button>
+        <button onclick="sendLeadEmailDirect(${result.id})" style="background:#1a2472;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="بريد إلكتروني">✉️</button>
+      </div>`;
+      // Update delete button to use real id
+      const delBtn=row.querySelector('td:last-child button');
+      if(delBtn) delBtn.setAttribute('onclick',`deleteLeadRow(${result.id})`);
+      // Silently append expand panel row (hidden) after this row
+      const expTmp=document.createElement('table');
+      expTmp.innerHTML=`<tbody><tr id="lead-expand-${result.id}" style="display:none"><td colspan="15" style="padding:0;border-bottom:2px solid #c7d3ef">${_buildLeadExpandPanel(result)}</td></tr></tbody>`;
+      row.insertAdjacentElement('afterend',expTmp.querySelector('tr'));
+      // Flash green
+      row.style.background='#dcfce7';
+      setTimeout(()=>{row.style.background='';row.style.transition='background .6s';},800);
+    } catch(err){row._saving=false;toast(err.message,'error');}
     return;
   }
 
@@ -5084,32 +5262,92 @@ async function saveLeadCell(el) {
   }
 }
 
+async function saveLeadAsNotAnswered(btn) {
+  const row = btn.closest('tr[data-id]');
+  if (!row) return;
+  const nameEl  = row.querySelector('[data-field="name"]');
+  const phoneEl = row.querySelector('[data-field="phone"]');
+  if (!nameEl?.value.trim())  { toast('اكتب الاسم أولاً', 'error'); nameEl?.focus(); return; }
+  if (!phoneEl?.value.trim()) { toast('اكتب رقم الهاتف أولاً', 'error'); phoneEl?.focus(); return; }
+  if (row._saving) return;
+  row._saving = true;
+  btn.disabled = true;
+  btn.textContent = '⏳';
+
+  const body = { status: 'not_answered' };
+  row.querySelectorAll('[data-field]').forEach(inp => {
+    const f = inp.dataset.field;
+    if (inp.type === 'checkbox') body[f] = inp.checked;
+    else if (inp.type === 'number') body[f] = inp.value !== '' ? parseFloat(inp.value) : null;
+    else body[f] = inp.value || null;
+  });
+
+  try {
+    const result = await api('POST', '/api/leads', body);
+    row._saving = false;
+    if (!result) { btn.disabled = false; btn.textContent = '📵 لم يرد'; return; }
+    leadsData.push(result);
+
+    // In-place upgrade
+    row.dataset.id = result.id;
+    const codeBadge = row.querySelector('td:first-child span');
+    if (codeBadge) codeBadge.textContent = result.code || '';
+    row.style.borderBottom = '1px solid #f1f5f9';
+    row.style.background = LEAD_ROW_BG['not_answered'] || '#f1f5f9';
+
+    const sc = LEAD_STATUS_COLORS['not_answered'] || '#6b7280';
+    const statusSel = row.querySelector('[data-field="status"]');
+    if (statusSel) {
+      statusSel.value = 'not_answered';
+      statusSel.style.background = `${sc}18`;
+      statusSel.style.color = sc;
+      statusSel.style.borderColor = `${sc}44`;
+    }
+
+    const actionTd = row.querySelector('td:nth-last-child(2)');
+    if (actionTd) actionTd.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:3px;flex-wrap:nowrap">
+      <button onclick="toggleLeadExpand(${result.id})" id="expand-btn-${result.id}" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s" title="توسيع">▾</button>
+      <button onclick="sendLeadWhatsApp(${result.id})" style="background:#25d366;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center" title="واتساب">📱</button>
+      <button onclick="sendLeadEmailDirect(${result.id})" style="background:#1a2472;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="بريد إلكتروني">✉️</button>
+    </div>`;
+
+    const delBtn = row.querySelector('td:last-child button');
+    if (delBtn) delBtn.setAttribute('onclick', `deleteLeadRow(${result.id})`);
+
+    const expTmp = document.createElement('table');
+    expTmp.innerHTML = `<tbody><tr id="lead-expand-${result.id}" style="display:none"><td colspan="15" style="padding:0;border-bottom:2px solid #c7d3ef">${_buildLeadExpandPanel(result)}</td></tr></tbody>`;
+    row.insertAdjacentElement('afterend', expTmp.querySelector('tr'));
+
+    toast('✅ تم الحفظ — جاري فتح واتساب...');
+    setTimeout(() => sendLeadNoAnswerWhatsApp(result), 400);
+  } catch(err) {
+    row._saving = false;
+    btn.disabled = false;
+    btn.textContent = '📵 لم يرد';
+    toast(err.message, 'error');
+  }
+}
+window.saveLeadAsNotAnswered = saveLeadAsNotAnswered;
+
 function addLeadRow() {
   const tbody=document.getElementById('leadsGridBody');
   if(!tbody){loadLeads();return;}
-  // If there's already an unsaved row, just focus its name field
-  const existingNew = tbody.querySelector('tr[data-id="new"]');
-  if(existingNew){
-    const n=existingNew.querySelector('[data-field="name"]');
-    if(n) n.focus();
-    return;
-  }
   // Remove empty-state placeholder row if present
   const emptyRow = tbody.querySelector('td[colspan="15"]');
   if(emptyRow) emptyRow.closest('tr')?.remove();
 
-  const newLead={id:null,code:null,name:'',phone:'',email:'',company_activities:'',company_type:'',estimated_capital:null,has_office:false,suggested_name:'',status:'new',meeting_date:null,assigned_to:null,notes:''};
+  // Generate unique temp ID for this new row
+  const tempId = 'new-' + (++_newRowCounter);
+  const newLead={id:null,code:null,name:'',phone:'',email:'',company_activities:'',company_type:'',estimated_capital:null,has_office:false,suggested_name:'',status:'new',meeting_date:null,assigned_to:null,notes:'',quote_location:'',quote_legal_entity:'',quote_total_fees:null};
   const tmp=document.createElement('table');
   tmp.innerHTML=`<tbody>${_buildLeadRow(newLead)}</tbody>`;
-  // Only take the main row (first tr), not the expand row (which requires an id)
   const tr = tmp.querySelector('tr');
+  tr.dataset.id = tempId; // override data-id with unique temp ID
   tr.style.background='#f0fdf4';
-  // Append at BOTTOM so multiple rows flow naturally (like Excel)
   tbody.appendChild(tr);
-  // Scroll into view and focus name
   tr.scrollIntoView({behavior:'smooth',block:'nearest'});
   const n=tr.querySelector('[data-field="name"]');
-  if(n) { n.focus(); n.style.borderColor='#4478b0'; n.style.background='#fff'; }
+  if(n){n.focus();n.style.borderColor='#4478b0';n.style.background='#fff';}
 }
 
 async function deleteLeadRow(id) {
@@ -6576,6 +6814,230 @@ async function showObligationModal(preClientId=null) {
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='🔔 إضافة';}
   };
 }
+
+// ── FORMATION OBLIGATIONS ──────────────────────────
+
+let _fmOblData = [];
+let _fmOblStats = null;
+let _fmOblFilter = 'all';  // all, in_progress, late, completed
+let _fmOblSearch = '';
+let _fmOblExpanded = {};  // case_id → bool
+
+const FMO_STATUS_LABEL = {not_started:'لم يبدأ', in_progress:'جاري', completed:'مكتمل', late:'متأخر'};
+const FMO_STATUS_COLOR = {not_started:'#94a3b8', in_progress:'#f59e0b', completed:'#10b981', late:'#ef4444'};
+const FMO_STATUS_BG    = {not_started:'#f1f5f9', in_progress:'#fffbeb', completed:'#f0fdf4', late:'#fef2f2'};
+
+async function loadFormationObligations(silent=false) {
+  if(!silent){const m=document.getElementById('main');if(m)m.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';}
+  try {
+    const [oblRes, statsRes] = await Promise.all([
+      api('GET','/api/formation-obligations').catch(()=>[]),
+      api('GET','/api/formation-obligations/stats').catch(()=>null),
+    ]);
+    _fmOblData  = Array.isArray(oblRes) ? oblRes : [];
+    _fmOblStats = statsRes;
+    renderFormationObligations();
+  } catch(e) {
+    const m=document.getElementById('main');
+    if(m) m.innerHTML=`<div style="text-align:center;padding:60px;color:#ef4444">${e.message}</div>`;
+  }
+}
+
+function renderFormationObligations() {
+  const stats = _fmOblStats || {};
+
+  // Group obligations by case
+  const byCase = {};
+  for(const o of _fmOblData){
+    if(!byCase[o.case_id]) byCase[o.case_id] = {case_id:o.case_id, company_name:'', items:[]};
+    byCase[o.case_id].items.push(o);
+  }
+  // Merge company names from stats
+  for(const cp of (stats.cases_with_progress||[])){
+    if(byCase[cp.case_id]) byCase[cp.case_id].company_name = cp.company_name || '';
+    else byCase[cp.case_id] = {case_id:cp.case_id, company_name:cp.company_name||'', items:[]};
+  }
+
+  let cases = Object.values(byCase);
+
+  // Filter by status
+  if(_fmOblFilter !== 'all'){
+    cases = cases.map(c=>({...c, items:c.items.filter(o=>o.status===_fmOblFilter)})).filter(c=>c.items.length>0);
+  }
+  // Filter by search
+  if(_fmOblSearch){
+    const q=_fmOblSearch.toLowerCase();
+    cases = cases.filter(c=>c.company_name.toLowerCase().includes(q));
+  }
+
+  const main = document.getElementById('main');
+  if(!main) return;
+  main.className='page';
+  main.innerHTML=`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <div>
+      <h2 style="margin:0;font-size:20px;color:#0f172a;font-weight:800">🏗️ التزامات التأسيس</h2>
+      <div style="font-size:12px;color:#94a3b8;margin-top:3px">متابعة خطوات ملفات التأسيس</div>
+    </div>
+    <button class="btn btn-primary" onclick="showAddFormationOblModal()" style="font-size:13px">➕ إضافة التزام</button>
+  </div>
+
+  <!-- Stats bar -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+    ${[
+      {label:'مفتوح',val:stats.total_open||0,color:'#6366f1',bg:'#eef2ff',icon:'📋'},
+      {label:'مكتمل',val:stats.completed||0,color:'#10b981',bg:'#f0fdf4',icon:'✅'},
+      {label:'متأخر',val:stats.late||0,color:'#ef4444',bg:'#fef2f2',icon:'🔴'},
+      {label:'متوسط الإنجاز (يوم)',val:stats.avg_completion_days||0,color:'#f59e0b',bg:'#fffbeb',icon:'⏱️'},
+    ].map(s=>`<div class="stat-card" style="background:${s.bg};border:1.5px solid ${s.color}20;padding:16px 20px;border-radius:14px">
+      <div style="font-size:22px;margin-bottom:4px">${s.icon}</div>
+      <div style="font-size:24px;font-weight:900;color:${s.color}">${s.val}</div>
+      <div style="font-size:11px;color:#64748b;font-weight:600">${s.label}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Filters -->
+  <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+    ${['all','in_progress','late','completed','not_started'].map(f=>`
+    <button onclick="window._fmOblSetFilter('${f}')" style="padding:6px 16px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;border:1.5px solid ${_fmOblFilter===f?FMO_STATUS_COLOR[f]||'#1a2472':'#e2e8f0'};background:${_fmOblFilter===f?FMO_STATUS_COLOR[f]||'#1a2472':'#fff'};color:${_fmOblFilter===f?'#fff':'#64748b'};transition:.15s">
+      ${f==='all'?'الكل':FMO_STATUS_LABEL[f]||f}
+    </button>`).join('')}
+    <input type="text" class="input" placeholder="بحث باسم الشركة..." value="${escH(_fmOblSearch)}"
+      oninput="window._fmOblSetSearch(this.value)" style="flex:1;min-width:160px;max-width:280px;font-size:12px;padding:7px 12px">
+  </div>
+
+  <!-- Cases -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    ${cases.length===0?`<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">📭</div><div style="font-size:14px">لا توجد التزامات</div></div>`
+    : cases.map(c=>{
+      const total = c.items.length;
+      const done  = c.items.filter(o=>o.status==='completed').length;
+      const pct   = total>0?Math.round(done/total*100):0;
+      const late  = c.items.filter(o=>o.status==='late').length;
+      const expanded = !!_fmOblExpanded[c.case_id];
+      const statsForCase = (stats.cases_with_progress||[]).find(x=>x.case_id===c.case_id)||{};
+      return `
+      <div class="ea-white-card" style="padding:0;overflow:hidden;border-radius:14px;border:1px solid #f1f5f9">
+        <!-- Header -->
+        <div onclick="toggleFormationCase(${c.case_id})" style="padding:16px 20px;cursor:pointer;display:flex;align-items:center;gap:14px;background:#fff;transition:.15s" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='#fff'">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <span style="font-size:14px;font-weight:800;color:#0f172a">${escH(c.company_name||('ملف #'+c.case_id))}</span>
+              ${late>0?`<span style="background:#fef2f2;color:#ef4444;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;border:1px solid #fecaca">${late} متأخر</span>`:''}
+              <span style="font-size:12px;font-weight:800;color:${pct>=80?'#10b981':pct>=40?'#f59e0b':'#64748b'};margin-right:auto">${pct}%</span>
+            </div>
+            <div style="height:6px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-bottom:6px">
+              <div style="height:100%;width:${pct}%;background:${pct>=80?'#10b981':pct>=40?'#f59e0b':'#6366f1'};border-radius:99px;transition:width .4s"></div>
+            </div>
+            <div style="font-size:10.5px;color:#94a3b8">${done}/${total} خطوة مكتملة${statsForCase.remaining&&statsForCase.remaining.length?` — متبقي: ${statsForCase.remaining.slice(0,3).join(' • ')}`:''}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button onclick="event.stopPropagation();generateFormationObls(${c.case_id})" class="btn" style="font-size:11px;padding:5px 12px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569">⚡ توليد تلقائي</button>
+            <span style="color:#94a3b8;font-size:16px;transition:.2s;transform:rotate(${expanded?'180':'0'}deg)">${expanded?'▲':'▼'}</span>
+          </div>
+        </div>
+        <!-- Steps (collapsible) -->
+        ${expanded?`<div style="border-top:1px solid #f1f5f9;padding:12px 20px;display:flex;flex-direction:column;gap:6px;background:#fafafa">
+          ${c.items.sort((a,b)=>a.order_index-b.order_index).map(o=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:#fff;border:1px solid #f1f5f9">
+            <div style="width:8px;height:8px;border-radius:50%;background:${FMO_STATUS_COLOR[o.status]||'#94a3b8'};flex-shrink:0"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12.5px;font-weight:600;color:#0f172a">${escH(o.name)}</div>
+              ${o.due_date?`<div style="font-size:10.5px;color:#94a3b8">الموعد: ${dateAr(o.due_date)}</div>`:''}
+            </div>
+            <span style="font-size:10px;font-weight:700;color:${FMO_STATUS_COLOR[o.status]||'#94a3b8'};background:${FMO_STATUS_BG[o.status]||'#f8fafc'};padding:3px 10px;border-radius:99px;white-space:nowrap">${FMO_STATUS_LABEL[o.status]||o.status}</span>
+            <select onchange="updateFormationOblStatus(${o.id},this.value)" style="font-size:11px;padding:3px 8px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;font-family:inherit;color:#374151">
+              ${Object.entries(FMO_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${o.status===k?'selected':''}>${v}</option>`).join('')}
+            </select>
+          </div>`).join('')}
+          <button onclick="showAddFormationOblModal(${c.case_id})" class="btn" style="margin-top:4px;font-size:11px;padding:6px 14px;background:#f8fafc;border:1px dashed #cbd5e1;color:#64748b;border-radius:10px;width:100%;text-align:center">+ إضافة خطوة</button>
+        </div>`:''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+window._fmOblSetFilter = function(f){ _fmOblFilter=f; renderFormationObligations(); };
+window._fmOblSetSearch = function(v){ _fmOblSearch=v; renderFormationObligations(); };
+
+function toggleFormationCase(caseId){
+  _fmOblExpanded[caseId] = !_fmOblExpanded[caseId];
+  renderFormationObligations();
+}
+
+async function updateFormationOblStatus(oblId, newStatus){
+  try {
+    await api('PUT',`/api/formation-obligations/${oblId}`, {status: newStatus});
+    await loadFormationObligations(true);
+    toast('تم تحديث الحالة ✅');
+  } catch(e){ toast(e.message,'error'); }
+}
+
+async function generateFormationObls(caseId, templateId){
+  try {
+    const url = templateId
+      ? `/api/formation-obligations/generate/${caseId}?template_id=${templateId}`
+      : `/api/formation-obligations/generate/${caseId}`;
+    const r = await api('POST', url);
+    if(r.generated>0){
+      toast(`تم توليد ${r.generated} التزام ✅`);
+      await loadFormationObligations(true);
+    } else {
+      toast(r.message||'لا جديد','info');
+    }
+  } catch(e){ toast(e.message,'error'); }
+}
+
+function showAddFormationOblModal(caseId){
+  const overlay = document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`
+  <div class="modal" style="max-width:480px;width:95%">
+    <div class="modal-header"><span>➕ إضافة التزام تأسيس</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div><label class="form-label">اسم الالتزام *</label><input id="foName" class="input" placeholder="مثال: حجز الاسم التجاري"/></div>
+      <div><label class="form-label">رقم الملف (case_id)</label><input id="foCaseId" class="input" type="number" value="${caseId||''}"/></div>
+      <div><label class="form-label">الحالة</label>
+        <select id="foStatus" class="input">
+          ${Object.entries(FMO_STATUS_LABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+        </select>
+      </div>
+      <div><label class="form-label">تاريخ الاستحقاق</label><input id="foDueDate" class="input" type="date"/></div>
+      <div><label class="form-label">ملاحظات</label><textarea id="foNotes" class="input" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button class="btn btn-primary" onclick="window._saveFormationObl(this)">حفظ</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+window._saveFormationObl = async function(btn){
+  btn.disabled=true;
+  const caseId = parseInt(document.getElementById('foCaseId')?.value);
+  const name   = document.getElementById('foName')?.value?.trim();
+  if(!name||!caseId){ toast('يرجى إدخال الاسم ورقم الملف','error'); btn.disabled=false; return; }
+  try {
+    await api('POST','/api/formation-obligations',{
+      case_id: caseId,
+      name,
+      status: document.getElementById('foStatus')?.value||'not_started',
+      due_date: document.getElementById('foDueDate')?.value||null,
+      notes: document.getElementById('foNotes')?.value||null,
+    });
+    document.querySelector('.modal-overlay')?.remove();
+    await loadFormationObligations(true);
+    toast('تم إضافة الالتزام ✅');
+  } catch(e){ toast(e.message,'error'); btn.disabled=false; }
+};
+
+window.loadFormationObligations=loadFormationObligations;
+window.renderFormationObligations=renderFormationObligations;
+window.updateFormationOblStatus=updateFormationOblStatus;
+window.showAddFormationOblModal=showAddFormationOblModal;
+window.generateFormationObls=generateFormationObls;
+window.toggleFormationCase=toggleFormationCase;
 
 // ── EMPLOYEES ──────────────────────────────────────
 const ROLE_LABEL={admin:'مدير النظام',manager:'مدير',accountant:'محاسب',viewer:'مشاهد'};
