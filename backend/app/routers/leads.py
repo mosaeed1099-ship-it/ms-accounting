@@ -266,7 +266,7 @@ def get_stats(
 
 @router.post("")
 def create_lead(body: LeadCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    count = db.query(func.count(Lead.id)).scalar()
+    max_id = db.query(func.max(Lead.id)).scalar() or 0
     data = body.dict()
     for date_field in ("meeting_date", "follow_up_date"):
         if data.get(date_field):
@@ -274,7 +274,7 @@ def create_lead(body: LeadCreate, db: Session = Depends(get_db), current_user: U
                 data[date_field] = datetime.fromisoformat(data[date_field])
             except Exception:
                 data[date_field] = None
-    lead = Lead(**data, code=f"LDR-{str(count+1).zfill(4)}", created_by=current_user.id)
+    lead = Lead(**data, code=f"LDR-{str(max_id+1).zfill(4)}", created_by=current_user.id)
     db.add(lead)
     db.flush()
     # Log activity
