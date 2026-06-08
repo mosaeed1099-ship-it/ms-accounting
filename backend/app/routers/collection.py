@@ -151,7 +151,7 @@ def list_contracts(
         query = query.filter(CollectionContract.is_active == is_active)
     if q:
         query = query.join(Client).filter(
-            Client.name.ilike(f"%{q}%") | CollectionContract.title.ilike(f"%{q}%")
+            Client.name.ilike(f"%{q}%") | Client.trade_name.ilike(f"%{q}%") | CollectionContract.title.ilike(f"%{q}%")
         )
     total = query.count()
     contracts = query.order_by(CollectionContract.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
@@ -282,6 +282,8 @@ def delete_contract(
     contract = db.query(CollectionContract).filter(CollectionContract.id == contract_id).first()
     if not contract:
         raise HTTPException(404, "عقد التحصيل غير موجود")
+    # حذف الاستحقاقات الشهرية أولاً (FK constraint)
+    db.query(MonthlyDue).filter(MonthlyDue.contract_id == contract_id).delete(synchronize_session=False)
     db.delete(contract)
     db.commit()
     return {"message": "تم حذف عقد التحصيل"}

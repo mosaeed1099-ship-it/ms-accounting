@@ -67,6 +67,7 @@ async def list_documents(
                 "category": d.category.lower() if isinstance(d.category, str) else (d.category.value if hasattr(d.category, 'value') else str(d.category)),
                 "client_id": d.client_id,
                 "client_name": d.client.name if d.client else None,
+                "trade_name": d.client.trade_name if d.client else None,
                 "description": d.description,
                 "tags": d.tags,
                 "year": d.year,
