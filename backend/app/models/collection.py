@@ -83,7 +83,7 @@ class CollectionPayment(Base):
 
     amount = Column(Float, nullable=False)
     payment_date = Column(Date, nullable=False)
-    payment_method = Column(Enum(PaymentMethod), default=PaymentMethod.CASH)
+    payment_method = Column(String(50), default="cash")
     reference = Column(String(100))     # رقم مرجعي / رقم شيك
     notes = Column(Text)
 
