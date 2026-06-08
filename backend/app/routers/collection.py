@@ -119,11 +119,11 @@ def update_contract_totals(contract: CollectionContract, db: Session):
     contract.total_remaining = max(0, contract.agreed_amount - total_paid)
 
     if total_paid == 0:
-        contract.status = PaymentStatus.UNPAID
+        contract.status = PaymentStatus.UNPAID.value
     elif contract.total_remaining <= 0:
-        contract.status = PaymentStatus.PAID
+        contract.status = PaymentStatus.PAID.value
     else:
-        contract.status = PaymentStatus.PARTIAL
+        contract.status = PaymentStatus.PARTIAL.value
 
 
 # ── Contracts CRUD ────────────────────────────────────────────────────────────
@@ -301,12 +301,14 @@ def add_payment(
     if not contract:
         raise HTTPException(404, "عقد التحصيل غير موجود")
 
+    # Explicitly use .value to avoid Python 3.11 str(Enum) returning "EnumClass.NAME"
+    pm_val = data.payment_method.value if hasattr(data.payment_method, 'value') else str(data.payment_method)
     payment = CollectionPayment(
         contract_id=data.contract_id,
         client_id=contract.client_id,
         amount=data.amount,
         payment_date=data.payment_date,
-        payment_method=data.payment_method,
+        payment_method=pm_val,
         reference=data.reference,
         notes=data.notes,
         period_month=data.period_month,
