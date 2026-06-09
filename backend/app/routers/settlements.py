@@ -139,6 +139,30 @@ def topup_custody(
     }
 
 
+@router.post("/employees/{employee_name}/reset")
+def reset_employee(
+    employee_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """مسح كل تسويات الموظف وتصفير رصيده مع الاحتفاظ باسمه."""
+    custody = db.query(EmployeeCustody).filter(
+        EmployeeCustody.employee_name == employee_name
+    ).first()
+    if not custody:
+        raise HTTPException(404, "الموظف غير موجود")
+    db.query(EmployeeSettlement).filter(
+        EmployeeSettlement.employee_name == employee_name
+    ).delete(synchronize_session=False)
+    custody.current_balance      = 0
+    custody.total_given          = 0
+    custody.total_spent          = 0
+    custody.last_settlement_date = None
+    custody.updated_at           = datetime.utcnow()
+    db.commit()
+    return {"message": f"✅ تم تصفير رصيد {employee_name} وحذف جميع التسويات"}
+
+
 @router.get("/employees/{employee_name}")
 def employee_detail(
     employee_name: str,
