@@ -494,6 +494,13 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.BACKUP_DIR, exist_ok=True)
 
+    # Run critical column migrations SYNCHRONOUSLY first (prevents ProgrammingError on cold start)
+    try:
+        _migrate_users_columns()
+        _migrate_tasks_columns()
+    except Exception as _e:
+        print(f"⚠️  Early migration warning (will retry in background): {_e}")
+
     # DB init in background thread so /health answers immediately on cold start
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _init_db_sync)
