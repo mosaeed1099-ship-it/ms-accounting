@@ -7618,6 +7618,10 @@ async function showEmployeeModal(userId=null) {
             ${Object.entries(ROLE_LABEL).map(([k,v])=>`<option value="${k}" ${(user?.role||'accountant')===k?'selected':''}>${v}</option>`).join('')}
           </select></div>
       </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">💬 رقم واتساب <span style="font-size:11px;color:#64748b;font-weight:400">(للإشعارات التلقائية)</span></label>
+        <input id="empWaPhone" class="input" value="${escH(user?.whatsapp_phone||user?.phone||'')}" placeholder="01xxxxxxxxx"/>
+      </div>
       ${!userId?`<div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">كلمة المرور *</label>
         <input id="empPass" class="input" type="password" placeholder="••••••••"/></div>`:''}
       <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
@@ -7646,6 +7650,7 @@ async function showEmployeeModal(userId=null) {
     const name=document.getElementById('empName')?.value?.trim();
     const email=document.getElementById('empEmail')?.value?.trim();
     const phone=document.getElementById('empPhone')?.value?.trim();
+    const waPhone=document.getElementById('empWaPhone')?.value?.trim();
     const role=document.getElementById('empRole')?.value;
     const notes=document.getElementById('empNotes')?.value?.trim();
     const pass=document.getElementById('empPass')?.value;
@@ -7656,10 +7661,10 @@ async function showEmployeeModal(userId=null) {
     btn.disabled=true;btn.textContent='جاري الحفظ...';
     try{
       if(userId){
-        await api('PUT',`/api/users/${userId}`,{name,phone:phone||null,role,notes:notes||null,specialization:selectedSpecs});
+        await api('PUT',`/api/users/${userId}`,{name,phone:phone||null,whatsapp_phone:waPhone||null,role,notes:notes||null,specialization:selectedSpecs});
         toast('تم تحديث بيانات الموظف');
       } else {
-        await api('POST','/api/users',{name,email,password:pass,phone:phone||null,role,specialization:selectedSpecs});
+        await api('POST','/api/users',{name,email,password:pass,phone:phone||null,whatsapp_phone:waPhone||null,role,specialization:selectedSpecs});
         toast('تم إضافة الموظف بنجاح');
       }
       overlay.remove();
@@ -9526,6 +9531,7 @@ async function loadSettings(activeTab) {
   <div style="display:flex;gap:0;border-bottom:2px solid #e8edf3;margin-bottom:24px">
     ${tabBtn('general','👤','الحساب')}
     ${tabBtn('notifications','📧','الإشعارات')}
+    ${tabBtn('whatsapp','💬','واتساب')}
     ${tabBtn('team','👥','الفريق')}
     ${tabBtn('import','📥','الاستيراد')}
     ${tabBtn('backup','🗄️','النسخ الاحتياطي')}
@@ -9594,6 +9600,50 @@ async function loadSettings(activeTab) {
         <button class="btn" onclick="testEmailNow()" style="flex:1;min-width:160px;border:1.5px solid #1a2472;color:#1a2472;background:#fff">📨 إرسال بريد تجريبي</button>
       </div>
       <div id="emailSettingsMsg" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- WhatsApp tab -->
+  <div id="stab-whatsapp" style="display:${tab==='whatsapp'?'block':'none'};max-width:640px">
+    <div class="card" style="padding:24px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #f1f5f9;margin-bottom:20px">
+        <h3 style="font-size:16px;font-weight:700;color:#1a2472;margin:0;padding-right:12px;border-right:3px solid #25d366">💬 إشعارات WhatsApp</h3>
+        <span id="waBadge" style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;color:#dc2626;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">❌ غير مُفعَّل</span>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:#14532d;line-height:1.7">
+        <strong>🟢 كيف يعمل (مجاناً):</strong><br>
+        ١. سجّل مجاناً على <a href="https://green-api.com" target="_blank" style="color:#15803d;font-weight:700">green-api.com</a><br>
+        ٢. أنشئ Instance جديد → امسح QR بواتساب المكتب أو أي رقم مخصص<br>
+        ٣. انسخ <strong>instanceId</strong> و <strong>apiTokenInstance</strong> وضعهم أدناه<br>
+        ✅ بعد كده أي مهمة تتعمل أو تتغير ستصل رسالة واتساب للموظف المسؤول تلقائياً
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Instance ID</label>
+        <input id="waInstanceId" class="input" placeholder="مثال: 1101234567"/>
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">API Token</label>
+        <input id="waToken" class="input" type="password" placeholder="الـ token من لوحة تحكم green-api"/>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        <button class="btn btn-primary" onclick="saveWhatsAppSettings()" style="flex:1;min-width:160px">💾 حفظ وتفعيل</button>
+      </div>
+      <div id="waSettingsMsg"></div>
+    </div>
+    <div class="card" style="padding:24px">
+      <h3 style="font-size:15px;font-weight:700;color:#1a2472;margin:0 0 16px;padding-right:12px;border-right:3px solid #25d366">📤 إرسال رسالة اختبار</h3>
+      <div class="form-row" style="margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رقم الهاتف</label>
+          <input id="waTestPhone" class="input" placeholder="01xxxxxxxxx" value="01055024074"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الرسالة</label>
+          <input id="waTestMsg" class="input" value="✅ اختبار WhatsApp من MS Accounting"/>
+        </div>
+      </div>
+      <button class="btn" style="border:1.5px solid #25d366;color:#15803d;background:#f0fdf4;font-weight:700" onclick="testWhatsApp()">📲 إرسال رسالة اختبار</button>
+      <div id="waTestResult" style="margin-top:10px"></div>
     </div>
   </div>
 
@@ -9677,7 +9727,7 @@ async function loadSettings(activeTab) {
 }
 
 function switchStab(tabId) {
-  ['general','notifications','team','import','backup'].forEach(id => {
+  ['general','notifications','whatsapp','team','import','backup'].forEach(id => {
     const el = document.getElementById('stab-'+id);
     const btn = document.getElementById('stab-btn-'+id);
     if(el) el.style.display = id===tabId ? 'block' : 'none';
@@ -9685,6 +9735,51 @@ function switchStab(tabId) {
   });
   if(tabId==='team') _loadSettingsTeam();
   if(tabId==='backup') loadBackupList();
+  if(tabId==='whatsapp') _loadWhatsAppStatus();
+}
+
+async function _loadWhatsAppStatus() {
+  try {
+    const r = await api('GET', '/api/notifications/whatsapp-settings');
+    const badge = document.getElementById('waBadge');
+    const instanceEl = document.getElementById('waInstanceId');
+    if (badge) {
+      if (r.configured) {
+        badge.innerHTML = '✅ مُفعَّل';
+        badge.style.background = '#f0fdf4';
+        badge.style.color = '#16a34a';
+      } else {
+        badge.innerHTML = '❌ غير مُفعَّل';
+        badge.style.background = '#fef2f2';
+        badge.style.color = '#dc2626';
+      }
+    }
+    if (instanceEl && r.instance_id) instanceEl.value = r.instance_id;
+  } catch(e) {}
+}
+
+async function saveWhatsAppSettings() {
+  const instanceId = document.getElementById('waInstanceId')?.value?.trim();
+  const token = document.getElementById('waToken')?.value?.trim();
+  const msgEl = document.getElementById('waSettingsMsg');
+  if (!instanceId || !token) { if(msgEl) msgEl.innerHTML = '<span style="color:#dc2626">⚠️ أدخل instanceId و token</span>'; return; }
+  try {
+    const r = await api('POST', '/api/notifications/whatsapp-settings', {instance_id: instanceId, token});
+    if(msgEl) msgEl.innerHTML = `<span style="color:#16a34a;font-weight:600">${r.message}</span>`;
+    _loadWhatsAppStatus();
+  } catch(e) { if(msgEl) msgEl.innerHTML = `<span style="color:#dc2626">${e.message}</span>`; }
+}
+
+async function testWhatsApp() {
+  const phone = document.getElementById('waTestPhone')?.value?.trim();
+  const msg = document.getElementById('waTestMsg')?.value?.trim();
+  const resultEl = document.getElementById('waTestResult');
+  if (!phone) { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626">⚠️ أدخل رقم الهاتف</span>'; return; }
+  if(resultEl) resultEl.innerHTML = '<span style="color:#64748b">⏳ جاري الإرسال...</span>';
+  try {
+    const r = await api('POST', '/api/notifications/whatsapp-test', {phone, message: msg || 'اختبار من MS Accounting'});
+    if(resultEl) resultEl.innerHTML = `<span style="color:#16a34a;font-weight:700">${r.message}</span>`;
+  } catch(e) { if(resultEl) resultEl.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`; }
 }
 
 async function _loadSettingsTeam() {
@@ -9889,6 +9984,9 @@ window.saveProfile=saveProfile;
 window.savePassword=savePassword;
 window.saveEmailSettings=saveEmailSettings;
 window.testEmailNow=testEmailNow;
+window.saveWhatsAppSettings=saveWhatsAppSettings;
+window.testWhatsApp=testWhatsApp;
+window._loadWhatsAppStatus=_loadWhatsAppStatus;
 window.showClientEmailModal=showClientEmailModal;
 window.doComposeEmail=doComposeEmail;
 window.doSendClientReminder=doSendClientReminder;
