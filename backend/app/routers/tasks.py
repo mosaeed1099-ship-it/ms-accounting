@@ -225,27 +225,32 @@ async def create_task(
     db.commit()
     db.refresh(task)
 
-    # ── Email notification: task assigned ──────────────────────────────────
+    # ── Notifications: email + WhatsApp ────────────────────────────────────
     if task.assigned_to and task.assigned_to != current_user.id:
         assignee = db.query(User).filter(User.id == task.assigned_to).first()
-        if assignee and assignee.email:
-            try:
-                from app.services.email_service import notify_task_assigned
-                client_name = task.client.name if task.client else None
-                due_str = task.due_date.strftime('%Y/%m/%d') if task.due_date else None
-                notify_task_assigned(
-                    to_email=assignee.email,
-                    task_title=task.title,
-                    assigned_to=assignee.name,
-                    assigned_by=current_user.name,
-                    client_name=client_name,
-                    due_date=due_str,
-                    priority=task.priority.value if hasattr(task.priority, 'value') else str(task.priority),
-                    description=task.description,
-                )
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Email notification failed: {e}")
+        if assignee:
+            # Email
+            if assignee.email:
+                try:
+                    from app.services.email_service import notify_task_assigned
+                    client_name = task.client.name if task.client else None
+                    due_str = task.due_date.strftime('%Y/%m/%d') if task.due_date else None
+                    notify_task_assigned(
+                        to_email=assignee.email, task_title=task.title,
+                        assigned_to=assignee.name, assigned_by=current_user.name,
+                        client_name=client_name, due_date=due_str,
+                        priority=task.priority.value if hasattr(task.priority, 'value') else str(task.priority),
+                        description=task.description,
+                    )
+                except Exception as e:
+                    logger.warning(f"Email notification failed: {e}")
+            # WhatsApp
+            if assignee.whatsapp_phone:
+                try:
+                    from app.services.whatsapp_service import notify_task_created
+                    notify_task_created(task, assignee.whatsapp_phone, current_user.name)
+                except Exception as e:
+                    logger.warning(f"WhatsApp notification failed: {e}")
 
     return task_to_dict(task)
 
@@ -267,6 +272,8 @@ async def update_task(
         if not updates.get("description"):
             updates["description"] = updates["notes"]
         updates.pop("notes")
+    # Capture old status for WhatsApp notification
+    old_status_val = task.status.value if hasattr(task.status, "value") else str(task.status)
     if "status" in updates and updates["status"] == TaskStatus.DONE and task.status != TaskStatus.DONE:
         task.completed_at = datetime.utcnow()
 
@@ -274,31 +281,51 @@ async def update_task(
     for field, value in updates.items():
         setattr(task, field, value)
 
+    prev_status_val = updates.get("_prev_status")  # captured before update loop
     db.commit()
     db.refresh(task)
 
-    # ── Email notification: assignee changed ──────────────────────────────
+    # ── Notifications on update ────────────────────────────────────────────
     new_assigned_to = task.assigned_to
+    new_status_val = task.status.value if hasattr(task.status, "value") else str(task.status)
+
+    # Assignee changed → notify new assignee
     if new_assigned_to and new_assigned_to != prev_assigned_to and new_assigned_to != current_user.id:
         assignee = db.query(User).filter(User.id == new_assigned_to).first()
-        if assignee and assignee.email:
+        if assignee:
+            if assignee.email:
+                try:
+                    from app.services.email_service import notify_task_assigned
+                    client_name = task.client.name if task.client else None
+                    due_str = task.due_date.strftime('%Y/%m/%d') if task.due_date else None
+                    notify_task_assigned(
+                        to_email=assignee.email, task_title=task.title,
+                        assigned_to=assignee.name, assigned_by=current_user.name,
+                        client_name=client_name, due_date=due_str,
+                        priority=task.priority.value if hasattr(task.priority, 'value') else str(task.priority),
+                        description=task.description,
+                    )
+                except Exception as e:
+                    logger.warning(f"Email notification failed: {e}")
+            if assignee.whatsapp_phone:
+                try:
+                    from app.services.whatsapp_service import notify_task_created
+                    notify_task_created(task, assignee.whatsapp_phone, current_user.name)
+                except Exception as e:
+                    logger.warning(f"WhatsApp notification failed: {e}")
+
+    # Status changed → notify assigned employee
+    if "status" in updates and task.assigned_to and new_status_val != old_status_val:
+        assignee = db.query(User).filter(User.id == task.assigned_to).first()
+        if assignee and assignee.whatsapp_phone:
             try:
-                from app.services.email_service import notify_task_assigned
-                client_name = task.client.name if task.client else None
-                due_str = task.due_date.strftime('%Y/%m/%d') if task.due_date else None
-                notify_task_assigned(
-                    to_email=assignee.email,
-                    task_title=task.title,
-                    assigned_to=assignee.name,
-                    assigned_by=current_user.name,
-                    client_name=client_name,
-                    due_date=due_str,
-                    priority=task.priority.value if hasattr(task.priority, 'value') else str(task.priority),
-                    description=task.description,
-                )
+                from app.services.whatsapp_service import notify_task_status_changed, notify_task_done
+                if new_status_val == "done":
+                    notify_task_done(task, current_user.name, assignee.whatsapp_phone)
+                else:
+                    notify_task_status_changed(task, current_user.name, old_status_val, assignee.whatsapp_phone)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Email notification failed: {e}")
+                logger.warning(f"WhatsApp status notification failed: {e}")
 
     return task_to_dict(task)
 

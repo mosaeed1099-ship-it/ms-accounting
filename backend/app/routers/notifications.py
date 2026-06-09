@@ -311,3 +311,70 @@ async def send_client_reminder_email(
         }
     except Exception as e:
         raise HTTPException(500, detail=f"فشل الإرسال: {str(e)}")
+
+
+# ── WhatsApp Settings ────────────────────────────────────────────────────────
+
+class WhatsAppSettings(BaseModel):
+    instance_id: str
+    token: str
+
+
+class WhatsAppTestRequest(BaseModel):
+    phone: str
+    message: Optional[str] = "✅ اختبار WhatsApp من نظام MS Accounting"
+
+
+@router.post("/whatsapp-settings")
+async def save_whatsapp_settings(
+    settings: WhatsAppSettings,
+    current_user: User = Depends(require_admin),
+):
+    """Save Green API credentials to .env file."""
+    import os
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.env'))
+    existing = {}
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if '=' in line and not line.startswith('#'):
+                    k, v = line.split('=', 1)
+                    existing[k.strip()] = v.strip()
+    existing['GREENAPI_INSTANCE_ID'] = settings.instance_id
+    existing['GREENAPI_TOKEN']       = settings.token
+    with open(env_path, 'w') as f:
+        for k, v in existing.items():
+            f.write(f"{k}={v}\n")
+    # Reload env
+    os.environ['GREENAPI_INSTANCE_ID'] = settings.instance_id
+    os.environ['GREENAPI_TOKEN']       = settings.token
+    return {"success": True, "message": "✅ تم حفظ إعدادات WhatsApp"}
+
+
+@router.get("/whatsapp-settings")
+async def get_whatsapp_settings(current_user: User = Depends(get_current_user)):
+    import os
+    instance_id = os.getenv("GREENAPI_INSTANCE_ID", "")
+    token = os.getenv("GREENAPI_TOKEN", "")
+    from app.services.whatsapp_service import is_enabled
+    return {
+        "configured": is_enabled(),
+        "instance_id": instance_id,
+        "token_masked": ("*" * (len(token) - 4) + token[-4:]) if len(token) > 4 else ("*" * len(token)),
+    }
+
+
+@router.post("/whatsapp-test")
+async def test_whatsapp(
+    req: WhatsAppTestRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Send a test WhatsApp message to any number."""
+    from app.services.whatsapp_service import send_whatsapp, is_enabled
+    if not is_enabled():
+        raise HTTPException(400, detail="WhatsApp غير مُعيَّن. أضف instanceId و token أولاً.")
+    ok = send_whatsapp(req.phone, req.message)
+    if ok:
+        return {"success": True, "message": f"✅ تم إرسال رسالة اختبار إلى {req.phone}"}
+    raise HTTPException(500, detail="فشل الإرسال — تحقق من instanceId و token وتأكد أن الرقم مسجّل في واتساب")

@@ -451,6 +451,20 @@ def _migrate_tasks_columns():
     print("✅ Tasks migration done")
 
 
+def _migrate_users_columns():
+    """Add whatsapp_phone column to users table."""
+    from app.database import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_phone VARCHAR(20)"))
+            conn.commit()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+    print("✅ Users migration done")
+
+
 def _init_db_sync():
     """Blocking DB init — runs in thread pool."""
     import time
@@ -461,6 +475,7 @@ def _init_db_sync():
             _migrate_leads_columns()
             _migrate_formation_tables()
             _migrate_tasks_columns()
+            _migrate_users_columns()
             _seed_wht_types()
             print("✅ Database ready")
             return
