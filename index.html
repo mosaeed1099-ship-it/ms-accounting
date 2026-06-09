@@ -12022,19 +12022,59 @@ async function loadSettlements(silent=false) {
   }
 }
 
+let _settlView = 'employees'; // 'employees' | 'daily' | 'monthly'
+let _settlDailyDate = new Date().toISOString().split('T')[0];
+let _settlMonthView = new Date().getMonth() + 1;
+let _settlYearView  = new Date().getFullYear();
+
 function renderSettlementsList(employees) {
   const main = document.getElementById('main');
   const total_balance = employees.reduce((s,e)=>s+(e.current_balance||0),0);
   const total_given   = employees.reduce((s,e)=>s+(e.total_given||0),0);
 
+  const tabBtn = (id, icon, label) =>
+    `<button onclick="switchSettleView('${id}')"
+      style="display:flex;align-items:center;gap:6px;padding:10px 18px;font-size:13px;font-weight:700;border:none;border-bottom:2.5px solid ${_settlView===id?'#1a2472':'transparent'};background:transparent;cursor:pointer;color:${_settlView===id?'#1a2472':'#64748b'};font-family:inherit">
+      ${icon} ${label}</button>`;
+
   main.innerHTML = `
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:4px">
     <div>
       <h2 style="font-size:18px;font-weight:800;color:#1e293b;margin:0">👷 تسويات الموظفين</h2>
       <p style="font-size:13px;color:#64748b;margin:4px 0 0">تتبع مصروفات المأموريات والعهد اليومية</p>
     </div>
     <button onclick="showAddEmployee()" class="btn btn-primary" style="font-size:13px">➕ إضافة موظف</button>
   </div>
+
+  <!-- تبويبات العرض -->
+  <div style="display:flex;gap:0;border-bottom:2px solid #e8edf3;margin-bottom:20px">
+    ${tabBtn('employees','👥','الموظفون')}
+    ${tabBtn('daily','📅','يومي')}
+    ${tabBtn('monthly','📊','شهري')}
+  </div>
+
+  <div id="settleViewContent"></div>`;
+
+  _renderSettleViewContent(employees);
+}
+
+function switchSettleView(v) {
+  _settlView = v;
+  loadSettlements(true);
+}
+
+function _renderSettleViewContent(employees) {
+  const el = document.getElementById('settleViewContent');
+  if (!el) return;
+  if (_settlView === 'employees') _renderEmployeesGrid(el, employees);
+  else if (_settlView === 'daily')   _renderDailyView(el);
+  else if (_settlView === 'monthly') _renderMonthlyView(el);
+}
+
+function _renderEmployeesGrid(el, employees) {
+  const total_balance = employees.reduce((s,e)=>s+(e.current_balance||0),0);
+  const total_given   = employees.reduce((s,e)=>s+(e.total_given||0),0);
+  el.innerHTML = `
 
   <!-- KPI شريط -->
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:24px">
@@ -12111,6 +12151,215 @@ function renderSettlementsList(employees) {
       </div>
     </div>`}).join('')}
   </div>`;
+}
+
+// ── Daily View ────────────────────────────────────────────────────
+async function _renderDailyView(el) {
+  el.innerHTML = `
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <label style="font-weight:700;font-size:13px;color:#374151">📅 اختر تاريخ:</label>
+    <input type="date" id="settlDailyPicker" value="${_settlDailyDate}"
+      onchange="_settlDailyDate=this.value;_refreshDailyView()"
+      style="padding:8px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;color:#1e293b">
+    <button onclick="_settlDailyDate=new Date().toISOString().split('T')[0];document.getElementById('settlDailyPicker').value=_settlDailyDate;_refreshDailyView()"
+      style="padding:8px 14px;background:#eef1fb;color:#1a2472;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">
+      اليوم
+    </button>
+  </div>
+  <div id="dailySettleBody"><div style="text-align:center;padding:40px"><div class="spinner"></div></div></div>`;
+  _refreshDailyView();
+}
+
+async function _refreshDailyView() {
+  const el = document.getElementById('dailySettleBody');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  try {
+    _AC.invalidate('/api/settlements/daily');
+    const data = await api('GET', `/api/settlements/daily?date_str=${_settlDailyDate}`);
+    const settlements = data.settlements || [];
+    const [y,m,d] = _settlDailyDate.split('-');
+    const dayLabel = new Date(_settlDailyDate+'T12:00:00').toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+    if (settlements.length === 0) {
+      el.innerHTML = `
+      <div style="text-align:center;padding:60px;color:#94a3b8">
+        <div style="font-size:48px;margin-bottom:12px">📋</div>
+        <div style="font-size:16px;font-weight:600">لا توجد تسويات في ${dayLabel}</div>
+        <div style="font-size:13px;margin-top:6px">لم يتم تسجيل أي مصروفات في هذا اليوم</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+    <!-- ملخص اليوم -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+      ${[
+        {label:'تاريخ', val:dayLabel, icon:'📅', color:'#1a2472', bg:'#eef1fb', small:true},
+        {label:'عدد الموظفين', val:settlements.length+' موظف', icon:'👥', color:'#7c3aed', bg:'#f5f3ff'},
+        {label:'إجمالي الصرف', val:money(data.grand_total||0), icon:'💸', color:'#dc2626', bg:'#fef2f2'},
+        {label:'إجمالي العهد المضافة', val:money(data.grand_custody||0), icon:'💰', color:'#15803d', bg:'#f0fdf4'},
+      ].map(k=>`
+      <div style="background:${k.bg};border-radius:12px;padding:14px;border:1px solid ${k.color}20">
+        <div style="font-size:18px;margin-bottom:4px">${k.icon}</div>
+        <div style="font-size:${k.small?'12':'17'}px;font-weight:800;color:${k.color}">${k.val}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${k.label}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- تفاصيل كل موظف -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      ${settlements.map(s=>`
+      <div style="background:white;border-radius:14px;border:1.5px solid #e8edf3;overflow:hidden">
+        <!-- header الموظف -->
+        <div style="background:linear-gradient(135deg,#1a2472,#2563eb);padding:12px 18px;display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px;color:white;font-weight:700">
+              ${escH((s.employee_name||'?')[0])}
+            </div>
+            <div style="color:white;font-weight:700;font-size:14px">${escH(s.employee_name||'')}</div>
+          </div>
+          <div style="color:rgba(255,255,255,.85);font-size:13px;font-weight:700">${escH(s.reason||'مأمورية')}</div>
+        </div>
+        <!-- تفاصيل البنود -->
+        <div style="padding:14px 18px">
+          ${(s.expense_items||[]).length > 0 ? `
+          <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:6px 10px;text-align:right;color:#64748b;font-weight:600">البند</th>
+              <th style="padding:6px 10px;text-align:center;color:#64748b;font-weight:600">المبلغ</th>
+            </tr></thead>
+            <tbody>
+              ${(s.expense_items||[]).map(item=>`
+              <tr style="border-top:1px solid #f1f5f9">
+                <td style="padding:7px 10px;color:#374151">${escH(item.description)}</td>
+                <td style="padding:7px 10px;text-align:center;font-weight:700;color:#1a2472">${money(item.amount)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>` : '<div style="color:#94a3b8;font-size:12px;margin-bottom:10px">لا توجد بنود مسجلة</div>'}
+          <!-- أرصدة -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+            ${[
+              ['رصيد افتتاحي', s.opening_balance||0, '#64748b'],
+              ['عهدة مضافة',   s.custody_added||0,   '#15803d'],
+              ['إجمالي الصرف', s.total_spent||0,      '#dc2626'],
+              ['رصيد ختامي',   s.closing_balance||0,  (s.closing_balance||0)>=0?'#15803d':'#dc2626'],
+            ].map(([l,v,c])=>`
+            <div style="background:#f8fafc;border-radius:8px;padding:8px;text-align:center">
+              <div style="font-size:14px;font-weight:800;color:${c}">${money(v)}</div>
+              <div style="font-size:10px;color:#94a3b8;margin-top:2px">${l}</div>
+            </div>`).join('')}
+          </div>
+          ${s.notes?`<div style="margin-top:8px;font-size:12px;color:#64748b;background:#f8fafc;border-radius:8px;padding:6px 10px">📝 ${escH(s.notes)}</div>`:''}
+        </div>
+      </div>`).join('')}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:20px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+// ── Monthly Summary View ───────────────────────────────────────────
+async function _renderMonthlyView(el) {
+  const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  el.innerHTML = `
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <label style="font-weight:700;font-size:13px;color:#374151">📊 الشهر:</label>
+    <select id="settlMonthSel" onchange="_settlMonthView=+this.value;_refreshMonthlyView()"
+      style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:white">
+      ${monthNames.map((m,i)=>`<option value="${i+1}" ${i+1===_settlMonthView?'selected':''}>${m}</option>`).join('')}
+    </select>
+    <select id="settlYearSel" onchange="_settlYearView=+this.value;_refreshMonthlyView()"
+      style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:white">
+      ${[2023,2024,2025,2026].map(y=>`<option ${y===_settlYearView?'selected':''}>${y}</option>`).join('')}
+    </select>
+  </div>
+  <div id="monthlySettleBody"><div style="text-align:center;padding:40px"><div class="spinner"></div></div></div>`;
+  _refreshMonthlyView();
+}
+
+async function _refreshMonthlyView() {
+  const el = document.getElementById('monthlySettleBody');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  try {
+    _AC.invalidate('/api/settlements/monthly');
+    const data = await api('GET', `/api/settlements/monthly/${_settlMonthView}/${_settlYearView}`);
+    const emps = data.employees || [];
+    const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+    if (emps.length === 0) {
+      el.innerHTML = `<div style="text-align:center;padding:60px;color:#94a3b8">
+        <div style="font-size:48px;margin-bottom:12px">📊</div>
+        <div style="font-size:16px;font-weight:600">لا توجد تسويات في ${monthNames[_settlMonthView-1]} ${_settlYearView}</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+    <!-- ملخص الشهر -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:24px">
+      ${[
+        {label:'الشهر',        val:`${monthNames[_settlMonthView-1]} ${_settlYearView}`, icon:'📅', color:'#1a2472', bg:'#eef1fb'},
+        {label:'عدد الموظفين', val:emps.length+' موظف', icon:'👥', color:'#7c3aed', bg:'#f5f3ff'},
+        {label:'إجمالي الصرف', val:money(data.grand_total||0), icon:'💸', color:'#dc2626', bg:'#fef2f2'},
+        {label:'عدد التسويات', val:data.count+' تسوية', icon:'📋', color:'#d97706', bg:'#fef9c3'},
+      ].map(k=>`
+      <div style="background:${k.bg};border-radius:12px;padding:14px;border:1px solid ${k.color}20">
+        <div style="font-size:18px;margin-bottom:4px">${k.icon}</div>
+        <div style="font-size:16px;font-weight:800;color:${k.color}">${k.val}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${k.label}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- جدول الموظفين -->
+    <div style="background:white;border-radius:14px;border:1.5px solid #e8edf3;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid #f1f5f9;font-size:14px;font-weight:700;color:#1e293b">
+        📊 ملخص ${monthNames[_settlMonthView-1]} ${_settlYearView} — تفاصيل كل موظف
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#f8fafc">
+            <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">الموظف</th>
+            <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">عدد الأيام</th>
+            <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">إجمالي الصرف</th>
+          </tr></thead>
+          <tbody>
+            ${emps.map((e,idx)=>`
+            <tr style="border-top:1px solid #f1f5f9;${idx%2===1?'background:#fafbfc':''}">
+              <td style="padding:10px 14px">
+                <div style="font-weight:700;color:#1e293b">${escH(e.employee)}</div>
+              </td>
+              <td style="padding:10px 14px;text-align:center;color:#7c3aed;font-weight:700">${e.settlements.length} يوم</td>
+              <td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626">${money(e.total_spent||0)}</td>
+            </tr>
+            <!-- تفاصيل التسويات -->
+            <tr style="border-top:1px dashed #f1f5f9">
+              <td colspan="3" style="padding:0 14px 12px">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+                  ${e.settlements.map(s=>`
+                  <div style="background:#f8fafc;border-radius:8px;padding:6px 10px;border:1px solid #e8edf3;font-size:11px">
+                    <span style="color:#64748b">${dateAr(s.date)}</span>
+                    <span style="font-weight:700;color:#dc2626;margin-right:6px">${money(s.total_spent||0)}</span>
+                    ${s.reason?`<span style="color:#94a3b8">— ${escH(s.reason)}</span>`:''}
+                  </div>`).join('')}
+                </div>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#1a2472;color:white">
+              <td style="padding:12px 14px;font-weight:700">الإجمالي</td>
+              <td style="padding:12px 14px;text-align:center;font-weight:700">${data.count} تسوية</td>
+              <td style="padding:12px 14px;text-align:center;font-weight:800;font-size:15px">${money(data.grand_total||0)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:20px">❌ ${escH(e.message)}</div>`;
+  }
 }
 
 async function openEmployeeSettlements(empName) {
@@ -13047,6 +13296,9 @@ window.calcStlTotal = calcStlTotal;
 window.saveSettlement = saveSettlement;
 window.deleteSettlement = deleteSettlement;
 window.resetEmployeeBalance = resetEmployeeBalance;
+window.switchSettleView = switchSettleView;
+window._refreshDailyView = _refreshDailyView;
+window._refreshMonthlyView = _refreshMonthlyView;
 // Appointments
 window.loadAppointments = loadAppointments;
 window.renderAppointments = renderAppointments;
