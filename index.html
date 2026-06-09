@@ -2642,6 +2642,7 @@ let invoicesData=[], invoiceFilter='all';
 // ── Unified Fees & Collections page ─────────────────
 let _feesTab = 'establishment'; // 'establishment' | 'monthly_fee' | 'invoices'
 let _feesCollData = [];
+var _feesSearchQ = '';
 
 async function loadInvoices(silent=false) {
   const main = document.getElementById('main');
@@ -2660,6 +2661,7 @@ async function loadInvoices(silent=false) {
 }
 
 function renderInvoices(summary) {
+  if (summary) window._feesSummaryCache = summary;
   const main = document.getElementById('main');
   main.className = 'page';
 
@@ -2688,6 +2690,12 @@ function renderInvoices(summary) {
     </div>
   </div>` : '';
 
+  // Apply search filter to estData / mthData
+  const _fq = _feesSearchQ.toLowerCase();
+  const estData2 = _fq ? estData.filter(c=>(c.client_name||'').toLowerCase().includes(_fq)||(c.title||'').toLowerCase().includes(_fq)) : estData;
+  const mthData2 = _fq ? mthData.filter(c=>(c.client_name||'').toLowerCase().includes(_fq)||(c.title||'').toLowerCase().includes(_fq)) : mthData;
+  const invData2 = _fq ? invoicesData.filter(i=>(i.client_name||'').toLowerCase().includes(_fq)||(i.invoice_number||'').toLowerCase().includes(_fq)) : invoicesData;
+
   // Tab bar
   const tabs = [
     {id:'establishment', label:`🏗️ أتعاب التأسيس (${estData.length})`},
@@ -2696,9 +2704,10 @@ function renderInvoices(summary) {
   ];
   const tabBarHtml = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       ${tabs.map(t=>`<button onclick="_switchFeesTab('${t.id}')"
         class="btn btn-sm ${_feesTab===t.id?'btn-primary':'btn-secondary'}">${t.label}</button>`).join('')}
+      <input class="input" style="font-size:12px;padding:5px 10px;width:180px" placeholder="🔍 بحث باسم الشركة..." value="${escH(_feesSearchQ)}" oninput="setFeesSearch(this.value)"/>
     </div>
     <div style="display:flex;gap:8px">
       ${_feesTab==='invoices'
@@ -2714,9 +2723,9 @@ function renderInvoices(summary) {
     const statusLabel = INV_STATUS_LABEL;
     bodyHtml = `<div class="card" style="overflow:hidden"><table>
       <thead><tr><th>رقم الفاتورة</th><th>العميل</th><th>تاريخ الإصدار</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
-      <tbody>${invoicesData.length===0
-        ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد فواتير — اضغط "+ فاتورة جديدة"</td></tr>`
-        : invoicesData.map(inv=>`<tr>
+      <tbody>${invData2.length===0
+        ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">${_fq?'لا توجد نتائج للبحث':'لا توجد فواتير — اضغط "+ فاتورة جديدة"'}</td></tr>`
+        : invData2.map(inv=>`<tr>
             <td><span style="font-weight:700;color:#1a2472">${inv.invoice_number}</span></td>
             <td style="font-weight:500">${escH(inv.client_name||'')}</td>
             <td>${dateAr(inv.issue_date)}</td>
@@ -2731,7 +2740,7 @@ function renderInvoices(summary) {
           </tr>`).join('')}
       </tbody></table></div>`;
   } else {
-    const rows = _feesTab === 'establishment' ? estData : mthData;
+    const rows = _feesTab === 'establishment' ? estData2 : mthData2;
     bodyHtml = `<div class="card" style="overflow:hidden"><table>
       <thead><tr>
         <th>العميل</th><th>الخدمة</th><th>المتفق عليه</th>
@@ -3418,7 +3427,7 @@ function downloadDoc(idx,e){
 }
 
 // ── FILTER state ──
-let docCatFilter='', docClientFilter='', docSearchQ='';
+var docCatFilter='', docClientFilter='', docSearchQ='';
 
 function renderDocuments() {
   const main=document.getElementById('main');
@@ -3429,7 +3438,10 @@ function renderDocuments() {
   let filtered=docsData;
   if(docCatFilter) filtered=filtered.filter(d=>d.category===docCatFilter);
   if(docClientFilter) filtered=filtered.filter(d=>String(d.client_id)===docClientFilter);
-  if(docSearchQ) filtered=filtered.filter(d=>(d.name||'').toLowerCase().includes(docSearchQ.toLowerCase())||(d.client_name||'').toLowerCase().includes(docSearchQ.toLowerCase()));
+  if(docSearchQ) {
+    const _dq=docSearchQ.toLowerCase();
+    filtered=filtered.filter(d=>(d.name||'').toLowerCase().includes(_dq)||(d.original_name||'').toLowerCase().includes(_dq)||(d.client_name||'').toLowerCase().includes(_dq)||(d.trade_name||'').toLowerCase().includes(_dq));
+  }
 
   // Group by client
   const grouped={};
@@ -3467,8 +3479,10 @@ function renderDocuments() {
     </div>`;
   }
 
-  // Build unique client list for filter
-  const clientOpts=[...new Map(docsData.filter(d=>d.client_id).map(d=>[d.client_id,d.client_name])).entries()];
+  // Build unique client list for filter (use all cached clients + any in docs)
+  const _allClientsMap = new Map(docsData.filter(d=>d.client_id).map(d=>[d.client_id,d.client_name]));
+  (_tcAllClients||[]).forEach(c=>{ if(!_allClientsMap.has(c.id)) _allClientsMap.set(c.id,c.name); });
+  const clientOpts=[..._allClientsMap.entries()].sort((a,b)=>(a[1]||'').localeCompare(b[1]||''));
 
   main.innerHTML=`
   <!-- Header -->
@@ -3488,7 +3502,7 @@ function renderDocuments() {
 
   <!-- Filters -->
   <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-    <input class="input" style="max-width:200px;font-size:12px" placeholder="🔍 بحث في الملفات..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;renderDocuments()"/>
+    <input class="input" style="max-width:200px;font-size:12px" placeholder="🔍 بحث في الملفات..." value="${escH(docSearchQ)}" oninput="setDocSearch(this.value)"/>
     <select class="input" style="max-width:180px;font-size:12px" onchange="docCatFilter=this.value;renderDocuments()">
       <option value="">كل التصنيفات</option>
       ${Object.entries(DOC_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${docCatFilter===k?'selected':''}>${DOC_CAT_ICON[k]||'📁'} ${v}</option>`).join('')}
@@ -3863,12 +3877,25 @@ let _tcClientId = null;
 let _tcClientName = '';
 let _tcYear = new Date().getFullYear();
 let _tcMonth = new Date().getMonth() + 1;
+let _tcAllClients = [];       // all clients cached
+let _tcOblMap = {};           // client_id → Set of obligation_types
 
 const TC_MONTH_AR = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
 async function loadTax() {
   const main = document.getElementById('main');
   main.className = 'page';
+  // Load clients + obligations map for tab filtering
+  const [clients, oblData] = await Promise.all([
+    getClients().catch(()=>[]),
+    api('GET','/api/obligations?page_size=500').catch(()=>({items:[]})),
+  ]);
+  _tcAllClients = clients;
+  _tcOblMap = {};
+  (oblData.items||[]).forEach(o => {
+    if (!_tcOblMap[o.client_id]) _tcOblMap[o.client_id] = new Set();
+    _tcOblMap[o.client_id].add(o.obligation_type);
+  });
   _renderTaxShell();
   await _tcLoadTab(_tcTab);
 }
@@ -3888,13 +3915,35 @@ function _renderTaxShell() {
     style="display:flex;align-items:center;gap:6px;padding:10px 15px;font-size:12.5px;font-weight:700;font-family:inherit;border:none;border-bottom:2.5px solid ${_tcTab===t.id?'#1a2472':'transparent'};background:transparent;cursor:pointer;color:${_tcTab===t.id?'#1a2472':'#64748b'};margin-bottom:-2px;white-space:nowrap;transition:all .15s">
     ${t.icon} ${t.label}</button>`;
 
+  // Map tab → obligation type(s) for filtering
+  const TAB_OBL_TYPE = {
+    vat: ['vat_monthly'],
+    wht: ['withholding_monthly'],
+    corporate: ['income_annual','income_quarterly'],
+    salary: ['payroll_monthly'],
+    calendar: null, // show all
+    dashboard: null,
+    portals: null,
+  };
+  const tabOblTypes = TAB_OBL_TYPE[_tcTab] || null;
+  // Filter clients: for specific tabs, show only clients with matching obligation
+  const clientsForTab = tabOblTypes
+    ? (_tcAllClients.length ? _tcAllClients.filter(c => {
+        const oblSet = _tcOblMap[c.id];
+        return oblSet && tabOblTypes.some(t => oblSet.has(t));
+      }) : [])
+    : (_tcAllClients.length ? _tcAllClients : []);
+
   main.innerHTML = `
   <!-- Client/Period selector bar -->
   <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-    <div style="flex:1;min-width:160px">
+    <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:4px">
+      <input id="tcClientSearch" class="input" style="font-size:12px;padding:5px 10px" placeholder="🔍 بحث باسم الشركة..." oninput="tcFilterClientList(this.value)"/>
       <select id="tcClientSel" class="input" style="font-size:13px" onchange="tcClientChanged()">
         <option value="">— اختر عميل —</option>
+        ${clientsForTab.map(c=>`<option value="${c.id}" ${c.id==_tcClientId?'selected':''}>${escH(c.name||c.trade_name||'')}</option>`).join('')}
       </select>
+      ${tabOblTypes?`<div style="font-size:10px;color:#5b8ec4">يعرض فقط العملاء المرتبطين بهذا الالتزام (${clientsForTab.length} عميل)</div>`:''}
     </div>
     <div>
       <select id="tcMonthSel" class="input" style="font-size:13px;width:110px" onchange="tcPeriodChanged()">
@@ -3914,18 +3963,7 @@ function _renderTaxShell() {
   </div>
   <div id="taxTabContent"></div>`;
 
-  // Async load clients
-  getClients().then(clients => {
-    const sel = document.getElementById('tcClientSel');
-    if (!sel) return;
-    clients.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = c.name;
-      if (c.id == _tcClientId) opt.selected = true;
-      sel.append(opt);
-    });
-  }).catch(()=>{});
+  // Client list already populated inline above
 }
 
 window.tcClientChanged = function() {
@@ -3939,14 +3977,20 @@ window.tcPeriodChanged = function() {
   _tcYear  = +document.getElementById('tcYearSel')?.value  || _tcYear;
   _tcLoadTab(_tcTab);
 };
+window.tcFilterClientList = function(q) {
+  const sel = document.getElementById('tcClientSel');
+  if (!sel) return;
+  const lq = q.toLowerCase();
+  Array.from(sel.options).forEach(opt => {
+    if (!opt.value) return; // keep placeholder
+    opt.style.display = !q || opt.textContent.toLowerCase().includes(lq) ? '' : 'none';
+  });
+};
 
 async function switchTaxTab(id) {
   _tcTab = id;
-  document.querySelectorAll('[id^="ttab-"]').forEach(b => {
-    const active = b.id === 'ttab-'+id;
-    b.style.borderBottomColor = active ? '#1a2472' : 'transparent';
-    b.style.color = active ? '#1a2472' : '#64748b';
-  });
+  // Re-render shell so client dropdown filters by new tab's obligation type
+  _renderTaxShell();
   await _tcLoadTab(id);
 }
 
@@ -3970,7 +4014,7 @@ async function _tcLoadTab(id) {
 // ── DASHBOARD ──────────────────────────────────────────────────────────────
 async function _tcRenderDashboard(el) {
   if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
-  const d = await api('GET', `/api/tax-center/${_tcClientId}/dashboard?year=${_tcYear}`);
+  const d = await api('GET', `/api/tax-center/dashboard/${_tcClientId}?year=${_tcYear}`);
 
   const kpi = (icon, label, value, color='#1a2472', sub='') => `
     <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:16px 18px">
@@ -4058,8 +4102,10 @@ async function _tcVatLoadList() {
   const el = document.getElementById('tcVatArea');
   if (!el) return;
   try {
-    const data = await api('GET', `/api/tax-center/${_tcClientId}/vat?year=${_tcYear}`);
+    const data = await api('GET', `/api/tax-center/vat/${_tcClientId}?year=${_tcYear}`);
     const rows = data?.items || data || [];
+    window._tcVatReturnsMap = {};
+    rows.forEach(r => { window._tcVatReturnsMap[r.id] = r; });
     el.innerHTML = `
     <div class="card" style="overflow:hidden">
       <table>
@@ -4091,8 +4137,8 @@ window.tcVatBuild = async function() {
   const btn = event?.target;
   if (btn) { btn.disabled=true; btn.textContent='جاري البناء...'; }
   try {
-    const r = await api('POST', `/api/tax-center/${_tcClientId}/vat/build`, {
-      year: _tcYear, month: _tcMonth,
+    const r = await api('POST', `/api/tax-center/vat/build`, {
+      client_id: +_tcClientId, year: _tcYear, month: _tcMonth,
       force_rebuild: true,
     });
     toast(`✅ تم بناء إقرار ${TC_MONTH_AR[_tcMonth]} ${_tcYear} — صافي مستحق: ${money(r.net_vat_due||0)}`);
@@ -4107,7 +4153,14 @@ window.tcVatBuild = async function() {
 window.tcVatView = async function(id) {
   try {
     const [ret, lines] = await Promise.all([
-      api('GET', `/api/tax-center/vat/${id}`),
+      Promise.resolve(window._tcVatReturnsMap?.[id] || null).then(async r => {
+        if (r) return r;
+        // fallback: fetch list again and look up
+        const list = await api('GET', `/api/tax-center/vat/${_tcClientId}?year=${_tcYear}`);
+        const items = list?.items || list || [];
+        items.forEach(x => { if (!window._tcVatReturnsMap) window._tcVatReturnsMap = {}; window._tcVatReturnsMap[x.id] = x; });
+        return window._tcVatReturnsMap?.[id] || null;
+      }),
       api('GET', `/api/tax-center/vat/${id}/lines`),
     ]);
     const overlay = document.createElement('div');
@@ -4168,8 +4221,8 @@ window.tcVatView = async function(id) {
 
 window.tcVatApprove = async function(id) {
   try {
-    await api('PUT', `/api/tax-center/vat/${id}/review`);
-    await api('PUT', `/api/tax-center/vat/${id}/approve`);
+    await api('POST', `/api/tax-center/vat/${id}/review`);
+    await api('POST', `/api/tax-center/vat/${id}/approve`);
     toast('✅ تم اعتماد الإقرار — يمكن الآن التقديم عبر mytax.eta.gov.eg');
     await _tcVatLoadList();
   } catch(e) { toast(e.message, 'error'); }
@@ -4197,9 +4250,9 @@ async function _tcWhtLoad() {
   if (!el) return;
   try {
     const [entries, returns, types] = await Promise.all([
-      api('GET', `/api/tax-center/${_tcClientId}/wht/entries?year=${_tcYear}&month=${_tcMonth}`),
-      api('GET', `/api/tax-center/${_tcClientId}/wht/returns?year=${_tcYear}`),
-      api('GET', '/api/tax-center/wht/types'),
+      api('GET', `/api/tax-center/withholding/entries?client_id=${_tcClientId}&year=${_tcYear}&month=${_tcMonth}`),
+      api('GET', `/api/tax-center/withholding/returns?client_id=${_tcClientId}&year=${_tcYear}`),
+      api('GET', '/api/tax-center/withholding/types'),
     ]);
     window._tcWhtTypes = types?.items || types || [];
     const eRows = (entries?.items || entries || []);
@@ -4318,7 +4371,8 @@ window.tcWhtAddEntry = async function() {
     const txType = document.getElementById('whtType')?.value;
     if (!txType || !gross) { toast('أدخل نوع المعاملة والمبلغ','error'); btn.disabled=false; return; }
     try {
-      await api('POST', `/api/tax-center/${_tcClientId}/wht/entries`, {
+      await api('POST', `/api/tax-center/withholding/entries`, {
+        client_id: +_tcClientId,
         transaction_type: txType,
         payee_type: document.getElementById('whtPayeeType')?.value,
         payee_name: document.getElementById('whtPayeeName')?.value,
@@ -4336,7 +4390,7 @@ window.tcWhtAddEntry = async function() {
 
 window.tcWhtBuildReturn = async function() {
   try {
-    const r = await api('POST', `/api/tax-center/${_tcClientId}/wht/build`, {year:_tcYear, month:_tcMonth});
+    const r = await api('POST', `/api/tax-center/withholding/returns/build?client_id=${_tcClientId}&year=${_tcYear}&month=${_tcMonth}`);
     toast(`✅ تم بناء إقرار ${TC_MONTH_AR[_tcMonth]} — إجمالي ضريبة: ${money(r.total_withholding||0)}`);
     await _tcWhtLoad();
   } catch(e) { toast(e.message,'error'); }
@@ -4346,7 +4400,7 @@ window.tcWhtBuildReturn = async function() {
 async function _tcRenderCorporate(el) {
   if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
   let est = null;
-  try { est = await api('GET', `/api/tax-center/${_tcClientId}/corporate/${_tcYear}`); } catch(e) {}
+  try { est = await api('GET', `/api/tax-center/corporate/${_tcClientId}/${_tcYear}`); } catch(e) {}
 
   const f = (id, label, val=0, hint='') => `
     <div>
@@ -4452,7 +4506,7 @@ window.tcCorpSave = async function() {
   const body = {};
   fields.forEach(f => body[f] = parseFloat(document.getElementById('corp_'+f)?.value)||0);
   try {
-    await api('POST', `/api/tax-center/${_tcClientId}/corporate/${_tcYear}`, body);
+    await api('PUT', `/api/tax-center/corporate/${_tcClientId}/${_tcYear}`, body);
     toast('✅ تم حساب وحفظ تقدير ضريبة الدخل');
     await _tcRenderCorporate(document.getElementById('taxTabContent'));
   } catch(e) {
@@ -4542,7 +4596,7 @@ window.tcSalCalcServer = async function() {
   const allow = parseFloat(document.getElementById('salAllow')?.value)||0;
   if (!_tcClientId) { tcSalCalc(); return; }
   try {
-    const r = await api('POST', `/api/tax-center/${_tcClientId}/salary/calculate`, {
+    const r = await api('POST', `/api/tax-center/salary/calculate`, {
       gross_monthly: base, variable_pay: varPay, allowances: allow,
     });
     const el = document.getElementById('salResult');
@@ -4564,7 +4618,7 @@ window.tcSalCalcServer = async function() {
 async function _tcRenderCalendar(el) {
   if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
   try {
-    const events = await api('GET', `/api/tax-center/${_tcClientId}/calendar?year=${_tcYear}`);
+    const events = await api('GET', `/api/tax-center/calendar?client_id=${_tcClientId}&year=${_tcYear}`);
     const items = events?.items || events || [];
     const today = new Date();
     const grouped = {};
@@ -4620,14 +4674,14 @@ async function _tcRenderCalendar(el) {
 window.tcGenCalendar = async function() {
   if (!_tcClientId) return;
   try {
-    await api('POST', `/api/tax-center/${_tcClientId}/calendar/generate`, {year: _tcYear});
+    await api('POST', `/api/tax-center/calendar/generate/${_tcClientId}?year=${_tcYear}`);
     toast('✅ تم توليد التقويم الضريبي');
     await _tcRenderCalendar(document.getElementById('taxTabContent'));
   } catch(e) { toast(e.message,'error'); }
 };
 window.tcCalDone = async function(id) {
   try {
-    await api('PUT', `/api/tax-center/calendar/${id}/done`);
+    await api('POST', `/api/tax-center/calendar/events/${id}/done`);
     toast('✅ تم تسجيل الإنجاز');
     await _tcRenderCalendar(document.getElementById('taxTabContent'));
   } catch(e) { toast(e.message,'error'); }
@@ -4833,23 +4887,23 @@ function renderLeads(stats) {
   main.className='page';
   main.innerHTML=`
   ${stats?`<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:18px">
-    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='';loadLeads()"><div style="font-size:22px;font-weight:800;color:#1a2472">${stats.total}</div><div style="font-size:11px;color:#64748b;margin-top:3px">الإجمالي 🎯</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='new';loadLeads()"><div style="font-size:22px;font-weight:800;color:#5b8ec4">${stats.new}</div><div style="font-size:11px;color:#64748b;margin-top:3px">جديد</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='interested';loadLeads()"><div style="font-size:22px;font-weight:800;color:#7c3aed">${stats.interested||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">مهتم ⭐</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='quotation_sent';loadLeads()"><div style="font-size:22px;font-weight:800;color:#f97316">${stats.quotation||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">عرض سعر 📄</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='not_answered';loadLeads()"><div style="font-size:22px;font-weight:800;color:#94a3b8">${stats.not_answered||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">لم يرد 📵</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='accounting_client';loadLeads()"><div style="font-size:22px;font-weight:800;color:#16a34a">${stats.converted}</div><div style="font-size:11px;color:#64748b;margin-top:3px">تحوّل لعميل ✅</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="leadsStatusFilter='lost';loadLeads()"><div style="font-size:22px;font-weight:800;color:#dc2626">${stats.lost}</div><div style="font-size:11px;color:#64748b;margin-top:3px">خسارة ❌</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('')"><div style="font-size:22px;font-weight:800;color:#1a2472">${stats.total}</div><div style="font-size:11px;color:#64748b;margin-top:3px">الإجمالي 🎯</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('new')"><div style="font-size:22px;font-weight:800;color:#5b8ec4">${stats.new}</div><div style="font-size:11px;color:#64748b;margin-top:3px">جديد</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('interested')"><div style="font-size:22px;font-weight:800;color:#7c3aed">${stats.interested||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">مهتم ⭐</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('quotation_sent')"><div style="font-size:22px;font-weight:800;color:#f97316">${stats.quotation||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">عرض سعر 📄</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('not_answered')"><div style="font-size:22px;font-weight:800;color:#94a3b8">${stats.not_answered||0}</div><div style="font-size:11px;color:#64748b;margin-top:3px">لم يرد 📵</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('accounting_client')"><div style="font-size:22px;font-weight:800;color:#16a34a">${stats.converted}</div><div style="font-size:11px;color:#64748b;margin-top:3px">تحوّل لعميل ✅</div></div>
+    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('lost')"><div style="font-size:22px;font-weight:800;color:#dc2626">${stats.lost}</div><div style="font-size:11px;color:#64748b;margin-top:3px">خسارة ❌</div></div>
   </div>`:''}
   <!-- Date filter bar -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
     ${[['all','الكل'],['today','اليوم'],['yesterday','أمس'],['this_week','هذا الأسبوع'],['this_month','هذا الشهر'],['last_month','الشهر الماضي'],['this_year','هذه السنة'],['custom','📅 مخصص']].map(([k,lbl])=>`
-      <button onclick="leadsDateFilter='${k}';loadLeads()" style="padding:4px 12px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${leadsDateFilter===k?'#1a2472':'#e2e8f0'};background:${leadsDateFilter===k?'#1a2472':'#f8fafc'};color:${leadsDateFilter===k?'#fff':'#64748b'}">${lbl}</button>
+      <button onclick="setLeadsDateFilter('${k}')" style="padding:4px 12px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${leadsDateFilter===k?'#1a2472':'#e2e8f0'};background:${leadsDateFilter===k?'#1a2472':'#f8fafc'};color:${leadsDateFilter===k?'#fff':'#64748b'}">${lbl}</button>
     `).join('')}
     <div id="leadsCustomRange" style="display:${leadsDateFilter==='custom'?'flex':'none'};align-items:center;gap:6px">
-      <input type="date" class="input" style="width:140px;font-size:12px" value="${leadsDateFrom}" onchange="leadsDateFrom=this.value;loadLeads()"/>
+      <input type="date" class="input" style="width:140px;font-size:12px" value="${leadsDateFrom}" onchange="setLeadsDateFrom(this.value)"/>
       <span style="color:#94a3b8;font-size:12px">→</span>
-      <input type="date" class="input" style="width:140px;font-size:12px" value="${leadsDateTo}" onchange="leadsDateTo=this.value;loadLeads()"/>
+      <input type="date" class="input" style="width:140px;font-size:12px" value="${leadsDateTo}" onchange="setLeadsDateTo(this.value)"/>
     </div>
   </div>
   <!-- Search & status & actions bar -->
@@ -4884,7 +4938,7 @@ function renderLeads(stats) {
       </thead>
       <tbody id="leadsGridBody">
         ${leadsData.map(l=>_buildLeadRow(l)).join('')}
-        ${leadsData.length===0?`<tr><td colspan="12" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:15px;font-weight:600;color:#475569;margin-bottom:6px">لا يوجد عملاء في هذه الفترة</div><div style="font-size:13px;color:#94a3b8">${leadsDateFilter!=='all'?`الفلتر الحالي: <b>${LEADS_DATE_LABELS[leadsDateFilter]||'مخصص'}</b> — جرّب <span onclick="leadsDateFilter='all';loadLeads()" style="color:#1a2472;cursor:pointer;text-decoration:underline">عرض جميع البيانات</span>`:'اضغط "+ إضافة صف" لإضافة عميل جديد'}</div></td></tr>`:''}
+        ${leadsData.length===0?`<tr><td colspan="12" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:15px;font-weight:600;color:#475569;margin-bottom:6px">لا يوجد عملاء في هذه الفترة</div><div style="font-size:13px;color:#94a3b8">${leadsDateFilter!=='all'?`الفلتر الحالي: <b>${LEADS_DATE_LABELS[leadsDateFilter]||'مخصص'}</b> — جرّب <span onclick="setLeadsDateFilter('all')" style="color:#1a2472;cursor:pointer;text-decoration:underline">عرض جميع البيانات</span>`:'اضغط "+ إضافة صف" لإضافة عميل جديد'}</div></td></tr>`:''}
       </tbody>
     </table>
   </div>`;
@@ -6618,7 +6672,7 @@ const OBL_STATUS_AR = {
 const PRIORITY_AR = {urgent:'عاجل', high:'مرتفع', medium:'متوسط', low:'منخفض'};
 const FREQ_AR = {monthly:'شهري', quarterly:'ربعي', annual:'سنوي'};
 
-let oblStats={}, oblInstances=[], oblTab='upcoming', oblDays=30, oblClientFilter='', oblTypeFilter='', oblStatusFilter='';
+var oblStats={}, oblInstances=[], oblTab='upcoming', oblDays=30, oblClientFilter='', oblTypeFilter='', oblStatusFilter='', oblSearchQ='';
 let oblClientsCache=[];
 
 async function loadObligations(silent=false) {
@@ -6642,9 +6696,14 @@ function renderObligations() {
 
   // Filter instances
   let filtered = oblInstances;
+  if (oblSearchQ) {
+    const q = oblSearchQ.toLowerCase();
+    filtered = filtered.filter(i=>(i.client_name||'').toLowerCase().includes(q));
+  }
   if (oblClientFilter) filtered = filtered.filter(i=>String(i.client_id)===oblClientFilter);
   if (oblTypeFilter) filtered = filtered.filter(i=>i.obligation_type===oblTypeFilter);
-  if (oblStatusFilter) filtered = filtered.filter(i=>i.status===oblStatusFilter);
+  if (oblStatusFilter === 'overdue_kpi') filtered = filtered.filter(i=>i.days_remaining<0);
+  else if (oblStatusFilter) filtered = filtered.filter(i=>i.status===oblStatusFilter);
 
   const overdueLst = filtered.filter(i=>i.days_remaining<0);
   const soonLst = filtered.filter(i=>i.days_remaining>=0&&i.days_remaining<=7);
@@ -6654,16 +6713,16 @@ function renderObligations() {
   const kpiRow = `
   <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:22px">
     ${[
-      {label:'التزام نشط',val:oblStats.total_active_obligations||0,icon:'🔔',cls:'stat-blue'},
-      {label:'خلال 30 يوم',val:oblStats.upcoming_30_days||0,icon:'📅',cls:'stat-purple'},
-      {label:'هذا الأسبوع',val:oblStats.due_this_week||0,icon:'⏰',cls:''},
-      {label:'متأخرة',val:oblStats.overdue||0,icon:'🚨',cls:'stat-red'},
-      {label:'مُقدَّم هذا الشهر',val:oblStats.submitted_this_month||0,icon:'✅',cls:'stat-green'},
-      {label:'عملاء لديهم التزامات',val:oblStats.clients_with_obligations||0,icon:'👥',cls:'stat-blue'},
-    ].map(k=>`<div class="stat-card ${k.cls}" style="padding:16px">
+      {label:'التزام نشط',val:oblStats.total_active_obligations||0,icon:'🔔',cls:'stat-blue',filter:null},
+      {label:'خلال 30 يوم',val:oblStats.upcoming_30_days||0,icon:'📅',cls:'stat-purple',filter:null},
+      {label:'هذا الأسبوع',val:oblStats.due_this_week||0,icon:'⏰',cls:'',filter:null},
+      {label:'متأخرة',val:oblStats.overdue||0,icon:'🚨',cls:'stat-red',filter:'overdue'},
+      {label:'مُقدَّم هذا الشهر',val:oblStats.submitted_this_month||0,icon:'✅',cls:'stat-green',filter:'submitted'},
+      {label:'عملاء لديهم التزامات',val:oblStats.clients_with_obligations||0,icon:'👥',cls:'stat-blue',filter:null},
+    ].map(k=>`<div class="stat-card ${k.cls}" style="padding:16px;${k.filter?'cursor:pointer;':'cursor:default;'}${k.filter&&oblStatusFilter===k.filter?'outline:2px solid #1a2472;outline-offset:2px;':''}" ${k.filter?`onclick="setOblStatusFilter('${k.filter}')"`:''}>
       <div style="font-size:22px;margin-bottom:6px">${k.icon}</div>
       <div style="font-size:26px;font-weight:800;color:#1e293b;line-height:1">${k.val}</div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px">${k.label}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">${k.label}${k.filter?`<span style="font-size:10px;opacity:.7"> (اضغط للتصفية)</span>`:''}</div>
     </div>`).join('')}
   </div>`;
 
@@ -6675,21 +6734,19 @@ function renderObligations() {
   const toolbar = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input class="input" style="width:160px;font-size:12px;padding:5px 10px" placeholder="🔍 بحث باسم الشركة..." value="${escH(oblSearchQ)}" oninput="setOblSearch(this.value)"/>
       <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblDays=+this.value;loadObligations()">
         ${[7,14,30,60,90].map(d=>`<option value="${d}" ${oblDays===d?'selected':''}>خلال ${d} يوم</option>`).join('')}
       </select>
-      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblClientFilter=this.value;renderObligations()">
-        <option value="">كل العملاء</option>
-        ${[...clientMap.entries()].map(([id,name])=>`<option value="${id}" ${oblClientFilter===String(id)?'selected':''}>${escH(name||'')}</option>`).join('')}
-      </select>
-      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblTypeFilter=this.value;renderObligations()">
+      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="setOblTypeFilter(this.value)">
         <option value="">كل الأنواع</option>
         ${typeSet.map(t=>`<option value="${t}" ${oblTypeFilter===t?'selected':''}>${OBL_NAME_AR[t]||t}</option>`).join('')}
       </select>
-      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblStatusFilter=this.value;renderObligations()">
+      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="setOblStatusFilter(this.value)">
         <option value="">كل الحالات</option>
         ${Object.entries(OBL_STATUS_AR).map(([k,v])=>`<option value="${k}" ${oblStatusFilter===k?'selected':''}>${v}</option>`).join('')}
       </select>
+      ${oblSearchQ||oblTypeFilter||oblStatusFilter?`<button class="btn btn-secondary btn-sm" onclick="clearOblFilters()">✕ مسح الفلاتر</button>`:''}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-secondary" onclick="runBulkGenerate()" title="توليد الالتزامات لجميع العملاء تلقائياً">⚙️ Auto-Generate الكل</button>
@@ -7467,7 +7524,7 @@ async function showEmployeeTasks(userId, userName) {
 }
 
 // ── COLLECTIONS ────────────────────────────────────
-let collectionsData=[], collectionsTab='establishment', collectionsSearch='';
+var collectionsData=[], collectionsTab='establishment', collectionsSearch='';
 
 async function loadCollections(silent=false) {
   try {
@@ -7482,6 +7539,7 @@ async function loadCollections(silent=false) {
 }
 
 function renderCollections(summary) {
+  if (summary) window._collSummaryCache = summary;
   const main=document.getElementById('main');
   main.className='page';
   const statusBadge={unpaid:'badge-red',partial:'badge-yellow',paid:'badge-green',overdue:'badge-red'};
@@ -7489,8 +7547,9 @@ function renderCollections(summary) {
   const typeBadge={establishment:'badge-blue',monthly_fee:'badge-purple'};
   const typeLabel={establishment:'تأسيس',monthly_fee:'أتعاب شهرية'};
 
-  const estData=collectionsData.filter(c=>c.collection_type==='establishment');
-  const monthlyData=collectionsData.filter(c=>c.collection_type==='monthly_fee');
+  const _cq = collectionsSearch.toLowerCase();
+  const estData=collectionsData.filter(c=>c.collection_type==='establishment'&&(!_cq||(c.client_name||'').toLowerCase().includes(_cq)||(c.title||'').toLowerCase().includes(_cq)));
+  const monthlyData=collectionsData.filter(c=>c.collection_type==='monthly_fee'&&(!_cq||(c.client_name||'').toLowerCase().includes(_cq)||(c.title||'').toLowerCase().includes(_cq)));
 
   main.innerHTML=`
   <!-- Summary Cards -->
@@ -7505,9 +7564,10 @@ function renderCollections(summary) {
 
   <!-- Tabs -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button onclick="switchCollTab('establishment')" class="btn btn-sm ${collectionsTab==='establishment'?'btn-primary':'btn-secondary'}">🏢 تحصيلات التأسيس (${estData.length})</button>
       <button onclick="switchCollTab('monthly_fee')" class="btn btn-sm ${collectionsTab==='monthly_fee'?'btn-primary':'btn-secondary'}">🔄 الأتعاب الشهرية (${monthlyData.length})</button>
+      <input class="input" style="font-size:12px;padding:5px 10px;width:180px" placeholder="🔍 بحث باسم الشركة..." value="${escH(collectionsSearch)}" oninput="setCollSearch(this.value)"/>
     </div>
     <button class="btn btn-primary" onclick="showCollectionModal('${collectionsTab}')">+ إضافة عقد</button>
   </div>
@@ -9632,6 +9692,13 @@ window._ldTab=_ldTab;
 window._qsCalc=_qsCalc;
 window._qsAddService=_qsAddService;
 window._qsAddDoc=_qsAddDoc;
+// leads bridge functions (fix module scoping for inline handlers)
+window.loadLeads=loadLeads;
+window.setLeadsStatusFilter=v=>{leadsStatusFilter=(leadsStatusFilter===v&&v!=='')?'':v;loadLeads();};
+window.setLeadsDateFilter=v=>{leadsDateFilter=v;loadLeads();};
+window.setLeadsDateFrom=v=>{leadsDateFrom=v;loadLeads();};
+window.setLeadsDateTo=v=>{leadsDateTo=v;loadLeads();};
+window.setLeadsSearch=v=>{leadsSearch=v;loadLeads();};
 // formation pipeline
 window._fmFilterStage=_fmFilterStage;
 window._fmSearchChange=_fmSearchChange;
@@ -9675,7 +9742,19 @@ window.showCollectionDetail=showCollectionDetail;
 window.showCollectionEditModal=showCollectionEditModal;
 window.deleteCollectionContract=deleteCollectionContract;
 window.renderCollections=renderCollections;
-window.switchCollTab=function(tab){collectionsTab=tab;renderCollections();};
+window.switchCollTab=function(tab){collectionsTab=tab;renderCollections(window._collSummaryCache||null);};
+// ── Search/filter bridge functions (inline handlers cannot access module-level vars) ──
+window.renderObligations=renderObligations;
+window.renderDocuments=renderDocuments;
+window.setOblSearch=v=>{oblSearchQ=v;renderObligations();};
+window.setOblTypeFilter=v=>{oblTypeFilter=v;renderObligations();};
+window.setOblStatusFilter=v=>{const kv=v==='overdue'?'overdue_kpi':v;oblStatusFilter=(oblStatusFilter===kv?'':kv);renderObligations();};
+window.clearOblFilters=()=>{oblSearchQ='';oblTypeFilter='';oblStatusFilter='';renderObligations();};
+window.setCollSearch=v=>{collectionsSearch=v;renderCollections(window._collSummaryCache||null);};
+window.setDocSearch=v=>{docSearchQ=v;renderDocuments();};
+window.setDocCatFilter=v=>{docCatFilter=v;renderDocuments();};
+window.setDocClientFilter=v=>{docClientFilter=v;renderDocuments();};
+window.setFeesSearch=v=>{_feesSearchQ=v;renderInvoices(window._feesSummaryCache||null);};
 // import
 window.fetchAndPreview=fetchAndPreview;
 window.filterImportRows=filterImportRows;
