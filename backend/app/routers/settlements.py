@@ -244,6 +244,30 @@ def add_settlement(
     }
 
 
+@router.patch("/employees/{employee_name}/balance")
+def set_employee_balance(
+    employee_name: str,
+    payload: CustodyTopUp,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """ضبط رصيد العهدة لقيمة محددة (للرصيد الافتتاحي / المرحّل)."""
+    custody = db.query(EmployeeCustody).filter(
+        EmployeeCustody.employee_name == employee_name
+    ).first()
+    if not custody:
+        raise HTTPException(404, "الموظف غير موجود")
+    custody.current_balance = round(payload.amount, 2)
+    custody.total_given     = round(payload.amount, 2)   # reset total_given to the new opening
+    custody.total_spent     = 0
+    custody.updated_at      = datetime.utcnow()
+    db.commit()
+    return {
+        "message":     f"✅ تم ضبط الرصيد الافتتاحي لـ {employee_name}: {payload.amount:.2f} ج.م.",
+        "new_balance": custody.current_balance,
+    }
+
+
 @router.get("/daily")
 def daily_report(
     date_str: str,
