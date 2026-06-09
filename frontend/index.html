@@ -9825,9 +9825,15 @@ window.refreshCurrentPage = async function() {
   try {
     _clearPageCache(currentPage); // bust GET cache so we always get live server data
     const fn = _REFRESH_FN_MAP[currentPage];
-    if (fn) await fn();
-    else toast('هذه الصفحة لا تدعم التحديث', 'info');
-    if (fn) toast('تم التحديث ✓', 'success');
+    if (fn) {
+      // Force visual re-render exactly like navigate() does
+      const main = document.getElementById('main');
+      if (main) main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+      await fn();
+      toast('تم التحديث ✓', 'success');
+    } else {
+      toast('هذه الصفحة لا تدعم التحديث', 'info');
+    }
   } catch(e) { toast('فشل التحديث','error'); }
   finally {
     if (btn)  btn.disabled = false;
