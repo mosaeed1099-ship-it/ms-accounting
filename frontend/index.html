@@ -564,17 +564,39 @@ const _AC = {
   },
 };
 
+let _staleBannerRetryTimer = null;
 function _showStaleBanner() {
   if (document.getElementById('stale-banner')) return;
   const b = document.createElement('div');
   b.id = 'stale-banner';
-  b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#fef9c3;border-bottom:2px solid #fde68a;padding:8px 16px;text-align:center;font-size:13px;color:#92400e;font-weight:600';
-  b.innerHTML = `⚠️ الخادم يُعاد تشغيله — تعرض بيانات مؤقتة. سيتم التحديث تلقائياً خلال لحظات... <button onclick="_hideStaleBanner()" style="margin-right:12px;background:none;border:none;cursor:pointer;font-size:16px;color:#92400e">✕</button>`;
+  b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#fef9c3;border-bottom:2px solid #fde68a;padding:8px 16px;text-align:center;font-size:13px;color:#92400e;font-weight:600;display:flex;align-items:center;justify-content:center;gap:10px';
+  b.innerHTML = `<span style="display:inline-block;animation:spin 1s linear infinite">⏳</span> جاري الاتصال بالخادم — تعرض بيانات مؤقتة. سيتم التحديث تلقائياً... <button onclick="_hideStaleBanner()" style="margin-right:8px;background:none;border:none;cursor:pointer;font-size:16px;color:#92400e">✕</button>`;
   document.body.prepend(b);
+  // Switch to fast polling so banner disappears as soon as server responds
+  if (typeof window._connMonitorFast === 'function') window._connMonitorFast();
+  // Also kick off a background retry every 6s independently of connection monitor
+  if (_staleBannerRetryTimer) clearInterval(_staleBannerRetryTimer);
+  _staleBannerRetryTimer = setInterval(async () => {
+    if (!document.getElementById('stale-banner')) { clearInterval(_staleBannerRetryTimer); return; }
+    try {
+      const r = await fetch(`${API}/health`, {signal: AbortSignal.timeout(8000)});
+      if (r.ok) {
+        _hideStaleBanner();
+        // Silently reload current page with fresh data
+        const p = currentPage;
+        if (typeof _REFRESH_FN_MAP !== 'undefined' && _REFRESH_FN_MAP[p]) {
+          _clearPageCache(p);
+          try { await _REFRESH_FN_MAP[p](); } catch(e) {}
+        }
+      }
+    } catch(e) { /* still offline, keep waiting */ }
+  }, 6000);
 }
 
 function _hideStaleBanner() {
   document.getElementById('stale-banner')?.remove();
+  if (_staleBannerRetryTimer) { clearInterval(_staleBannerRetryTimer); _staleBannerRetryTimer = null; }
+  if (typeof window._connMonitorNormal === 'function') window._connMonitorNormal();
 }
 
 async function api(method, path, body=null, {retries=2, retryDelay=2000, useCache=true}={}) {
@@ -582,7 +604,7 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
   const opts = {
     method,
     headers:{'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{})},
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(55000),
   };
   if (body) opts.body = JSON.stringify(body);
 
@@ -1455,16 +1477,19 @@ async function _checkConn() {
     const data = await r.json().catch(()=>({}));
     const dbOk = data.db === 'connected';
 
-    if(_connState !== 'ok') {
-      // Was offline — restored
+    if(_connState !== 'ok' || document.getElementById('stale-banner')) {
+      // Was offline or showing stale banner — now restored
       _connState = 'ok';
       _connRetries = 0;
       setApiStatus(true, 'API متصل');
-      toast('✅ تم استعادة الاتصال بالخادم');
+      _hideStaleBanner();
+      if(_connState !== 'ok') toast('✅ تم استعادة الاتصال بالخادم');
       if(window._connMonitorNormal) window._connMonitorNormal();
-      // Refresh current page silently
-      const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,payroll:loadPayroll,client_portal:loadClientPortal,permissions:loadPermissions};
-      if(pages[currentPage]) try{ pages[currentPage](); }catch(e){}
+      // Refresh current page silently with fresh data
+      if (typeof _REFRESH_FN_MAP !== 'undefined' && _REFRESH_FN_MAP[currentPage]) {
+        _clearPageCache(currentPage);
+        try { await _REFRESH_FN_MAP[currentPage](); } catch(e) {}
+      }
     }
 
     if(!dbOk && _connState !== 'degraded') {
