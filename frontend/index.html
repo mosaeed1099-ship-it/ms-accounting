@@ -3934,6 +3934,7 @@ function _renderTaxShell() {
       }) : [])
     : (_tcAllClients.length ? _tcAllClients : []);
 
+  window._tcClientsForTab = clientsForTab; // store for tcFilterClientList
   main.innerHTML = `
   <!-- Client/Period selector bar -->
   <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
@@ -3980,11 +3981,13 @@ window.tcPeriodChanged = function() {
 window.tcFilterClientList = function(q) {
   const sel = document.getElementById('tcClientSel');
   if (!sel) return;
+  // display:none on <option> doesn't work in browsers — rebuild the list instead
+  const clients = window._tcClientsForTab || [];
   const lq = q.toLowerCase();
-  Array.from(sel.options).forEach(opt => {
-    if (!opt.value) return; // keep placeholder
-    opt.style.display = !q || opt.textContent.toLowerCase().includes(lq) ? '' : 'none';
-  });
+  const matched = !q ? clients : clients.filter(c => (c.name||c.trade_name||'').toLowerCase().includes(lq));
+  const curVal = _tcClientId;
+  sel.innerHTML = `<option value="">— اختر عميل —</option>` +
+    matched.map(c=>`<option value="${c.id}" ${c.id==curVal?'selected':''}>${escH(c.name||c.trade_name||'')}</option>`).join('');
 };
 
 async function switchTaxTab(id) {
@@ -4855,6 +4858,13 @@ const LEADS_DATE_LABELS={
 };
 
 async function loadLeads(silent=false) {
+  // Don't disrupt active data entry — skip silent (WS-triggered) refresh if user is typing in the grid
+  if (silent) {
+    const active = document.activeElement;
+    if (active && active.closest && active.closest('#leadsGridBody')) return;
+    // Also skip if there are unsaved new rows being saved
+    if (document.querySelector('tr[data-id^="new-"]')) return;
+  }
   try {
     const p=new URLSearchParams({limit:'10000'});
     if(leadsSearch) p.append('q',leadsSearch);
@@ -6693,6 +6703,10 @@ async function loadObligations(silent=false) {
 function renderObligations() {
   const main = document.getElementById('main');
   main.className = 'page';
+  // Save focus state before re-render (search input loses focus on innerHTML replace)
+  const _prevActive = document.activeElement;
+  const _searchHadFocus = _prevActive && _prevActive.id === 'oblSearchInput';
+  const _searchCursor = _searchHadFocus ? _prevActive.selectionStart : null;
 
   // Filter instances
   let filtered = oblInstances;
@@ -6823,6 +6837,11 @@ function renderObligations() {
   </div>`;
 
   main.innerHTML = kpiRow + toolbar + tableSection;
+  // Restore search focus after re-render
+  if (_searchHadFocus) {
+    const si = document.getElementById('oblSearchInput');
+    if (si) { si.focus(); if (_searchCursor != null) try { si.setSelectionRange(_searchCursor, _searchCursor); } catch(_){} }
+  }
 }
 
 async function runBulkGenerate() {
@@ -7816,6 +7835,7 @@ async function deleteCollectionContract(contractId, title) {
     await api('DELETE',`/api/collections/${contractId}`);
     toast('تم حذف العقد بنجاح');
     loadCollections(true);
+    loadInvoices(true);
   } catch(e){toast(e.message,'error');}
 }
 
