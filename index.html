@@ -536,6 +536,19 @@ const _AC = {
   set(path, data) { try { sessionStorage.setItem(this.key(path), JSON.stringify({t: Date.now(), d: data})); } catch(e){} },
   get(path) { try { const v = JSON.parse(sessionStorage.getItem(this.key(path))||'null'); return v && (Date.now()-v.t < this.TTL*10) ? v : null; } catch(e){ return null; } },
   fresh(path) { try { const v = JSON.parse(sessionStorage.getItem(this.key(path))||'null'); return v && (Date.now()-v.t < this.TTL) ? v.d : null; } catch(e){ return null; } },
+  // Invalidate all cache entries whose key starts with the given base path
+  // Called after every write (POST/PUT/PATCH/DELETE) to prevent stale GET returns
+  invalidate(basePath) {
+    try {
+      const prefix = 'api_cache_' + basePath.split('?')[0].replace(/\/\d+$/, '');
+      const toRemove = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(prefix)) toRemove.push(k);
+      }
+      toRemove.forEach(k => sessionStorage.removeItem(k));
+    } catch(e) {}
+  },
 };
 
 function _showStaleBanner() {
@@ -580,8 +593,9 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
         else if(data.message) msg = data.message;
         throw new Error(msg);
       }
-      // Success — cache GET, clear stale banner, restore status
+      // Success — cache GET, invalidate cache for writes, clear stale banner
       if (isGet && useCache) _AC.set(path, data);
+      else if (!isGet) _AC.invalidate(path); // DELETE/POST/PUT/PATCH → bust related GET cache
       if(_connState !== 'ok') { _connState='ok'; setApiStatus(true,'API متصل'); }
       _hideStaleBanner();
       return data;
