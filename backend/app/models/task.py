@@ -8,6 +8,7 @@ import enum
 class TaskStatus(str, enum.Enum):
     TODO = "todo"
     IN_PROGRESS = "in_progress"
+    WAITING_DOCS = "waiting_docs"
     DONE = "done"
     CANCELLED = "cancelled"
 
@@ -44,6 +45,7 @@ class Task(Base):
     estimated_hours = Column(Integer)
     actual_hours = Column(Integer)
     tags = Column(String(500))
+    department = Column(String(200))
     assigned_to = Column(Integer, ForeignKey("users.id"))
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.accounting import (AccAccount, AccJournalEntry, AccJournalLine,
                                    AccTransaction, AccTreasury, AccTreasuryTx,
                                    AccCheck, AccAdvance)
+from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 
@@ -450,8 +451,68 @@ async def post_journal_entry(
     if not je.is_balanced:
         raise HTTPException(400, detail="لا يمكن ترحيل قيد غير متوازن (المدين ≠ الدائن)")
     je.status = "posted"
+    je.updated_at = datetime.utcnow()
+    db.add(AuditLog(
+        user_id=current_user.id, action="approve", module="accounting",
+        record_id=je.id, record_name=je.entry_number,
+        notes=f"ترحيل القيد {je.entry_number} بتاريخ {je.date}",
+    ))
     db.commit()
     return {"message": "تم ترحيل القيد ✅"}
+
+
+@router.post("/{client_id}/journal-entries/{je_id}/reverse")
+async def reverse_journal_entry(
+    client_id: int, je_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """إنشاء قيد عكسي — يعكس جميع أسطر القيد الأصلي (مدين ↔ دائن)"""
+    orig = db.query(AccJournalEntry).filter(AccJournalEntry.id == je_id, AccJournalEntry.client_id == client_id).first()
+    if not orig:
+        raise HTTPException(404, detail="القيد غير موجود")
+    if orig.status != "posted":
+        raise HTTPException(400, detail="لا يمكن عكس قيد غير مرحَّل")
+
+    today = date.today()
+    rev_je = AccJournalEntry(
+        client_id=client_id,
+        entry_number=_je_number(client_id, db),
+        date=today, month=today.month, year=today.year,
+        description=f"قيد عكسي — {orig.description or orig.entry_number}",
+        reference=orig.reference,
+        entry_type="reversal",
+        status="posted",
+        total_debit=orig.total_credit,   # swapped
+        total_credit=orig.total_debit,   # swapped
+        is_balanced=orig.is_balanced,
+        notes=f"عكس القيد رقم {orig.entry_number}",
+        created_by=current_user.id,
+    )
+    db.add(rev_je)
+    db.flush()
+
+    for l in orig.lines:
+        db.add(AccJournalLine(
+            entry_id=rev_je.id,
+            account_id=l.account_id,
+            account_code=l.account_code,
+            account_name=l.account_name,
+            debit=l.credit,    # swapped
+            credit=l.debit,    # swapped
+            description=f"عكسي: {l.description or ''}",
+            sort_order=l.sort_order,
+        ))
+
+    db.add(AuditLog(
+        user_id=current_user.id, action="create", module="accounting",
+        record_id=rev_je.id, record_name=rev_je.entry_number,
+        notes=f"قيد عكسي للقيد الأصلي {orig.entry_number}",
+        old_data={"original_je_id": orig.id, "original_number": orig.entry_number},
+    ))
+    db.commit()
+    db.refresh(rev_je)
+    return {"id": rev_je.id, "entry_number": rev_je.entry_number, "message": f"✅ تم إنشاء القيد العكسي {rev_je.entry_number}"}
 
 
 @router.delete("/{client_id}/journal-entries/{je_id}")
@@ -464,7 +525,12 @@ async def delete_journal_entry(
     if not je:
         raise HTTPException(404, detail="القيد غير موجود")
     if je.status == "posted":
-        raise HTTPException(400, detail="لا يمكن حذف قيد مرحَّل — يمكنك إنشاء قيد عكسي فقط")
+        raise HTTPException(400, detail="لا يمكن حذف قيد مرحَّل — استخدم القيد العكسي")
+    db.add(AuditLog(
+        user_id=current_user.id, action="delete", module="accounting",
+        record_id=je.id, record_name=je.entry_number,
+        notes=f"حذف القيد {je.entry_number} (مسودة)",
+    ))
     db.delete(je)
     db.commit()
     return {"message": "تم حذف القيد"}
@@ -553,12 +619,48 @@ async def update_transaction(
     tx = db.query(AccTransaction).filter(AccTransaction.id == tx_id, AccTransaction.client_id == client_id).first()
     if not tx:
         raise HTTPException(404, detail="المعاملة غير موجودة")
+
+    # Delete old journal entry (if not posted via manual review)
+    if tx.journal_entry_id:
+        old_je = db.query(AccJournalEntry).filter(AccJournalEntry.id == tx.journal_entry_id).first()
+        if old_je and old_je.status != "posted":
+            db.delete(old_je)
+            db.flush()
+            tx.journal_entry_id = None
+        elif old_je and old_je.status == "posted":
+            # Create reversal for posted JE, then regenerate
+            rev_je = AccJournalEntry(
+                client_id=client_id,
+                entry_number=_je_number(client_id, db),
+                date=date.today(), month=date.today().month, year=date.today().year,
+                description=f"عكسي لتعديل معاملة — {old_je.description or old_je.entry_number}",
+                entry_type="reversal", status="posted",
+                total_debit=old_je.total_credit, total_credit=old_je.total_debit,
+                is_balanced=old_je.is_balanced,
+                notes=f"تعديل تلقائي للمعاملة رقم {tx_id}",
+                created_by=current_user.id,
+            )
+            db.add(rev_je); db.flush()
+            for l in old_je.lines:
+                db.add(AccJournalLine(entry_id=rev_je.id, account_id=l.account_id,
+                    account_code=l.account_code, account_name=l.account_name,
+                    debit=l.credit, credit=l.debit, description=f"عكسي: {l.description or ''}",
+                    sort_order=l.sort_order))
+            tx.journal_entry_id = None
+
     for k, v in data.dict().items():
         setattr(tx, k, v)
     tx.month = data.date.month
     tx.year = data.date.year
+    db.flush()
+
+    # Regenerate journal entry
+    new_je = _auto_journal_entry(tx, client_id, db, current_user.id)
+    if new_je:
+        tx.journal_entry_id = new_je.id
+
     db.commit()
-    return {"message": "تم التحديث"}
+    return {"message": "تم التحديث وإعادة توليد القيد تلقائياً ✅"}
 
 
 @router.delete("/{client_id}/transactions/{tx_id}")
@@ -645,42 +747,39 @@ async def income_statement(
     gross    = revenue - cogs
     net      = gross  # simplified (no other adjustments yet)
 
-    # Also get from transactions for more detail
-    tx_sales = db.query(func.sum(AccTransaction.amount)).filter(
-        AccTransaction.client_id == client_id,
-        AccTransaction.transaction_type == "sale",
-        *([AccTransaction.year == year] if year else [])
-    ).scalar() or 0
+    # Also get from transactions for detail breakdown
+    tx_q = db.query(AccTransaction).filter(AccTransaction.client_id == client_id)
+    if year:
+        tx_q = tx_q.filter(AccTransaction.year == year)
+    tx_sales = tx_q.filter(AccTransaction.transaction_type == "sale").with_entities(func.sum(AccTransaction.amount)).scalar() or 0
+    tx_purchases = tx_q.filter(AccTransaction.transaction_type == "purchase").with_entities(func.sum(AccTransaction.amount)).scalar() or 0
+    tx_expenses = tx_q.filter(AccTransaction.transaction_type == "expense").with_entities(func.sum(AccTransaction.amount)).scalar() or 0
 
-    tx_purchases = db.query(func.sum(AccTransaction.amount)).filter(
-        AccTransaction.client_id == client_id,
-        AccTransaction.transaction_type == "purchase",
-        *([AccTransaction.year == year] if year else [])
-    ).scalar() or 0
-
-    tx_expenses = db.query(func.sum(AccTransaction.amount)).filter(
-        AccTransaction.client_id == client_id,
-        AccTransaction.transaction_type == "expense",
-        *([AccTransaction.year == year] if year else [])
-    ).scalar() or 0
-
-    # Use tx data if journal entries are empty
-    if revenue == 0 and tx_sales > 0:
+    # Determine source: prefer journal entries (more accurate), fall back to transactions
+    has_je_data = (revenue > 0 or cogs > 0)
+    if not has_je_data and (tx_sales > 0 or tx_purchases > 0 or tx_expenses > 0):
+        # Fallback to transactions when no journal entries exist
         revenue  = tx_sales
-        cogs     = tx_purchases + tx_expenses
-        gross    = revenue - tx_purchases
+        cogs     = tx_purchases
+        gross    = revenue - cogs
         net      = gross - tx_expenses
+        source   = "transactions"
+    else:
+        source   = "journal_entries"
 
     return {
         "year": year,
+        "source": source,
         "revenue": round(revenue, 2),
+        "cogs": round(cogs, 2),
+        "gross_profit": round(gross, 2),
+        "total_expenses": round(cogs + (tx_expenses if source == "transactions" else
+                          type_totals.get("expense", {}).get("debit", 0) - type_totals.get("expense", {}).get("credit", 0)), 2),
+        "net_profit": round(net if source == "journal_entries" else revenue - tx_purchases - tx_expenses, 2),
+        # Transaction detail always available
         "tx_sales": round(tx_sales, 2),
         "tx_purchases": round(tx_purchases, 2),
         "tx_expenses": round(tx_expenses, 2),
-        "cogs": round(tx_purchases, 2),
-        "gross_profit": round(revenue - tx_purchases, 2),
-        "total_expenses": round(tx_expenses, 2),
-        "net_profit": round(revenue - tx_purchases - tx_expenses, 2),
     }
 
 

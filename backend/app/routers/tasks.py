@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_, or_
 from typing import Optional
 from pydantic import BaseModel
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from app.database import get_db
 from app.models.task import Task, TaskComment, TaskStatus, TaskPriority, TaskCategory
 from app.models.activity import ActivityLog
@@ -16,10 +16,12 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
+    notes: Optional[str] = None  # alias for description if description not provided
     client_id: Optional[int] = None
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
     category: TaskCategory = TaskCategory.OTHER
+    department: Optional[str] = None
     due_date: Optional[date] = None
     estimated_hours: Optional[int] = None
     assigned_to: Optional[int] = None
@@ -29,10 +31,12 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    notes: Optional[str] = None
     client_id: Optional[int] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     category: Optional[TaskCategory] = None
+    department: Optional[str] = None
     due_date: Optional[date] = None
     estimated_hours: Optional[int] = None
     actual_hours: Optional[int] = None
@@ -45,6 +49,10 @@ class CommentCreate(BaseModel):
 
 
 def task_to_dict(task: Task) -> dict:
+    today = date.today()
+    due = task.due_date
+    is_overdue = (due and due < today and task.status not in (TaskStatus.DONE, TaskStatus.CANCELLED))
+    days_until_due = (due - today).days if due else None
     return {
         "id": task.id,
         "title": task.title,
@@ -54,7 +62,10 @@ def task_to_dict(task: Task) -> dict:
         "status": task.status,
         "priority": task.priority,
         "category": task.category,
+        "department": task.department,
         "due_date": task.due_date,
+        "days_until_due": days_until_due,
+        "is_overdue": is_overdue,
         "completed_at": task.completed_at,
         "estimated_hours": task.estimated_hours,
         "actual_hours": task.actual_hours,
@@ -74,14 +85,19 @@ async def list_tasks(
     status: Optional[TaskStatus] = None,
     priority: Optional[TaskPriority] = None,
     category: Optional[TaskCategory] = None,
+    department: Optional[str] = None,
     assigned_to: Optional[int] = None,
     client_id: Optional[int] = None,
+    overdue_only: bool = False,
+    due_today: bool = False,
+    due_tomorrow: bool = False,
     q: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    today = date.today()
     query = db.query(Task)
     if status:
         query = query.filter(Task.status == status)
@@ -89,12 +105,20 @@ async def list_tasks(
         query = query.filter(Task.priority == priority)
     if category:
         query = query.filter(Task.category == category)
+    if department:
+        query = query.filter(Task.department.ilike(f"%{department}%"))
     if assigned_to:
         query = query.filter(Task.assigned_to == assigned_to)
     if client_id:
         query = query.filter(Task.client_id == client_id)
+    if overdue_only:
+        query = query.filter(Task.due_date < today, Task.status.not_in([TaskStatus.DONE, TaskStatus.CANCELLED]))
+    if due_today:
+        query = query.filter(Task.due_date == today)
+    if due_tomorrow:
+        query = query.filter(Task.due_date == today + timedelta(days=1))
     if q:
-        query = query.filter(Task.title.ilike(f"%{q}%"))
+        query = query.filter(or_(Task.title.ilike(f"%{q}%"), Task.description.ilike(f"%{q}%")))
 
     total = query.count()
     tasks = query.order_by(Task.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
@@ -103,14 +127,52 @@ async def list_tasks(
 
 @router.get("/board")
 async def tasks_board(
+    view: Optional[str] = None,  # None=kanban | overdue | today | tomorrow | by_employee
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    if view == "overdue":
+        tasks = db.query(Task).filter(
+            Task.due_date < today,
+            Task.status.not_in([TaskStatus.DONE, TaskStatus.CANCELLED])
+        ).order_by(Task.due_date.asc()).limit(200).all()
+        return {"view": "overdue", "tasks": [task_to_dict(t) for t in tasks], "count": len(tasks)}
+
+    if view == "today":
+        tasks = db.query(Task).filter(Task.due_date == today).order_by(Task.priority.desc()).limit(200).all()
+        return {"view": "today", "tasks": [task_to_dict(t) for t in tasks], "count": len(tasks)}
+
+    if view == "tomorrow":
+        tasks = db.query(Task).filter(Task.due_date == tomorrow).order_by(Task.priority.desc()).limit(200).all()
+        return {"view": "tomorrow", "tasks": [task_to_dict(t) for t in tasks], "count": len(tasks)}
+
+    if view == "by_employee":
+        all_tasks = db.query(Task).filter(
+            Task.status.not_in([TaskStatus.DONE, TaskStatus.CANCELLED])
+        ).order_by(Task.due_date.asc()).limit(500).all()
+        by_emp: dict = {}
+        for t in all_tasks:
+            emp_name = t.assigned_to_user.name if t.assigned_to_user else "غير محدد"
+            if emp_name not in by_emp:
+                by_emp[emp_name] = {"employee": emp_name, "assigned_to": t.assigned_to, "tasks": []}
+            by_emp[emp_name]["tasks"].append(task_to_dict(t))
+        return {"view": "by_employee", "employees": list(by_emp.values())}
+
+    # Default kanban view
     result = {}
-    board_statuses = [TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.CANCELLED]
+    board_statuses = [TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.WAITING_DOCS, TaskStatus.DONE, TaskStatus.CANCELLED]
     for status in board_statuses:
         tasks = db.query(Task).filter(Task.status == status).order_by(Task.priority.desc()).limit(50).all()
         result[status] = [task_to_dict(t) for t in tasks]
+    # Overdue count for badge
+    overdue_count = db.query(func.count(Task.id)).filter(
+        Task.due_date < today,
+        Task.status.not_in([TaskStatus.DONE, TaskStatus.CANCELLED])
+    ).scalar() or 0
+    result["_meta"] = {"overdue_count": overdue_count, "today": str(today)}
     return result
 
 
@@ -153,7 +215,12 @@ async def create_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    task = Task(**data.dict(), created_by=current_user.id)
+    task_data = data.dict()
+    # Merge notes into description if description is empty
+    if not task_data.get("description") and task_data.get("notes"):
+        task_data["description"] = task_data["notes"]
+    task_data.pop("notes", None)
+    task = Task(**task_data, created_by=current_user.id)
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -195,6 +262,11 @@ async def update_task(
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
 
     updates = data.dict(exclude_none=True)
+    # Merge notes into description
+    if "notes" in updates:
+        if not updates.get("description"):
+            updates["description"] = updates["notes"]
+        updates.pop("notes")
     if "status" in updates and updates["status"] == TaskStatus.DONE and task.status != TaskStatus.DONE:
         task.completed_at = datetime.utcnow()
 

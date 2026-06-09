@@ -428,6 +428,29 @@ def _migrate_formation_tables():
     print("✅ Formation tables checked")
 
 
+def _migrate_tasks_columns():
+    """Add new Task columns and enum values that may not exist on older databases."""
+    from app.database import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        # Add department column
+        try:
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS department VARCHAR(200)"))
+            conn.commit()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+
+        # Add waiting_docs to taskstatus enum (PostgreSQL only)
+        try:
+            conn.execute(text("ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'waiting_docs'"))
+            conn.commit()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+    print("✅ Tasks migration done")
+
+
 def _init_db_sync():
     """Blocking DB init — runs in thread pool."""
     import time
@@ -437,6 +460,7 @@ def _init_db_sync():
             seed_admin()
             _migrate_leads_columns()
             _migrate_formation_tables()
+            _migrate_tasks_columns()
             _seed_wht_types()
             print("✅ Database ready")
             return
