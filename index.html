@@ -6425,6 +6425,8 @@ async function _fmDoMoveStage(caseId, newStage, btn) {
     await api('POST',`/api/formation/${caseId}/move`,{new_stage:newStage,notes:notes||null});
     toast('تم نقل الملف للمرحلة التالية ✅');
     overlay?.remove();
+    // Bust formation GET cache so reload always fetches fresh data from server
+    _AC.invalidate('/api/formation');
     await loadEstablishment(true);
   } catch(e){toast(e.message,'error');btn.disabled=false;}
 }
@@ -9750,6 +9752,37 @@ window.setLeadsDateTo=v=>{leadsDateTo=v;loadLeads();};
 window.setLeadsSearch=v=>{leadsSearch=v;loadLeads();};
 
 // ── Manual Refresh Button ─────────────────────────────────────────────────────
+// Cache prefixes per page — cleared before force-reload so we never get stale data
+const _PAGE_CACHE_PREFIXES = {
+  dashboard:            ['/api/dashboard','/api/clients','/api/invoices','/api/tasks','/api/leads'],
+  clients:              ['/api/clients'],
+  leads:                ['/api/leads'],
+  invoices:             ['/api/invoices'],
+  collections:          ['/api/collections','/api/invoices'],
+  tasks:                ['/api/tasks'],
+  obligations:          ['/api/obligations'],
+  formation_obligations:['/api/formation_obligations'],
+  documents:            ['/api/documents','/api/folders'],
+  payroll:              ['/api/payroll','/api/employees'],
+  settlements:          ['/api/settlements'],
+  mail:                 ['/api/mail'],
+  quotations:           ['/api/quotations'],
+  appointments:         ['/api/appointments'],
+  government_papers:    ['/api/government_papers','/api/government-papers'],
+  postal:               ['/api/postal'],
+  statements:           ['/api/statements'],
+  timesheet:            ['/api/timesheet'],
+  office_services:      ['/api/office_services','/api/office-services'],
+  fin_reports:          ['/api/fin_reports','/api/assets'],
+  accounting:           ['/api/accounting'],
+  establishment:        ['/api/formation'],
+};
+
+function _clearPageCache(page) {
+  const prefixes = _PAGE_CACHE_PREFIXES[page] || [];
+  prefixes.forEach(p => _AC.invalidate(p));
+}
+
 window.refreshCurrentPage = async function() {
   const icon = document.getElementById('refreshIcon');
   const btn  = document.getElementById('refreshBtn');
@@ -9780,6 +9813,7 @@ window.refreshCurrentPage = async function() {
     establishment:        ()=>loadEstablishment(),
   };
   try {
+    _clearPageCache(currentPage); // bust GET cache so we always get fresh data
     const fn = refreshMap[currentPage];
     if (fn) await fn();
     toast('تم التحديث ✓', 'success');
