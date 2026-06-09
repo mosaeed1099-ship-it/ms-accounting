@@ -1249,29 +1249,56 @@ function renderApp() {
 // ── Notifications Bell ─────────────────────────────
 let notifData = [], notifDropdownOpen = false;
 
+let _taskNotifData = []; // task-based notifications
+
 async function loadNotifCount() {
   try {
-    const d = await api('GET', '/api/obligations/notifications?unread_only=true&limit=1');
-    if (!d) return;
+    const [oblD, taskR] = await Promise.all([
+      api('GET', '/api/obligations/notifications?unread_only=true&limit=1').catch(()=>null),
+      api('GET', `/api/tasks?overdue_only=true&page_size=1`).catch(()=>null),
+    ]);
     const badge = document.getElementById('notifBadge');
     if (badge) {
-      const cnt = d.unread_count || 0;
-      badge.textContent = cnt > 99 ? '99+' : cnt;
-      badge.style.display = cnt > 0 ? 'block' : 'none';
+      const oblCnt = oblD?.unread_count || 0;
+      const taskCnt = taskR?.total || 0;
+      const total = oblCnt + taskCnt;
+      badge.textContent = total > 99 ? '99+' : total;
+      badge.style.display = total > 0 ? 'block' : 'none';
     }
   } catch(e) {}
 }
 
 async function loadNotifData() {
   try {
-    const d = await api('GET', '/api/obligations/notifications?limit=20');
+    const [d, taskR] = await Promise.all([
+      api('GET', '/api/obligations/notifications?limit=15').catch(()=>({items:[],unread_count:0})),
+      api('GET', '/api/tasks?overdue_only=true&page_size=20').catch(()=>({items:[]})),
+    ]);
     notifData = d?.items || [];
+
+    // Build virtual task notifications from overdue tasks
+    _taskNotifData = (taskR?.items || []).map(t => ({
+      id: `task_${t.id}`,
+      type: 'deadline',
+      title: `⏰ مهمة متأخرة: ${t.title}`,
+      message: [
+        t.assigned_to_name ? `موظف: ${t.assigned_to_name}` : '',
+        t.client_name ? `عميل: ${t.client_name}` : '',
+        t.due_date ? `كانت مستحقة: ${dateAr(t.due_date)}` : '',
+      ].filter(Boolean).join(' · '),
+      is_read: false,
+      created_at: t.due_date,
+      _task_id: t.id,
+    }));
+
     renderNotifList();
     const badge = document.getElementById('notifBadge');
     if (badge) {
-      const cnt = d?.unread_count || 0;
-      badge.textContent = cnt > 99 ? '99+' : cnt;
-      badge.style.display = cnt > 0 ? 'block' : 'none';
+      const oblCnt = d?.unread_count || 0;
+      const taskCnt = _taskNotifData.length;
+      const total = oblCnt + taskCnt;
+      badge.textContent = total > 99 ? '99+' : total;
+      badge.style.display = total > 0 ? 'block' : 'none';
     }
   } catch(e) { document.getElementById('notifList').innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8">تعذّر تحميل الإشعارات</div>'; }
 }
@@ -1279,13 +1306,19 @@ async function loadNotifData() {
 function renderNotifList() {
   const el = document.getElementById('notifList');
   if (!el) return;
-  if (!notifData.length) {
+  const allItems = [..._taskNotifData, ...notifData];
+  if (!allItems.length) {
     el.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">🎉 لا توجد إشعارات جديدة</div>';
     return;
   }
   const typeIcon = {warning:'⚠️', info:'📅', error:'🚨', success:'✅', deadline:'⏰'};
-  el.innerHTML = notifData.map(n=>`
-    <div onclick="markNotifRead(${n.id})" style="padding:12px 16px;border-bottom:1px solid #f8fafc;cursor:pointer;background:${n.is_read?'white':'#f0f7ff'};transition:background .15s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='${n.is_read?'white':'#f0f7ff'}'">
+  el.innerHTML = allItems.map(n=>{
+    const isTask = typeof n.id === 'string' && n.id.startsWith('task_');
+    const clickAction = isTask
+      ? `onclick="closeNotifDropdown();navigate('tasks');setTimeout(()=>renderOverdueBoard('overdue'),400)"`
+      : `onclick="markNotifRead(${n.id})"`;
+    return `
+    <div ${clickAction} style="padding:12px 16px;border-bottom:1px solid #f8fafc;cursor:pointer;background:${n.is_read?'white':'#f0f7ff'};transition:background .15s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='${n.is_read?'white':'#f0f7ff'}'">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <span style="font-size:16px;flex-shrink:0;margin-top:1px">${typeIcon[n.type]||'🔔'}</span>
         <div style="flex:1;min-width:0">
@@ -1293,9 +1326,16 @@ function renderNotifList() {
           <div style="font-size:11px;color:#64748b;line-height:1.4">${escH(n.message||'')}</div>
           <div style="font-size:10px;color:#cbd5e1;margin-top:4px">${dateAr(n.created_at)}</div>
         </div>
-        ${!n.is_read?'<span style="width:8px;height:8px;background:#1a73e8;border-radius:50%;flex-shrink:0;margin-top:4px"></span>':''}
+        ${!n.is_read?'<span style="width:8px;height:8px;background:#dc2626;border-radius:50%;flex-shrink:0;margin-top:4px"></span>':''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+function closeNotifDropdown() {
+  notifDropdownOpen = false;
+  const dd = document.getElementById('notifDropdown');
+  if (dd) dd.style.display = 'none';
 }
 
 function toggleNotifDropdown() {
@@ -2305,6 +2345,14 @@ async function showClientDetail(id) {
       <!-- Health score breakdown (hidden until loaded) -->
       <div id="healthScoreDetails" style="display:none;margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
     </div>
+    <!-- Client Tasks Section -->
+    <div id="clientTasksSection" style="padding:0 24px 14px;border-bottom:1px solid #f1f5f9;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;color:#374151">✅ مهام العميل</div>
+        <button onclick="showTaskModalForClient(${c.id},'${escH(c.name)}')" style="background:#eef1fb;color:#1a2472;border:none;border-radius:8px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer">+ مهمة جديدة</button>
+      </div>
+      <div id="clientTasksList" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
     <div style="padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
       ${[
         ['📞 الهاتف',c.phone||'—'],['🏙️ المحافظة',c.governorate||'—'],
@@ -2341,6 +2389,40 @@ async function showClientDetail(id) {
   </div>`;
   document.body.append(overlay);
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+
+  // Load client tasks async
+  api('GET', `/api/tasks?client_id=${c.id}&page_size=50`).then(r => {
+    const tasks = r?.items || [];
+    const section = document.getElementById('clientTasksSection');
+    const list = document.getElementById('clientTasksList');
+    if (!section || !list) return;
+    if (tasks.length > 0) {
+      section.style.display = 'block';
+      const PRIORITY_COLOR_M = {urgent:'#dc2626',high:'#f97316',medium:'#d97706',low:'#16a34a'};
+      const STATUS_LABEL_M = {todo:'جديدة',in_progress:'جاري',waiting_docs:'بانتظار مستندات',done:'مكتملة',cancelled:'ملغاة'};
+      const STATUS_BG_M = {todo:'#f1f5f9',in_progress:'#eef1fb',waiting_docs:'#fffbeb',done:'#f0fdf4',cancelled:'#fff5f5'};
+      const STATUS_CLR_M = {todo:'#64748b',in_progress:'#1a2472',waiting_docs:'#d97706',done:'#15803d',cancelled:'#dc2626'};
+      const open = tasks.filter(t=>t.status!=='done'&&t.status!=='cancelled');
+      const closed = tasks.filter(t=>t.status==='done'||t.status==='cancelled');
+      const today = new Date().toISOString().split('T')[0];
+      list.innerHTML = [
+        ...open.map(t=>{
+          const overdue = t.due_date && t.due_date < today;
+          return `<div style="background:${STATUS_BG_M[t.status]||'#f8fafc'};border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border:1px solid ${overdue?'#fecaca':'#e8edf3'}" onclick="this.closest('.modal-overlay').remove();navigate('tasks');setTimeout(()=>showTaskModal(${t.id}),400)">
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#1e293b">${escH(t.title)}</div>
+              <div style="font-size:10px;color:${overdue?'#dc2626':'#64748b'}">${overdue?'⚠️ متأخر — ':' '}${t.due_date?dateAr(t.due_date):''} ${t.assigned_to_name?'· 👷 '+t.assigned_to_name:''}</div>
+            </div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <span style="font-size:10px;font-weight:700;color:${PRIORITY_COLOR_M[t.priority]};background:${PRIORITY_COLOR_M[t.priority]}18;padding:2px 7px;border-radius:5px">${t.priority==='urgent'?'🔴':t.priority==='high'?'🟠':t.priority==='medium'?'🟡':'🟢'}</span>
+              <span style="font-size:10px;font-weight:700;color:${STATUS_CLR_M[t.status]||'#64748b'};background:${STATUS_CLR_M[t.status]||'#64748b'}18;padding:2px 7px;border-radius:5px">${STATUS_LABEL_M[t.status]||t.status}</span>
+            </div>
+          </div>`;
+        }),
+        closed.length>0 ? `<div style="font-size:10px;color:#94a3b8;padding:3px 2px">✅ ${closed.length} مكتملة</div>` : '',
+      ].join('');
+    }
+  }).catch(()=>{});
 
   // Load health score async
   try {
@@ -3064,6 +3146,9 @@ function renderTaskFolders() {
         style="padding:8px 16px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">
         📋 الكانبان
       </button>
+      <button onclick="renderOverdueBoard('overdue')" style="padding:8px 14px;background:white;border:1.5px solid #fca5a5;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#dc2626">⚠️ المتأخرة</button>
+      <button onclick="renderOverdueBoard('today')" style="padding:8px 14px;background:white;border:1.5px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#1a2472">📅 اليوم</button>
+      <button onclick="renderOverdueBoard('tomorrow')" style="padding:8px 14px;background:white;border:1.5px solid #a5f3fc;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#0891b2">🗓️ الغد</button>
       <button onclick="showTaskModal()" class="btn btn-primary" style="font-size:13px">➕ مهمة جديدة</button>
     </div>
   </div>
@@ -3167,7 +3252,8 @@ function renderEmployeeTasks() {
           ${t.category    ? `<span>📂 ${catLabel[t.category]||t.category}</span>` : ''}
           ${t.due_date    ? `<span style="color:${overdue?'#dc2626':'#64748b'};font-weight:${overdue?'700':'400'}">${overdue?'⚠️ متأخر: ':'📅 '}${dateAr(t.due_date)}</span>` : ''}
         </div>
-        ${t.notes ? `<div style="font-size:11px;color:#94a3b8;margin-top:5px">${escH(t.notes)}</div>` : ''}
+        ${(t.description||t.notes) ? `<div style="font-size:11px;color:#94a3b8;margin-top:5px">${escH(t.description||t.notes)}</div>` : ''}
+        ${t.department ? `<div style="font-size:11px;color:#6366f1;margin-top:3px">🏢 ${escH(t.department)}</div>` : ''}
       </div>
       ${!showDone ? `
       <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
@@ -3233,15 +3319,88 @@ async function quickDoneTask(id) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+let _kanbanView = 'kanban'; // 'kanban' | 'overdue' | 'today' | 'tomorrow'
+
+async function renderOverdueBoard(viewType='overdue') {
+  _kanbanView = viewType;
+  const main = document.getElementById('main');
+  main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+  try {
+    const r = await api('GET', `/api/tasks/board?view=${viewType}`);
+    const tasks = r.tasks || [];
+    const labels = {overdue:'⚠️ المتأخرة', today:'📅 مهام اليوم', tomorrow:'🗓️ مهام الغد'};
+    const colors = {overdue:'#dc2626', today:'#1a2472', tomorrow:'#0891b2'};
+    const priorityColor = PRIORITY_COLOR;
+    const priorityLabel = PRIORITY_LABEL;
+    const today = new Date().toISOString().split('T')[0];
+
+    main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+      <div>
+        <h2 style="font-size:18px;font-weight:800;color:${colors[viewType]};margin:0">${labels[viewType]}</h2>
+        <p style="font-size:13px;color:#64748b;margin:4px 0 0">${tasks.length} مهمة</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="_taskViewMode='folders';_taskEmpFilter=null;loadTasks()" style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
+        <button onclick="renderKanban()" style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;color:#475569">📋 الكانبان</button>
+        <button onclick="renderOverdueBoard('overdue')" style="padding:7px 14px;background:${viewType==='overdue'?'#fee2e2':'white'};border:1.5px solid #fca5a5;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#dc2626">⚠️ المتأخرة</button>
+        <button onclick="renderOverdueBoard('today')" style="padding:7px 14px;background:${viewType==='today'?'#eff6ff':'white'};border:1.5px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#1a2472">📅 اليوم</button>
+        <button onclick="renderOverdueBoard('tomorrow')" style="padding:7px 14px;background:${viewType==='tomorrow'?'#ecfeff':'white'};border:1.5px solid #a5f3fc;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#0891b2">🗓️ الغد</button>
+        <button onclick="showTaskModal()" class="btn btn-primary" style="font-size:12px">➕ مهمة</button>
+      </div>
+    </div>
+    ${tasks.length === 0 ? `
+    <div style="text-align:center;padding:60px;color:#94a3b8">
+      <div style="font-size:48px;margin-bottom:12px">${viewType==='overdue'?'🎉':'📭'}</div>
+      <div style="font-size:16px;font-weight:600">${viewType==='overdue'?'لا توجد مهام متأخرة':'لا توجد مهام'}</div>
+    </div>` : `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${tasks.map(t => {
+        const isOverdue = t.is_overdue || (t.due_date && t.due_date < today && t.status !== 'done');
+        const STATUS_LABEL = {todo:'جديدة', in_progress:'جاري', waiting_docs:'بانتظار مستندات', done:'مكتملة', cancelled:'ملغاة'};
+        const STATUS_COLOR = {todo:'#64748b', in_progress:'#1a2472', waiting_docs:'#d97706', done:'#16a34a', cancelled:'#dc2626'};
+        return `<div style="background:white;border-radius:14px;padding:16px 18px;border:1.5px solid ${isOverdue?'#fecaca':'#e8edf3'};box-shadow:0 1px 6px rgba(0,0,0,.04);display:flex;gap:14px;align-items:center;cursor:pointer" onclick="showTaskModal(${t.id})">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <span style="font-size:14px;font-weight:700;color:#1e293b">${escH(t.title)}</span>
+              <span style="font-size:10px;font-weight:700;color:${priorityColor[t.priority]};background:${priorityColor[t.priority]}18;padding:2px 8px;border-radius:6px">${priorityLabel[t.priority]||t.priority}</span>
+              <span style="font-size:10px;font-weight:700;color:${STATUS_COLOR[t.status]||'#64748b'};background:${STATUS_COLOR[t.status]||'#64748b'}18;padding:2px 8px;border-radius:6px">${STATUS_LABEL[t.status]||t.status}</span>
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#64748b">
+              ${t.assigned_to_name ? `<span>👷 ${escH(t.assigned_to_name)}</span>` : ''}
+              ${t.client_name ? `<span>👤 ${escH(t.client_name)}</span>` : ''}
+              ${t.department ? `<span>🏢 ${escH(t.department)}</span>` : ''}
+              ${t.due_date ? `<span style="color:${isOverdue?'#dc2626':'#64748b'};font-weight:${isOverdue?'700':'400'}">${isOverdue?'⚠️ متأخر — ':' 📅 '}${dateAr(t.due_date)}</span>` : ''}
+            </div>
+          </div>
+          <button onclick="event.stopPropagation();quickDoneTaskBoard(${t.id})"
+            style="padding:7px 14px;background:#15803d;color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">✅ خلصت</button>
+        </div>`;
+      }).join('')}
+    </div>`}`;
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function quickDoneTaskBoard(id) {
+  try {
+    await api('PUT', `/api/tasks/${id}`, {status: 'done'});
+    toast('✅ تم إنجاز المهمة');
+    _AC.invalidate('/api/tasks');
+    await renderOverdueBoard(_kanbanView);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 // ── Kanban board view ───────────────────────────────────────────────
 function renderKanban() {
+  _kanbanView = 'kanban';
   const main=document.getElementById('main');
   main.className='page';
   const cols=[
-    {id:'todo',label:'قيد الانتظار',color:'#64748b',bg:'#f8fafc'},
-    {id:'in_progress',label:'جاري التنفيذ',color:'#1a2472',bg:'#eef1fb'},
-    {id:'done',label:'مكتمل',color:'#16a34a',bg:'#f0fdf4'},
-    {id:'cancelled',label:'ملغى',color:'#dc2626',bg:'#fff5f5'},
+    {id:'todo',label:'جديدة',color:'#64748b',bg:'#f8fafc'},
+    {id:'in_progress',label:'جاري العمل',color:'#1a2472',bg:'#eef1fb'},
+    {id:'waiting_docs',label:'بانتظار مستندات',color:'#d97706',bg:'#fffbeb'},
+    {id:'done',label:'مكتملة',color:'#16a34a',bg:'#f0fdf4'},
+    {id:'cancelled',label:'ملغاة',color:'#dc2626',bg:'#fff5f5'},
   ];
   const priorityColor=PRIORITY_COLOR;
   const priorityLabel=PRIORITY_LABEL;
@@ -3253,11 +3412,13 @@ function renderKanban() {
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button onclick="_taskViewMode='folders';_taskEmpFilter=null;renderTaskFolders()"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
-      ${cols.map(c=>{const n=tasksData.filter(t=>t.status===c.id).length;return`<span style="font-size:12px;background:${c.bg};color:${c.color};padding:4px 12px;border-radius:8px;font-weight:700;border:1.5px solid ${c.color}22">${c.label} (${n})</span>`}).join('')}
+      <button onclick="renderOverdueBoard('overdue')" style="padding:7px 14px;background:white;border:1.5px solid #fca5a5;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#dc2626">⚠️ المتأخرة</button>
+      <button onclick="renderOverdueBoard('today')" style="padding:7px 14px;background:white;border:1.5px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#1a2472">📅 اليوم</button>
+      <button onclick="renderOverdueBoard('tomorrow')" style="padding:7px 14px;background:white;border:1.5px solid #a5f3fc;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#0891b2">🗓️ الغد</button>
     </div>
     <button class="btn btn-primary" onclick="showTaskModal()">+ مهمة جديدة</button>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start">
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;align-items:start">
     ${cols.map(col=>`
     <div class="kanban-col" style="background:${col.bg};padding:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -3335,12 +3496,34 @@ async function showTaskModal(id=null) {
         </div>
       </div>
 
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل / الشركة</label>
+        <select id="tClient" class="input">
+          <option value="">— اختر عميل —</option>
+          ${clients.map(c=>`<option value="${c.id}" ${t?.client_id==c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
+        </select>
+      </div>
+
       <div class="form-row" style="margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل</label>
-          <select id="tClient" class="input">
-            <option value="">— اختر عميل —</option>
-            ${clients.map(c=>`<option value="${c.id}" ${t?.client_id==c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">القسم / الإدارة</label>
+          <input id="tDept" class="input" value="${escH(t?.department||'')}" placeholder="مثال: قسم المحاسبة"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
+          <input id="tDue" class="input" type="date" value="${t?.due_date||''}"/>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
+          <select id="tStatus" class="input">
+            <option value="todo"          ${!t||t?.status==='todo'        ?'selected':''}>⏳ جديدة</option>
+            <option value="in_progress"   ${t?.status==='in_progress'     ?'selected':''}>🔄 جاري العمل</option>
+            <option value="waiting_docs"  ${t?.status==='waiting_docs'    ?'selected':''}>📄 بانتظار مستندات</option>
+            <option value="done"          ${t?.status==='done'            ?'selected':''}>✅ مكتملة</option>
+            <option value="cancelled"     ${t?.status==='cancelled'       ?'selected':''}>❌ ملغاة</option>
           </select>
         </div>
         <div>
@@ -3350,30 +3533,14 @@ async function showTaskModal(id=null) {
             <option value="accounting" ${t?.category==='accounting'?'selected':''}>محاسبة</option>
             <option value="payroll"    ${t?.category==='payroll'   ?'selected':''}>مرتبات</option>
             <option value="legal"      ${t?.category==='legal'     ?'selected':''}>قانوني</option>
-            <option value="other"      ${t?.category==='other'     ?'selected':''}>أخرى</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-row" style="margin-bottom:14px">
-        <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
-          <input id="tDue" class="input" type="date" value="${t?.due_date||''}"/>
-        </div>
-        <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
-          <select id="tStatus" class="input">
-            <option value="todo"        ${!t||t?.status==='todo'       ?'selected':''}>⏳ قيد الانتظار</option>
-            <option value="in_progress" ${t?.status==='in_progress'    ?'selected':''}>🔄 جاري</option>
-            <option value="done"        ${t?.status==='done'           ?'selected':''}>✅ مكتمل</option>
-            <option value="cancelled"   ${t?.status==='cancelled'      ?'selected':''}>❌ ملغى</option>
+            <option value="other"      ${t?.category==='other'||!t?.category?'selected':''}>أخرى</option>
           </select>
         </div>
       </div>
 
       <div>
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
-        <textarea id="tNotes" class="input" rows="2" placeholder="ملاحظات...">${escH(t?.notes||'')}</textarea>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات / تفاصيل</label>
+        <textarea id="tNotes" class="input" rows="3" placeholder="تفاصيل المهمة...">${escH(t?.description||t?.notes||'')}</textarea>
       </div>
     </div>
     <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
@@ -3396,9 +3563,10 @@ async function showTaskModal(id=null) {
         client_id:  parseInt($('#tClient',overlay).value)||null,
         priority:   $('#tPriority',overlay).value,
         category:   $('#tCat',overlay).value,
+        department: $('#tDept',overlay).value.trim()||null,
         status:     $('#tStatus',overlay).value,
         due_date:   $('#tDue',overlay).value||null,
-        notes:      $('#tNotes',overlay).value||null,
+        description:$('#tNotes',overlay).value||null,
       };
       if(!body.title){toast('عنوان المهمة مطلوب','error');btn.disabled=false;return}
       if(t) await api('PUT',`/api/tasks/${t.id}`,body);
@@ -9728,6 +9896,83 @@ window.items=[];
 // clients
 window.showClientDetail=showClientDetail;
 window.autoGenClientObligations=autoGenClientObligations;
+window.showTaskModalForClient=function(clientId, clientName) {
+  // Navigate to tasks then open modal pre-filled with client
+  const origEmpFilter = _taskEmpFilter;
+  navigate('tasks');
+  setTimeout(async ()=>{
+    let clients=[];
+    try { clients=await getClients(); } catch(e){}
+    const users = tasksUsersData;
+    const overlay=document.createElement('div');
+    overlay.className='modal-overlay';
+    overlay.innerHTML=`<div class="modal" style="max-width:520px">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">مهمة جديدة — ${escH(clientName)}</h2>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:20px 24px">
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">عنوان المهمة *</label>
+          <input id="qtTitle" class="input" placeholder="عنوان المهمة"/>
+        </div>
+        <div class="form-row" style="margin-bottom:14px">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">👷 الموظف المسؤول</label>
+            <select id="qtAssignee" class="input">
+              <option value="">— بلا موظف —</option>
+              ${users.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الأولوية</label>
+            <select id="qtPriority" class="input">
+              <option value="urgent">🔴 عاجل</option>
+              <option value="high">🟠 عالي</option>
+              <option value="medium" selected>🟡 متوسط</option>
+              <option value="low">🟢 منخفض</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الاستحقاق</label>
+          <input id="qtDue" class="input" type="date"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تفاصيل</label>
+          <textarea id="qtNotes" class="input" rows="2" placeholder="تفاصيل المهمة..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button id="qtSaveBtn" class="btn btn-primary">💾 إضافة مهمة</button>
+      </div>
+    </div>`;
+    document.body.append(overlay);
+    overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+    document.getElementById('qtSaveBtn').onclick=async()=>{
+      const btn=document.getElementById('qtSaveBtn');
+      btn.disabled=true;
+      try {
+        const body={
+          title: document.getElementById('qtTitle').value.trim(),
+          client_id: clientId,
+          assigned_to: parseInt(document.getElementById('qtAssignee').value)||null,
+          priority: document.getElementById('qtPriority').value,
+          due_date: document.getElementById('qtDue').value||null,
+          description: document.getElementById('qtNotes').value||null,
+          status: 'todo',
+        };
+        if(!body.title){toast('عنوان المهمة مطلوب','error');btn.disabled=false;return;}
+        await api('POST','/api/tasks',body);
+        toast('✅ تم إضافة المهمة');
+        overlay.remove();
+        _AC.invalidate('/api/tasks');
+        loadTasks(true);
+      } catch(e){toast(e.message,'error');btn.disabled=false;}
+    };
+  }, 400);
+};
 window.showClientTimeline=showClientTimeline;
 window.showClientModal=showClientModal;
 window.addInvoiceForClient=addInvoiceForClient;
@@ -9740,6 +9985,8 @@ window.showTaskModal=showTaskModal;
 window.deleteTask=deleteTask;
 window.renderTaskFolders=renderTaskFolders;
 window.renderKanban=renderKanban;
+window.renderOverdueBoard=renderOverdueBoard;
+window.quickDoneTaskBoard=quickDoneTaskBoard;
 window.openEmployeeTasks=openEmployeeTasks;
 window.renderEmployeeTasks=renderEmployeeTasks;
 window.quickDoneTask=quickDoneTask;
@@ -9884,6 +10131,7 @@ window.runRefreshNotifs=runRefreshNotifs;
 window.toggleNotifDropdown=toggleNotifDropdown;
 window.markNotifRead=markNotifRead;
 window.markAllNotifsRead=markAllNotifsRead;
+window.closeNotifDropdown=closeNotifDropdown;
 window.navigate=navigate;
 window.openGlobalSearch=openGlobalSearch;
 window.closeGlobalSearch=closeGlobalSearch;
@@ -10443,6 +10691,14 @@ async function showJournalDetail(jeId) {
         <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white">✕</button>
       </div>
       <div style="padding:20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:8px;background:${je.status==='posted'?'#f0fdf4':je.status==='draft'?'#fff9c4':'#f8fafc'};color:${je.status==='posted'?'#15803d':je.status==='draft'?'#92400e':'#64748b'}">
+            ${je.status==='posted'?'✅ مرحَّل':je.status==='draft'?'📝 مسودة':'📋 '+je.status}
+          </span>
+          <span style="font-size:12px;color:#64748b">${je.entry_type||''}</span>
+          ${je.reference?`<span style="font-size:12px;color:#64748b">مرجع: ${escH(je.reference)}</span>`:''}
+          ${je.notes?`<span style="font-size:11px;color:#94a3b8">${escH(je.notes)}</span>`:''}
+        </div>
         <div style="font-size:13px;color:#374151;margin-bottom:16px">${escH(je.description||'')}</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="background:#f8fafc">
@@ -10467,6 +10723,13 @@ async function showJournalDetail(jeId) {
             </tr>
           </tfoot>
         </table>
+        <!-- Actions -->
+        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+          ${je.status==='draft'?`<button onclick="postJournalEntry(${je.id});this.closest('.modal-overlay').remove()" style="padding:7px 16px;background:#1a2472;color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🚀 ترحيل القيد</button>`:''}
+          ${je.status==='posted'?`<button onclick="reverseJournalEntry(${je.id},this.closest('.modal-overlay'))" style="padding:7px 16px;background:#dc262618;color:#dc2626;border:1.5px solid #fca5a5;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">↩️ قيد عكسي</button>`:''}
+          <button onclick="copyJournalEntry(${je.id});this.closest('.modal-overlay').remove()" style="padding:7px 16px;background:#f1f5f9;color:#475569;border:none;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">📋 نسخ كمسودة</button>
+          ${je.status==='draft'?`<button onclick="deleteJournalEntry(${je.id},this.closest('.modal-overlay'))" style="padding:7px 16px;background:#fee2e2;color:#dc2626;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🗑️ حذف</button>`:''}
+        </div>
       </div>
     </div>`;
     document.body.append(overlay2);
@@ -10486,6 +10749,29 @@ async function copyJournalEntry(jeId) {
   try {
     const r = await api('POST', `/api/accounting/${_accClientId}/journal-entries/${jeId}/copy`);
     toast(r.message || '✅ تم نسخ القيد كمسودة');
+    _AC.invalidate(`/api/accounting/${_accClientId}`);
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function reverseJournalEntry(jeId, overlay) {
+  if (!await confirmDlg('إنشاء قيد عكسي؟ سيتم عكس جميع المدين والدائن في قيد جديد مرحَّل بتاريخ اليوم.')) return;
+  try {
+    const r = await api('POST', `/api/accounting/${_accClientId}/journal-entries/${jeId}/reverse`);
+    toast(r.message || '✅ تم إنشاء القيد العكسي');
+    overlay?.remove();
+    _AC.invalidate(`/api/accounting/${_accClientId}`);
+    accRender();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function deleteJournalEntry(jeId, overlay) {
+  if (!await confirmDlg('حذف هذا القيد نهائياً؟')) return;
+  try {
+    await api('DELETE', `/api/accounting/${_accClientId}/journal-entries/${jeId}`);
+    toast('تم حذف القيد');
+    overlay?.remove();
+    _AC.invalidate(`/api/accounting/${_accClientId}`);
     accRender();
   } catch(e) { toast(e.message,'error'); }
 }
@@ -13292,6 +13578,8 @@ window.saveManualJE = saveManualJE;
 window.showJournalDetail = showJournalDetail;
 window.postJournalEntry = postJournalEntry;
 window.copyJournalEntry = copyJournalEntry;
+window.reverseJournalEntry = reverseJournalEntry;
+window.deleteJournalEntry = deleteJournalEntry;
 // ETA exports
 window.accETA = accETA;
 window.switchEtaTab = switchEtaTab;
