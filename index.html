@@ -12797,15 +12797,59 @@ async function deleteSettlement(id) {
 
 async function resetEmployeeBalance(empName) {
   if (!await confirmDlg(
-    `سيتم حذف جميع تسويات "${empName}" وتصفير الرصيد إلى صفر.\nسيبقى اسم الموظف موجوداً.`,
+    `سيتم حذف جميع تسويات "${empName}" وتصفير الرصيد.\nسيبقى اسم الموظف موجوداً.`,
     'تصفير رصيد الموظف', 'تصفير', true
   )) return;
   try {
     await api('POST', `/api/settlements/employees/${encodeURIComponent(empName)}/reset`);
     toast(`تم تصفير رصيد ${empName} ✅`);
     _AC.invalidate('/api/settlements');
-    loadSettlements(true);
+    // بعد التصفير مباشرة: اسأل عن الرصيد المرحل من الشهر السابق
+    showSetOpeningBalance(empName);
   } catch(e) { toast(e.message,'error'); }
+}
+
+function showSetOpeningBalance(empName) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+  <div class="modal" style="max-width:420px">
+    <div style="padding:22px 24px 0">
+      <div style="font-size:28px;text-align:center;margin-bottom:8px">💼</div>
+      <h3 style="font-size:16px;font-weight:800;color:#1e293b;text-align:center;margin:0 0 6px">رصيد ${escH(empName)} المرحّل</h3>
+      <p style="font-size:13px;color:#64748b;text-align:center;margin:0 0 20px">
+        ادخل الرصيد المتبقي من الشهر السابق — سيكون هذا الرصيد الافتتاحي لكل تسوية جديدة
+      </p>
+      <div class="form-group">
+        <label class="label">الرصيد المرحّل (ج.م.)</label>
+        <input id="openingBalInput" class="input" type="number" placeholder="0" step="0.01" style="font-size:18px;font-weight:800;text-align:center">
+      </div>
+      <p style="font-size:12px;color:#94a3b8;margin:8px 0 20px;text-align:center">
+        💡 كل تسوية جديدة ستأخذ الرصيد المتبقي تلقائياً كرصيد افتتاحي
+      </p>
+    </div>
+    <div style="padding:0 24px 22px;display:flex;gap:10px">
+      <button onclick="saveOpeningBalance('${escH(empName)}')" class="btn btn-primary" style="flex:1">✅ حفظ الرصيد</button>
+      <button onclick="this.closest('.modal-overlay').remove();loadSettlements(true)" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-family:inherit">تخطي (ابدأ من صفر)</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.onclick = e => { if (e.target === overlay) { overlay.remove(); loadSettlements(true); } };
+  setTimeout(() => document.getElementById('openingBalInput')?.focus(), 100);
+}
+
+async function saveOpeningBalance(empName) {
+  const amount = parseFloat(document.getElementById('openingBalInput')?.value || '0');
+  if (isNaN(amount) || amount < 0) { toast('ادخل قيمة صحيحة', 'error'); return; }
+  try {
+    await api('PATCH', `/api/settlements/employees/${encodeURIComponent(empName)}/balance`, {
+      employee_name: empName, amount, notes: 'رصيد مرحّل'
+    });
+    toast(`✅ تم ضبط الرصيد المرحّل: ${amount.toLocaleString('ar-EG')} ج.م.`);
+    document.querySelector('.modal-overlay')?.remove();
+    _AC.invalidate('/api/settlements');
+    loadSettlements(true);
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -13296,6 +13340,8 @@ window.calcStlTotal = calcStlTotal;
 window.saveSettlement = saveSettlement;
 window.deleteSettlement = deleteSettlement;
 window.resetEmployeeBalance = resetEmployeeBalance;
+window.showSetOpeningBalance = showSetOpeningBalance;
+window.saveOpeningBalance = saveOpeningBalance;
 window.switchSettleView = switchSettleView;
 window._refreshDailyView = _refreshDailyView;
 window._refreshMonthlyView = _refreshMonthlyView;
