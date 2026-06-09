@@ -402,16 +402,29 @@ let _silentRefresh = false;  // When true: load functions skip the loading spinn
 
 // Maps server entity names → page IDs + refresh functions
 const _RT_ENTITY_MAP = {
-  clients:       { pages:['clients'],        fn:()=>loadClients(true),      dash:true  },
-  leads:         { pages:['leads'],           fn:()=>loadLeads(true),        dash:true  },
-  invoices:      { pages:['invoices'],        fn:()=>loadInvoices(true),     dash:true  },
-  tasks:         { pages:['tasks'],           fn:()=>loadTasks(true),        dash:true  },
-  establishment: { pages:['establishment'],   fn:()=>loadEstablishment(true),dash:false },
-  obligations:   { pages:['obligations'],     fn:()=>loadObligations(true),  dash:true  },
-  documents:     { pages:['documents'],       fn:()=>loadDocuments(true),    dash:false },
-  payroll:       { pages:['payroll'],         fn:()=>loadPayroll(true),      dash:false },
-  settlements:   { pages:['settlements'],     fn:()=>loadSettlements(true),  dash:false },
-  mail:          { pages:['mail'],            fn:()=>loadMail(true),         dash:false },
+  // Core entities
+  clients:              { pages:['clients'],               fn:()=>loadClients(true),             dash:true  },
+  leads:                { pages:['leads'],                  fn:()=>loadLeads(true),               dash:true  },
+  invoices:             { pages:['invoices'],               fn:()=>loadInvoices(true),            dash:true  },
+  collections:          { pages:['collections','invoices'], fn:()=>{ loadCollections(true); loadInvoices(true); }, dash:true },
+  tasks:                { pages:['tasks'],                  fn:()=>loadTasks(true),               dash:true  },
+  establishment:        { pages:['establishment'],          fn:()=>loadEstablishment(true),       dash:false },
+  obligations:          { pages:['obligations'],            fn:()=>loadObligations(true),         dash:true  },
+  formation_obligations:{ pages:['formation_obligations'],  fn:()=>loadFormationObligations(true),dash:false },
+  documents:            { pages:['documents'],              fn:()=>loadDocuments(true),           dash:false },
+  payroll:              { pages:['payroll'],                fn:()=>loadPayroll(true),             dash:false },
+  settlements:          { pages:['settlements'],            fn:()=>loadSettlements(true),         dash:false },
+  mail:                 { pages:['mail'],                   fn:()=>loadMail(true),                dash:false },
+  quotations:           { pages:['quotations'],             fn:()=>loadQuotations(),              dash:false },
+  // Pages not yet in RT map — now handled
+  appointments:         { pages:['appointments'],           fn:()=>loadAppointments(),            dash:false },
+  government_papers:    { pages:['government_papers'],      fn:()=>loadGovernmentPapers(),        dash:false },
+  postal:               { pages:['postal'],                 fn:()=>loadPostal(),                  dash:false },
+  statements:           { pages:['statements'],             fn:()=>loadStatements(),              dash:false },
+  timesheet:            { pages:['timesheet'],              fn:()=>loadTimesheet(),               dash:false },
+  office_services:      { pages:['office_services'],        fn:()=>loadOfficeServices(),          dash:false },
+  assets:               { pages:['fin_reports'],            fn:()=>loadFinReports(true),          dash:false },
+  accounting:           { pages:['accounting'],             fn:()=>typeof accRender==='function'&&accRender(), dash:false },
 };
 
 // Polished action labels for toast notifications
@@ -1114,6 +1127,8 @@ function renderApp() {
             <span id="langToggleIcon">🌐</span>
             <span id="langToggleLabel">EN</span>
           </button>
+          <!-- Manual Refresh button -->
+          <button id="refreshBtn" onclick="refreshCurrentPage()" title="تحديث الصفحة" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'"><span id="refreshIcon">🔄</span></button>
           <!-- Print button -->
           <button onclick="printCurrentPage()" title="طباعة الصفحة الحالية" class="topbar-extra-btn" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">🖨️</button>
           <!-- Quick compose email button -->
@@ -9733,6 +9748,48 @@ window.setLeadsDateFilter=v=>{leadsDateFilter=v;loadLeads();};
 window.setLeadsDateFrom=v=>{leadsDateFrom=v;loadLeads();};
 window.setLeadsDateTo=v=>{leadsDateTo=v;loadLeads();};
 window.setLeadsSearch=v=>{leadsSearch=v;loadLeads();};
+
+// ── Manual Refresh Button ─────────────────────────────────────────────────────
+window.refreshCurrentPage = async function() {
+  const icon = document.getElementById('refreshIcon');
+  const btn  = document.getElementById('refreshBtn');
+  if (btn)  btn.disabled = true;
+  if (icon) icon.style.animation = 'spin 0.7s linear infinite';
+  const refreshMap = {
+    dashboard:            ()=>loadDashboard(),
+    clients:              ()=>loadClients(),
+    leads:                ()=>loadLeads(),
+    invoices:             ()=>loadInvoices(),
+    collections:          ()=>{ loadCollections(); loadInvoices(); },
+    tasks:                ()=>loadTasks(),
+    obligations:          ()=>loadObligations(),
+    formation_obligations:()=>loadFormationObligations(),
+    documents:            ()=>loadDocuments(),
+    payroll:              ()=>loadPayroll(),
+    settlements:          ()=>loadSettlements(),
+    mail:                 ()=>loadMail(),
+    quotations:           ()=>loadQuotations(),
+    appointments:         ()=>loadAppointments(),
+    government_papers:    ()=>loadGovernmentPapers(),
+    postal:               ()=>loadPostal(),
+    statements:           ()=>loadStatements(),
+    timesheet:            ()=>loadTimesheet(),
+    office_services:      ()=>loadOfficeServices(),
+    fin_reports:          ()=>loadFinReports(),
+    accounting:           ()=>typeof accRender==='function'&&accRender(),
+    establishment:        ()=>loadEstablishment(),
+  };
+  try {
+    const fn = refreshMap[currentPage];
+    if (fn) await fn();
+    toast('تم التحديث ✓', 'success');
+  } catch(e) { toast('فشل التحديث','error'); }
+  finally {
+    if (btn)  btn.disabled = false;
+    if (icon) icon.style.animation = '';
+  }
+};
+
 // formation pipeline
 window._fmFilterStage=_fmFilterStage;
 window._fmSearchChange=_fmSearchChange;
