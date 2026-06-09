@@ -337,6 +337,37 @@ def delete_settlement(
     return {"message": "✅ تم حذف التسوية وتعديل رصيد العهدة"}
 
 
+@router.get("/daily")
+def daily_report(
+    date_str: str,               # ?date=YYYY-MM-DD
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """تسويات يوم محدد لكل الموظفين."""
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "تاريخ غير صحيح — استخدم YYYY-MM-DD")
+
+    settlements = (
+        db.query(EmployeeSettlement)
+        .filter(EmployeeSettlement.date == d)
+        .order_by(EmployeeSettlement.employee_name)
+        .all()
+    )
+
+    grand_total = round(sum(s.total_spent or 0 for s in settlements), 2)
+    grand_custody = round(sum(s.custody_added or 0 for s in settlements), 2)
+
+    return {
+        "date":          str(d),
+        "count":         len(settlements),
+        "grand_total":   grand_total,
+        "grand_custody": grand_custody,
+        "settlements":   [_s_dict_full(s) for s in settlements],
+    }
+
+
 @router.get("/monthly/{month}/{year}")
 def monthly_report(
     month: int,
@@ -361,7 +392,7 @@ def monthly_report(
         if n not in by_emp:
             by_emp[n] = {"employee": n, "settlements": [], "total_spent": 0,
                          "total_transportation": 0, "total_meals": 0, "total_other": 0}
-        by_emp[n]["settlements"].append(_s_dict(s))
+        by_emp[n]["settlements"].append(_s_dict_full(s))
         by_emp[n]["total_spent"]         += s.total_spent or 0
         by_emp[n]["total_transportation"] += s.transportation or 0
         by_emp[n]["total_meals"]          += s.meals or 0
@@ -393,6 +424,12 @@ def _s_dict(s: EmployeeSettlement) -> dict:
         "notes":           s.notes,
         "created_at":      str(s.created_at),
     }
+
+def _s_dict_full(s: EmployeeSettlement) -> dict:
+    """Like _s_dict but includes employee_name — used in daily/monthly aggregates."""
+    d = _s_dict(s)
+    d["employee_name"] = s.employee_name
+    return d
 
 
 # ════════════════════════════════════════════════════════════════════
