@@ -12094,7 +12094,7 @@ function renderSettlementsList(employees) {
       </div>
 
       <!-- أزرار -->
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="openEmployeeSettlements('${escH(emp.employee_name)}')"
           style="flex:1;padding:8px;background:linear-gradient(135deg,#1a2472,#2563eb);color:white;border:none;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
           📋 التسويات
@@ -12102,6 +12102,11 @@ function renderSettlementsList(employees) {
         <button onclick="showCustodyTopup('${escH(emp.employee_name)}')"
           style="flex:1;padding:8px;background:#f0fdf4;color:#15803d;border:1.5px solid #bbf7d0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
           💰 إضافة عهدة
+        </button>
+        <button onclick="resetEmployeeBalance('${escH(emp.employee_name)}')"
+          title="تصفير الرصيد وحذف جميع التسويات"
+          style="padding:8px 10px;background:#fef2f2;color:#dc2626;border:1.5px solid #fecaca;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
+          🔄 تصفير
         </button>
       </div>
     </div>`}).join('')}
@@ -12125,7 +12130,6 @@ async function renderEmpSettlements() {
     const detail = await api('GET', `/api/settlements/employees/${encodeURIComponent(_settleEmp.name)}?month=${_settleMonth}&year=${_settleYear}`);
 
     const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-    const bal = detail.current_balance || 0;
     const settlements = detail.settlements || [];
     const report = {
       total_custody_added: settlements.reduce((s,x)=>s+(x.custody_added||0),0),
@@ -12134,6 +12138,15 @@ async function renderEmpSettlements() {
       total_meals:         settlements.reduce((s,x)=>s+(x.meals||0),0),
       total_other:         settlements.reduce((s,x)=>s+(x.other_expenses||0),0),
     };
+    // For past months: show the closing balance of the last settlement in that month
+    // For current month: show the live current_balance from custody record
+    const now = new Date();
+    const isCurrentMonth = (_settleMonth === now.getMonth()+1 && _settleYear === now.getFullYear());
+    // Sort settlements by date desc to find most recent in the selected month
+    const sortedByDate = [...settlements].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const bal = isCurrentMonth
+      ? (detail.current_balance || 0)
+      : (sortedByDate.length ? (sortedByDate[0].closing_balance ?? detail.current_balance) : detail.current_balance);
 
     main.innerHTML = `
     <!-- Header -->
@@ -12146,11 +12159,11 @@ async function renderEmpSettlements() {
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <select onchange="_settleMonth=+this.value;renderEmpSettlements()"
+        <select onchange="_settleMonth=+this.value;_AC.invalidate('/api/settlements');renderEmpSettlements()"
           style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:white">
           ${monthNames.map((m,i)=>`<option value="${i+1}" ${i+1===_settleMonth?'selected':''}>${m}</option>`).join('')}
         </select>
-        <select onchange="_settleYear=+this.value;renderEmpSettlements()"
+        <select onchange="_settleYear=+this.value;_AC.invalidate('/api/settlements');renderEmpSettlements()"
           style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:white">
           ${[2023,2024,2025,2026].map(y=>`<option ${y===_settleYear?'selected':''}>${y}</option>`).join('')}
         </select>
@@ -12527,7 +12540,22 @@ async function deleteSettlement(id) {
   if (!await confirmDlg('حذف هذه التسوية؟')) return;
   try {
     await api('DELETE', `/api/settlements/${id}`);
-    renderEmpSettlements();
+    toast('تم حذف التسوية ✅');
+    _AC.invalidate('/api/settlements');
+    await renderEmpSettlements();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function resetEmployeeBalance(empName) {
+  if (!await confirmDlg(
+    `سيتم حذف جميع تسويات "${empName}" وتصفير الرصيد إلى صفر.\nسيبقى اسم الموظف موجوداً.`,
+    'تصفير رصيد الموظف', 'تصفير', true
+  )) return;
+  try {
+    await api('POST', `/api/settlements/employees/${encodeURIComponent(empName)}/reset`);
+    toast(`تم تصفير رصيد ${empName} ✅`);
+    _AC.invalidate('/api/settlements');
+    loadSettlements(true);
   } catch(e) { toast(e.message,'error'); }
 }
 
@@ -13018,6 +13046,7 @@ window.removeStlItem = removeStlItem;
 window.calcStlTotal = calcStlTotal;
 window.saveSettlement = saveSettlement;
 window.deleteSettlement = deleteSettlement;
+window.resetEmployeeBalance = resetEmployeeBalance;
 // Appointments
 window.loadAppointments = loadAppointments;
 window.renderAppointments = renderAppointments;
