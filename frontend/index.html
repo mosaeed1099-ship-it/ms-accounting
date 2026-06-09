@@ -9776,6 +9776,10 @@ const _PAGE_CACHE_PREFIXES = {
   fin_reports:          ['/api/fin_reports','/api/assets'],
   accounting:           ['/api/accounting'],
   establishment:        ['/api/formation'],
+  tax:                  ['/api/tax','/api/declarations','/api/vat'],
+  client_portal:        ['/api/client_portal','/api/portal'],
+  permissions:          ['/api/permissions','/api/users'],
+  settings:             ['/api/settings','/api/company'],
 };
 
 function _clearPageCache(page) {
@@ -9783,40 +9787,47 @@ function _clearPageCache(page) {
   prefixes.forEach(p => _AC.invalidate(p));
 }
 
+// Same page→function map as navigate() — must stay in sync
+const _REFRESH_FN_MAP = {
+  dashboard:            ()=>loadDashboard(),
+  clients:              ()=>loadClients(),
+  leads:                ()=>loadLeads(),
+  invoices:             ()=>loadInvoices(),
+  collections:          ()=>Promise.all([loadCollections(),loadInvoices()]),
+  tasks:                ()=>loadTasks(),
+  obligations:          ()=>loadObligations(),
+  formation_obligations:()=>loadFormationObligations(),
+  documents:            ()=>loadDocuments(),
+  payroll:              ()=>loadPayroll(),
+  settlements:          ()=>loadSettlements(),
+  mail:                 ()=>loadMail(),
+  quotations:           ()=>loadQuotations(),
+  appointments:         ()=>loadAppointments(),
+  government_papers:    ()=>loadGovernmentPapers(),
+  postal:               ()=>loadPostal(),
+  statements:           ()=>loadStatements(),
+  timesheet:            ()=>loadTimesheet(),
+  office_services:      ()=>loadOfficeServices(),
+  fin_reports:          ()=>loadFinReports(),
+  accounting:           ()=>typeof accRender==='function'?accRender():Promise.resolve(),
+  establishment:        ()=>loadEstablishment(),
+  tax:                  ()=>loadTax(),
+  client_portal:        ()=>loadClientPortal(),
+  permissions:          ()=>loadPermissions(),
+  settings:             ()=>loadSettings(),
+};
+
 window.refreshCurrentPage = async function() {
   const icon = document.getElementById('refreshIcon');
   const btn  = document.getElementById('refreshBtn');
   if (btn)  btn.disabled = true;
   if (icon) icon.style.animation = 'spin 0.7s linear infinite';
-  const refreshMap = {
-    dashboard:            ()=>loadDashboard(),
-    clients:              ()=>loadClients(),
-    leads:                ()=>loadLeads(),
-    invoices:             ()=>loadInvoices(),
-    collections:          ()=>{ loadCollections(); loadInvoices(); },
-    tasks:                ()=>loadTasks(),
-    obligations:          ()=>loadObligations(),
-    formation_obligations:()=>loadFormationObligations(),
-    documents:            ()=>loadDocuments(),
-    payroll:              ()=>loadPayroll(),
-    settlements:          ()=>loadSettlements(),
-    mail:                 ()=>loadMail(),
-    quotations:           ()=>loadQuotations(),
-    appointments:         ()=>loadAppointments(),
-    government_papers:    ()=>loadGovernmentPapers(),
-    postal:               ()=>loadPostal(),
-    statements:           ()=>loadStatements(),
-    timesheet:            ()=>loadTimesheet(),
-    office_services:      ()=>loadOfficeServices(),
-    fin_reports:          ()=>loadFinReports(),
-    accounting:           ()=>typeof accRender==='function'&&accRender(),
-    establishment:        ()=>loadEstablishment(),
-  };
   try {
-    _clearPageCache(currentPage); // bust GET cache so we always get fresh data
-    const fn = refreshMap[currentPage];
+    _clearPageCache(currentPage); // bust GET cache so we always get live server data
+    const fn = _REFRESH_FN_MAP[currentPage];
     if (fn) await fn();
-    toast('تم التحديث ✓', 'success');
+    else toast('هذه الصفحة لا تدعم التحديث', 'info');
+    if (fn) toast('تم التحديث ✓', 'success');
   } catch(e) { toast('فشل التحديث','error'); }
   finally {
     if (btn)  btn.disabled = false;
