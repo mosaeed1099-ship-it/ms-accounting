@@ -5698,7 +5698,7 @@ async function saveLeadCell(el) {
       if(value==='not_answered'){
         const rowId2 = el.closest('tr[data-id]')?.dataset.id;
         const lead2 = leadsData.find(l=>l.id===parseInt(rowId2));
-        if(lead2?.phone) setTimeout(()=>sendLeadNoAnswerWhatsApp(lead2),400);
+        if(lead2?.phone) sendLeadNoAnswerWhatsApp(lead2);
       }
     } else {
       el.style.borderColor='#10b981';
@@ -5769,7 +5769,7 @@ async function saveLeadAsNotAnswered(btn) {
     row.insertAdjacentElement('afterend', expTmp.querySelector('tr'));
 
     toast('✅ تم الحفظ — جاري فتح واتساب...');
-    setTimeout(() => sendLeadNoAnswerWhatsApp(result), 400);
+    sendLeadNoAnswerWhatsApp(result);
   } catch(err) {
     row._saving = false;
     btn.disabled = false;
