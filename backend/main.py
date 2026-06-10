@@ -33,6 +33,7 @@ from app.routers import audit_logs as audit_logs_router
 from app.routers import folders as folders_router
 from app.routers import client_portal as client_portal_router
 from app.routers import office_services as office_services_router
+from app.routers import office_finance as office_finance_router
 from app.routers import tax_center as tax_center_router
 from app.routers import formation as formation_router
 from app.routers.service_templates import router as service_templates_router
@@ -48,6 +49,7 @@ import app.models.audit_log           # noqa: F401
 import app.models.folder              # noqa: F401
 import app.models.client_portal       # noqa: F401
 import app.models.client_required_doc # noqa: F401
+import app.models.office_finance      # noqa: F401
 import app.models.office_service      # noqa: F401
 import app.models.tax_center          # noqa: F401
 import app.models.establishment       # noqa: F401
@@ -628,6 +630,7 @@ app.include_router(audit_logs_router.router)
 app.include_router(folders_router.router)
 app.include_router(client_portal_router.router)
 app.include_router(office_services_router.router)
+app.include_router(office_finance_router.router)
 app.include_router(tax_center_router.router)
 app.include_router(formation_router.router)
 app.include_router(service_templates_router, prefix="/api/service-templates", tags=["service_templates"])

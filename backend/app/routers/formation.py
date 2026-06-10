@@ -332,6 +332,21 @@ def add_event(
     if not case: raise HTTPException(404)
     _add_event(db, case_id, body.event_type, body.title,
                current_user, description=body.description, amount=body.amount)
+    # Auto-capture formation payment → Office Revenue
+    if body.event_type == "payment_received" and body.amount and body.amount > 0:
+        try:
+            from app.routers.office_finance import auto_capture_revenue
+            from datetime import date as _date
+            auto_capture_revenue(
+                db, amount=body.amount, category="formation",
+                tx_date=_date.today(),
+                description=f"دفعة تأسيس — {case.company_name or case_id}",
+                client_name=case.company_name,
+                source_type="formation", source_id=case_id,
+                created_by=current_user.id,
+            )
+        except Exception:
+            pass
     db.commit()
     events = db.query(FormationEvent).filter_by(case_id=case_id) \
                .order_by(FormationEvent.created_at.desc()).all()

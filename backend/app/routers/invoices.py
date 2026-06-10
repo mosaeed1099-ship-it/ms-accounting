@@ -272,6 +272,20 @@ async def record_payment(
         invoice.status = InvoiceStatus.PARTIAL
 
     invoice.client.balance -= data.amount
+
+    # Auto-capture → Office Revenue
+    try:
+        from app.routers.office_finance import auto_capture_revenue
+        auto_capture_revenue(
+            db, amount=data.amount, category="accounting",
+            tx_date=data.payment_date,
+            description=f"دفعة أتعاب — {invoice.client.name if invoice.client else invoice.client_id}",
+            client_name=invoice.client.name if invoice.client else None,
+            source_type="invoice", source_id=payment.id,
+            created_by=current_user.id,
+        )
+    except Exception:
+        pass
     db.commit()
 
     return {"message": "تم تسجيل الدفعة بنجاح", "remaining": invoice.remaining}

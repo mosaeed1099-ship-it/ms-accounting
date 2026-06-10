@@ -337,6 +337,21 @@ def add_payment(
             elif due.amount_paid > 0:
                 due.status = PaymentStatus.PARTIAL
 
+    # Auto-capture → Office Revenue
+    try:
+        from app.routers.office_finance import auto_capture_revenue
+        from app.models.client import Client
+        client = db.query(Client).filter(Client.id == contract.client_id).first()
+        auto_capture_revenue(
+            db, amount=data.amount, category="accounting",
+            tx_date=data.payment_date,
+            description=f"تحصيل محاسبة — {client.name if client else contract.client_id}",
+            client_name=client.name if client else None,
+            source_type="collection", source_id=payment.id,
+            created_by=current_user.id,
+        )
+    except Exception:
+        pass  # never break the main flow
     db.commit()
     return {"message": "تم تسجيل الدفعة بنجاح", "remaining": contract.total_remaining}
 

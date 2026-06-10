@@ -1116,6 +1116,7 @@ const navItems = [
   {id:'mail'         ,icon:'📧',label:'البريد الإلكتروني'},
   {id:'client_portal' ,icon:'🔑',label:'بوابة العملاء'},
   {id:'permissions'   ,icon:'🛡️',label:'الصلاحيات'},
+  {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
 ];
 // Grouped navigation for sidebar display
@@ -1126,6 +1127,7 @@ const navGroups = [
   {label:'التشغيل', items:['tasks','formation_obligations','documents']},
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
+  {label:'المكتب المالي', items:['owner']},
 ];
 
 // ── Client Portal Mode ─────────────────────────────
@@ -1421,6 +1423,8 @@ function renderApp() {
     nav.append(lbl);
     group.items.forEach(id => {
       const item = itemMap[id]; if(!item) return;
+      // Hide admin-only items from non-admins
+      if(item.adminOnly && currentUser?.role !== 'admin') return;
       const a = document.createElement('div');
       a.className = `sidebar-link${currentPage===id?' active':''}`;
       a.dataset.navId = id;
@@ -1815,13 +1819,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات'};
+  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard};
   if(pages[page]) pages[page]();
 }
 
@@ -16672,6 +16676,633 @@ function toggleLanguage() {
 
   toast(isEn ? '🌐 Switched to English' : '🌐 تم التحويل للعربية');
 }
+
+// ══════════════════════════════════════════════════════════════════
+// 👑  OWNER DASHBOARD — إدارة المكتب المالية
+// ══════════════════════════════════════════════════════════════════
+let ownerTab = 'dashboard'; // dashboard | revenues | expenses | partners | snapshots | annual
+
+async function loadOwnerDashboard() {
+  if(currentUser?.role !== 'admin') {
+    document.getElementById('main').innerHTML = `<div style="text-align:center;padding:80px;color:#dc2626;font-size:18px">🔒 هذه الصفحة للمسؤول فقط</div>`;
+    return;
+  }
+  renderOwnerTabs();
+}
+
+function renderOwnerTabs() {
+  const tabs = [
+    {id:'dashboard', icon:'📊', label:'لوحة التحكم'},
+    {id:'revenues',  icon:'💰', label:'الإيرادات'},
+    {id:'expenses',  icon:'🧾', label:'المصاريف'},
+    {id:'partners',  icon:'🤝', label:'توزيع الأرباح'},
+    {id:'snapshots', icon:'📅', label:'إغلاق الشهر'},
+    {id:'annual',    icon:'📈', label:'التقرير السنوي'},
+  ];
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `
+  <div style="display:flex;flex-direction:column;gap:0">
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;flex-wrap:wrap;background:#f1f5f9;border-radius:14px;padding:6px;margin-bottom:20px">
+      ${tabs.map(t=>`
+        <button onclick="window.ownerSwitchTab('${t.id}')" id="ownerTab_${t.id}"
+          style="flex:1;min-width:100px;padding:8px 12px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:all .2s;
+                 ${ownerTab===t.id?'background:white;color:#1a2472;box-shadow:0 2px 8px rgba(0,0,0,.08)':'background:transparent;color:#64748b'}">
+          ${t.icon} ${t.label}
+        </button>`).join('')}
+    </div>
+    <div id="ownerContent"></div>
+  </div>`;
+  loadOwnerTab(ownerTab);
+}
+
+window.ownerSwitchTab = function(tab) {
+  ownerTab = tab;
+  document.querySelectorAll('[id^="ownerTab_"]').forEach(el => {
+    const isActive = el.id === `ownerTab_${tab}`;
+    el.style.background = isActive ? 'white' : 'transparent';
+    el.style.color = isActive ? '#1a2472' : '#64748b';
+    el.style.boxShadow = isActive ? '0 2px 8px rgba(0,0,0,.08)' : 'none';
+  });
+  loadOwnerTab(tab);
+};
+
+async function loadOwnerTab(tab) {
+  const el = document.getElementById('ownerContent');
+  if(!el) return;
+  el.innerHTML = `<div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div>`;
+  try {
+    if(tab === 'dashboard')  await renderOwnerKPIs(el);
+    else if(tab === 'revenues')  await renderOwnerRevenues(el);
+    else if(tab === 'expenses')  await renderOwnerExpenses(el);
+    else if(tab === 'partners')  await renderOwnerPartners(el);
+    else if(tab === 'snapshots') await renderOwnerSnapshots(el);
+    else if(tab === 'annual')    await renderOwnerAnnual(el);
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:20px">خطأ: ${e.message}</div>`;
+  }
+}
+
+// ── KPI Dashboard ─────────────────────────────────────
+async function renderOwnerKPIs(el) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const data = await api('GET', `/api/office/dashboard?year=${year}&month=${month}`).catch(()=>null);
+  if(!data) { el.innerHTML = `<div style="color:#dc2626;padding:20px">تعذّر تحميل البيانات</div>`; return; }
+
+  const trends = data.trend || [];
+  const partnerDist = data.partner_dist || [];
+
+  const fmt = n => (n||0).toLocaleString('ar-EG', {minimumFractionDigits:0, maximumFractionDigits:0}) + ' ج.م';
+
+  el.innerHTML = `
+  <!-- KPI Cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+    ${[
+      {icon:'💰', label:'إجمالي الإيرادات', val:fmt(data.total_revenue), color:'#10b981', bg:'#ecfdf5'},
+      {icon:'🧾', label:'إجمالي المصاريف', val:fmt(data.total_expense), color:'#ef4444', bg:'#fef2f2'},
+      {icon:'📈', label:'صافي الربح', val:fmt(data.net_profit), color:'#3b82f6', bg:'#eff6ff'},
+      {icon:'📊', label:'هامش الربح', val:(data.margin_pct||0).toFixed(1)+'%', color:'#8b5cf6', bg:'#f5f3ff'},
+    ].map(k=>`
+      <div style="background:${k.bg};border-radius:16px;padding:20px;border:1.5px solid ${k.color}22">
+        <div style="font-size:28px;margin-bottom:8px">${k.icon}</div>
+        <div style="font-size:13px;color:#64748b;margin-bottom:4px">${k.label}</div>
+        <div style="font-size:22px;font-weight:700;color:${k.color}">${k.val}</div>
+      </div>`).join('')}
+  </div>
+
+  <!-- Trend Chart -->
+  <div style="background:white;border-radius:16px;padding:20px;border:1px solid #e8edf3;margin-bottom:20px">
+    <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 16px">📉 الاتجاه الشهري (آخر 12 شهر)</h3>
+    <canvas id="ownerTrendChart" height="80"></canvas>
+  </div>
+
+  <!-- Revenue breakdown + Partner split side by side -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div style="background:white;border-radius:16px;padding:20px;border:1px solid #e8edf3">
+      <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 16px">💰 تفصيل الإيرادات</h3>
+      <canvas id="ownerRevCatChart" height="120"></canvas>
+    </div>
+    <div style="background:white;border-radius:16px;padding:20px;border:1px solid #e8edf3">
+      <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 16px">🤝 توزيع الأرباح</h3>
+      ${partnerDist.length ? partnerDist.map(p=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f1f5f9">
+          <div>
+            <div style="font-weight:600;color:#1e293b">${p.name}</div>
+            <div style="font-size:12px;color:#64748b">${p.pct||p.share_pct}% من الأرباح</div>
+          </div>
+          <div style="font-size:18px;font-weight:700;color:#10b981">${fmt(p.amount)}</div>
+        </div>`).join('') : '<div style="color:#64748b;text-align:center;padding:20px">لا توجد بيانات</div>'}
+    </div>
+  </div>`;
+
+  // Draw trend chart
+  if(trends.length) {
+    const ctx = document.getElementById('ownerTrendChart');
+    if(ctx) {
+      const labels = trends.map(t=>t.month_label || (t.month && typeof t.month==='string' ? t.month : `${t.month}/${t.year}`));
+      destroyChart('ownerTrendChart');
+      chartInstances['ownerTrendChart'] = new Chart(ctx, {
+        type:'bar',
+        data:{
+          labels,
+          datasets:[
+            {label:'إيرادات', data:trends.map(t=>t.revenue||0), backgroundColor:'#10b98155', borderColor:'#10b981', borderWidth:2},
+            {label:'مصاريف', data:trends.map(t=>t.expense||0), backgroundColor:'#ef444455', borderColor:'#ef4444', borderWidth:2},
+            {label:'ربح', data:trends.map(t=>t.profit||0), type:'line', borderColor:'#3b82f6', backgroundColor:'transparent', borderWidth:2, tension:.3},
+          ]
+        },
+        options:{responsive:true, plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}}}
+      });
+    }
+  }
+
+  // Draw revenue category chart
+  const catArr = data.revenue_by_cat || [];
+  if(catArr.length) {
+    const ctx2 = document.getElementById('ownerRevCatChart');
+    if(ctx2) {
+      destroyChart('ownerRevCatChart');
+      chartInstances['ownerRevCatChart'] = new Chart(ctx2, {
+        type:'doughnut',
+        data:{
+          labels: catArr.map(c=>c.label||c.cat),
+          datasets:[{data:catArr.map(c=>c.amount||0), backgroundColor:['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#06b6d4','#ec4899','#84cc16','#94a3b8']}]
+        },
+        options:{responsive:true, plugins:{legend:{position:'right'}}}
+      });
+    }
+  }
+}
+
+// ── Revenues ──────────────────────────────────────────
+async function renderOwnerRevenues(el) {
+  const now = new Date();
+  let yr = now.getFullYear(), mo = now.getMonth()+1;
+
+  async function loadRevs() {
+    const data = await api('GET', `/api/office/revenues?year=${yr}&month=${mo}&page_size=200`).catch(()=>({items:[]}));
+    const items = data.items || [];
+    const catLabels = {accounting:'محاسبة',formation:'تأسيس',tax:'ضرائب',insurance:'تأمينات',commercial:'سجل تجاري',tax_card:'بطاقة ضريبية',consultation:'استشارات',office_svc:'خدمات مكتبية',other:'أخرى'};
+    const total = items.reduce((s,i)=>s+(i.amount||0),0);
+
+    document.getElementById('ownerRevContent').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:20px;font-weight:700;color:#10b981">إجمالي: ${total.toLocaleString('ar-EG')} ج.م</div>
+      <button onclick="window.showAddRevenueModal()" class="btn btn-primary">+ إضافة إيراد</button>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="data-table" style="width:100%">
+      <thead><tr>
+        <th>التاريخ</th><th>البيان</th><th>الفئة</th><th>العميل</th><th>المبلغ</th><th>المصدر</th><th>إجراءات</th>
+      </tr></thead>
+      <tbody>
+        ${items.length ? items.map(r=>`
+          <tr>
+            <td>${r.tx_date||''}</td>
+            <td>${r.description||''}</td>
+            <td><span style="background:#ecfdf5;color:#10b981;padding:2px 8px;border-radius:20px;font-size:12px">${catLabels[r.category]||r.category}</span></td>
+            <td>${r.client_name||'—'}</td>
+            <td style="font-weight:700;color:#10b981">${(r.amount||0).toLocaleString('ar-EG')} ج.م</td>
+            <td style="font-size:12px;color:#64748b">${r.source_type==='manual'?'يدوي':'تلقائي'}</td>
+            <td>
+              ${r.source_type==='manual'?`<button onclick="window.editOwnerRevenue(${r.id})" style="background:none;border:none;cursor:pointer;font-size:16px">✏️</button>
+              <button onclick="window.deleteOwnerRevenue(${r.id})" style="background:none;border:none;cursor:pointer;font-size:16px">🗑️</button>`:'—'}
+            </td>
+          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:30px">لا توجد إيرادات لهذا الشهر</td></tr>`}
+      </tbody>
+    </table></div>`;
+  }
+
+  el.innerHTML = `
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+    <select id="ownerRevYear" class="input" style="width:100px" onchange="window.ownerRevFilter()">
+      ${[yr-1,yr,yr+1].map(y=>`<option value="${y}" ${y===yr?'selected':''}>${y}</option>`).join('')}
+    </select>
+    <select id="ownerRevMonth" class="input" style="width:120px" onchange="window.ownerRevFilter()">
+      ${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===mo?'selected':''}>${new Date(2000,i).toLocaleString('ar-EG',{month:'long'})}</option>`).join('')}
+    </select>
+  </div>
+  <div id="ownerRevContent"></div>`;
+
+  window.ownerRevFilter = async function() {
+    yr = parseInt(document.getElementById('ownerRevYear').value);
+    mo = parseInt(document.getElementById('ownerRevMonth').value);
+    await loadRevs();
+  };
+  await loadRevs();
+}
+
+// ── Expenses ──────────────────────────────────────────
+async function renderOwnerExpenses(el) {
+  const now = new Date();
+  let yr = now.getFullYear(), mo = now.getMonth()+1;
+
+  async function loadExps() {
+    const data = await api('GET', `/api/office/expenses?year=${yr}&month=${mo}&page_size=200`).catch(()=>({items:[]}));
+    const items = data.items || [];
+    const catLabels = {rent:'إيجار',electricity:'كهرباء',internet:'إنترنت',salaries:'رواتب',advertising:'إعلانات',marketing:'تسويق',software:'برامج',transport:'مواصلات',hospitality:'ضيافة',other:'أخرى'};
+    const total = items.reduce((s,i)=>s+(i.amount||0),0);
+
+    document.getElementById('ownerExpContent').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:20px;font-weight:700;color:#ef4444">إجمالي: ${total.toLocaleString('ar-EG')} ج.م</div>
+      <button onclick="window.showAddExpenseModal()" class="btn btn-primary">+ إضافة مصروف</button>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="data-table" style="width:100%">
+      <thead><tr>
+        <th>التاريخ</th><th>البيان</th><th>الفئة</th><th>المبلغ</th><th>مرفق</th><th>إجراءات</th>
+      </tr></thead>
+      <tbody>
+        ${items.length ? items.map(r=>`
+          <tr>
+            <td>${r.tx_date||''}</td>
+            <td>${r.description||''}</td>
+            <td><span style="background:#fef2f2;color:#ef4444;padding:2px 8px;border-radius:20px;font-size:12px">${catLabels[r.category]||r.category}</span></td>
+            <td style="font-weight:700;color:#ef4444">${(r.amount||0).toLocaleString('ar-EG')} ج.م</td>
+            <td>${r.attachment_url?`<a href="${r.attachment_url}" target="_blank" style="color:#3b82f6">📎</a>`:'—'}</td>
+            <td>
+              <button onclick="window.editOwnerExpense(${r.id})" style="background:none;border:none;cursor:pointer;font-size:16px">✏️</button>
+              <button onclick="window.deleteOwnerExpense(${r.id})" style="background:none;border:none;cursor:pointer;font-size:16px">🗑️</button>
+            </td>
+          </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:#64748b;padding:30px">لا توجد مصاريف لهذا الشهر</td></tr>`}
+      </tbody>
+    </table></div>`;
+  }
+
+  el.innerHTML = `
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+    <select id="ownerExpYear" class="input" style="width:100px" onchange="window.ownerExpFilter()">
+      ${[yr-1,yr,yr+1].map(y=>`<option value="${y}" ${y===yr?'selected':''}>${y}</option>`).join('')}
+    </select>
+    <select id="ownerExpMonth" class="input" style="width:120px" onchange="window.ownerExpFilter()">
+      ${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===mo?'selected':''}>${new Date(2000,i).toLocaleString('ar-EG',{month:'long'})}</option>`).join('')}
+    </select>
+  </div>
+  <div id="ownerExpContent"></div>`;
+
+  window.ownerExpFilter = async function() {
+    yr = parseInt(document.getElementById('ownerExpYear').value);
+    mo = parseInt(document.getElementById('ownerExpMonth').value);
+    await loadExps();
+  };
+  await loadExps();
+}
+
+// ── Partners ──────────────────────────────────────────
+async function renderOwnerPartners(el) {
+  const data = await api('GET', '/api/office/partners').catch(()=>[]);
+  const partners = Array.isArray(data) ? data : [];
+  const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
+
+  el.innerHTML = `
+  <div style="max-width:600px">
+    <div style="background:white;border-radius:16px;padding:24px;border:1px solid #e8edf3;margin-bottom:20px">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0 0 20px">🤝 توزيع الأرباح بين الشركاء</h3>
+      <div id="ownerPartnersTable">
+      ${partners.length ? partners.map((p,i)=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px;border:1.5px solid #e8edf3;border-radius:12px;margin-bottom:10px">
+          <div>
+            <div style="font-size:16px;font-weight:700;color:#1e293b">${p.partner_name}</div>
+            <div style="font-size:13px;color:#64748b">نسبة: <strong style="color:#3b82f6">${p.share_pct}%</strong></div>
+            ${p.ytd_profit!=null?`<div style="font-size:13px;color:#10b981">مستحق العام: ${fmt(p.ytd_profit)}</div>`:''}
+          </div>
+          <button onclick="window.editPartner(${p.id},'${p.partner_name}',${p.share_pct})" class="btn" style="padding:6px 14px;font-size:13px">تعديل</button>
+        </div>`).join('') : '<div style="color:#64748b;padding:20px;text-align:center">لا يوجد شركاء مضافون بعد</div>'}
+      </div>
+      <button onclick="window.addPartner()" class="btn btn-primary" style="margin-top:12px">+ إضافة شريك</button>
+    </div>
+    <div style="background:#fffbeb;border-radius:12px;padding:16px;border:1px solid #f59e0b44;font-size:13px;color:#92400e">
+      ⚠️ مجموع النسب يجب أن يساوي 100% لضمان دقة توزيع الأرباح
+    </div>
+  </div>`;
+
+  window.addPartner = function() {
+    const html = `
+    <div class="modal-backdrop" id="addPartnerModal">
+      <div class="modal" style="max-width:400px">
+        <div class="modal-header"><h3>إضافة شريك</h3><button onclick="document.getElementById('addPartnerModal').remove()" class="modal-close">✕</button></div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div><label class="label">اسم الشريك</label><input id="newPartnerName" class="input" placeholder="مثال: محمد سامي"/></div>
+          <div><label class="label">نسبة الأرباح %</label><input id="newPartnerPct" class="input" type="number" min="0" max="100" step="0.5" placeholder="50"/></div>
+        </div>
+        <div class="modal-footer"><button onclick="window.saveNewPartner()" class="btn btn-primary">حفظ</button></div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  };
+
+  window.saveNewPartner = async function() {
+    const name = document.getElementById('newPartnerName').value.trim();
+    const pct = parseFloat(document.getElementById('newPartnerPct').value||0);
+    if(!name||!pct){ showToast('ادخل الاسم والنسبة','error'); return; }
+    await api('POST', '/api/office/partners', {partner_name:name, share_pct:pct});
+    document.getElementById('addPartnerModal')?.remove();
+    showToast('تم إضافة الشريك');
+    await renderOwnerPartners(el);
+  };
+
+  window.editPartner = function(id, name, pct) {
+    const html = `
+    <div class="modal-backdrop" id="editPartnerModal">
+      <div class="modal" style="max-width:400px">
+        <div class="modal-header"><h3>تعديل الشريك</h3><button onclick="document.getElementById('editPartnerModal').remove()" class="modal-close">✕</button></div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div><label class="label">اسم الشريك</label><input id="editPartnerName" class="input" value="${name}"/></div>
+          <div><label class="label">نسبة الأرباح %</label><input id="editPartnerPct" class="input" type="number" min="0" max="100" step="0.5" value="${pct}"/></div>
+        </div>
+        <div class="modal-footer"><button onclick="window.saveEditPartner(${id})" class="btn btn-primary">حفظ</button></div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  };
+
+  window.saveEditPartner = async function(id) {
+    const name = document.getElementById('editPartnerName').value.trim();
+    const pct = parseFloat(document.getElementById('editPartnerPct').value||0);
+    await api('PUT', `/api/office/partners/${id}`, {partner_name:name, share_pct:pct});
+    document.getElementById('editPartnerModal')?.remove();
+    showToast('تم التحديث');
+    await renderOwnerPartners(el);
+  };
+}
+
+// ── Month Snapshots ───────────────────────────────────
+async function renderOwnerSnapshots(el) {
+  const data = await api('GET', '/api/office/snapshots').catch(()=>({items:[]}));
+  const snaps = data.items || data || [];
+  const now = new Date();
+  const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
+  const monthName = (y,m) => `${new Date(y,m-1).toLocaleString('ar-EG',{month:'long'})} ${y}`;
+
+  el.innerHTML = `
+  <div style="max-width:700px">
+    <!-- Close current month button -->
+    <div style="background:#eff6ff;border-radius:16px;padding:20px;border:1.5px solid #3b82f644;margin-bottom:20px">
+      <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 8px">📅 إغلاق الشهر الحالي</h3>
+      <p style="font-size:13px;color:#64748b;margin:0 0 14px">بعد الإغلاق لا يمكن تعديل بيانات هذا الشهر. سيتم حفظ نسخة ثابتة من الأرقام.</p>
+      <button onclick="window.closeCurrentMonth()" class="btn btn-primary">🔒 إغلاق ${monthName(now.getFullYear(), now.getMonth()+1)}</button>
+    </div>
+
+    <!-- Closed months table -->
+    <div style="background:white;border-radius:16px;padding:20px;border:1px solid #e8edf3">
+      <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 16px">📋 الأشهر المغلقة</h3>
+      ${snaps.length ? `
+      <table class="data-table" style="width:100%">
+        <thead><tr><th>الشهر</th><th>إيرادات</th><th>مصاريف</th><th>ربح</th><th>تاريخ الإغلاق</th><th>PDF</th></tr></thead>
+        <tbody>
+          ${snaps.map(s=>`
+            <tr>
+              <td>${monthName(s.year, s.month)}</td>
+              <td style="color:#10b981">${fmt(s.total_revenue)}</td>
+              <td style="color:#ef4444">${fmt(s.total_expense)}</td>
+              <td style="color:#3b82f6;font-weight:700">${fmt(s.net_profit)}</td>
+              <td style="font-size:12px;color:#64748b">${(s.closed_at||'').slice(0,10)}</td>
+              <td><button onclick="window.exportOwnerMonthPDF(${s.year},${s.month})" style="background:none;border:none;cursor:pointer;font-size:18px" title="تصدير PDF">📄</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : '<div style="color:#64748b;text-align:center;padding:20px">لا توجد أشهر مغلقة بعد</div>'}
+    </div>
+  </div>`;
+
+  window.closeCurrentMonth = async function() {
+    if(!confirm(`هل أنت متأكد من إغلاق ${monthName(now.getFullYear(), now.getMonth()+1)}؟\nلن يمكن تعديل البيانات بعد الإغلاق.`)) return;
+    try {
+      await api('POST', '/api/office/snapshots/close', {year: now.getFullYear(), month: now.getMonth()+1});
+      showToast('تم إغلاق الشهر بنجاح');
+      await renderOwnerSnapshots(el);
+    } catch(e) {
+      showToast(e.message||'خطأ في الإغلاق', 'error');
+    }
+  };
+
+  window.exportOwnerMonthPDF = async function(year, month) {
+    showToast('جاري إعداد التقرير...');
+    try {
+      const token = localStorage.getItem('ms_token');
+      const url = `${API_BASE}/api/office/report-pdf?year=${year}&month=${month}`;
+      const resp = await fetch(url, {headers:{'Authorization':`Bearer ${token}`}});
+      if(!resp.ok) throw new Error('فشل تحميل التقرير');
+      const blob = await resp.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `office-report-${year}-${month}.pdf`;
+      a.click();
+    } catch(e) { showToast(e.message, 'error'); }
+  };
+}
+
+// ── Annual Report ─────────────────────────────────────
+async function renderOwnerAnnual(el) {
+  const now = new Date();
+  let yr = now.getFullYear();
+
+  async function loadAnnual() {
+    const data = await api('GET', `/api/office/annual-report?year=${yr}`).catch(()=>null);
+    if(!data) { document.getElementById('ownerAnnualContent').innerHTML = '<div style="color:#dc2626;padding:20px">تعذّر تحميل البيانات</div>'; return; }
+
+    const months = data.months || [];
+    const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
+
+    document.getElementById('ownerAnnualContent').innerHTML = `
+    <!-- Annual KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+      ${[
+        {label:'إجمالي الإيرادات', val:fmt(data.total_revenue), color:'#10b981'},
+        {label:'إجمالي المصاريف',  val:fmt(data.total_expense), color:'#ef4444'},
+        {label:'صافي الربح',       val:fmt(data.net_profit),    color:'#3b82f6'},
+        {label:'متوسط هامش الربح', val:data.margin_pct!=null ? data.margin_pct.toFixed(1)+'%' : '—', color:'#8b5cf6'},
+      ].map(k=>`
+        <div style="background:white;border-radius:14px;padding:16px;border:1.5px solid ${k.color}33;text-align:center">
+          <div style="font-size:12px;color:#64748b;margin-bottom:6px">${k.label}</div>
+          <div style="font-size:18px;font-weight:700;color:${k.color}">${k.val}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Annual trend chart -->
+    <div style="background:white;border-radius:16px;padding:20px;border:1px solid #e8edf3;margin-bottom:20px">
+      <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px">الاتجاه الشهري لعام ${yr}</h3>
+      <canvas id="ownerAnnualChart" height="80"></canvas>
+    </div>
+
+    <!-- Monthly breakdown table -->
+    <div style="background:white;border-radius:16px;padding:20px;border:1px solid #e8edf3">
+      <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px">تفصيل شهري</h3>
+      <table class="data-table" style="width:100%">
+        <thead><tr><th>الشهر</th><th>إيرادات</th><th>مصاريف</th><th>ربح</th><th>هامش %</th></tr></thead>
+        <tbody>
+          ${months.map(m=>`
+            <tr>
+              <td>${new Date(yr,m.month-1).toLocaleString('ar-EG',{month:'long'})}</td>
+              <td style="color:#10b981">${fmt(m.revenue)}</td>
+              <td style="color:#ef4444">${fmt(m.expense)}</td>
+              <td style="color:#3b82f6;font-weight:700">${fmt(m.profit)}</td>
+              <td>${m.revenue ? ((m.profit/m.revenue)*100).toFixed(1)+'%' : '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+    if(months.length) {
+      const ctx = document.getElementById('ownerAnnualChart');
+      if(ctx) {
+        destroyChart('ownerAnnualChart');
+        chartInstances['ownerAnnualChart'] = new Chart(ctx, {
+          type:'bar',
+          data:{
+            labels: months.map(m=>new Date(yr,m.month-1).toLocaleString('ar-EG',{month:'short'})),
+            datasets:[
+              {label:'إيرادات', data:months.map(m=>m.revenue||0), backgroundColor:'#10b98155', borderColor:'#10b981', borderWidth:2},
+              {label:'مصاريف', data:months.map(m=>m.expense||0), backgroundColor:'#ef444455', borderColor:'#ef4444', borderWidth:2},
+              {label:'ربح',    data:months.map(m=>m.profit||0), type:'line', borderColor:'#3b82f6', backgroundColor:'transparent', borderWidth:2, tension:.3},
+            ]
+          },
+          options:{responsive:true, plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}}}
+        });
+      }
+    }
+  }
+
+  el.innerHTML = `
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px">
+    <select id="ownerAnnualYear" class="input" style="width:110px" onchange="window.ownerAnnualFilter()">
+      ${[yr-2,yr-1,yr].map(y=>`<option value="${y}" ${y===yr?'selected':''}>${y}</option>`).join('')}
+    </select>
+    <button onclick="window.exportOwnerAnnualPDF()" class="btn">📄 تصدير PDF</button>
+  </div>
+  <div id="ownerAnnualContent"></div>`;
+
+  window.ownerAnnualFilter = async function() {
+    yr = parseInt(document.getElementById('ownerAnnualYear').value);
+    await loadAnnual();
+  };
+  window.exportOwnerAnnualPDF = async function() {
+    showToast('جاري إعداد التقرير...');
+    const token = localStorage.getItem('ms_token');
+    const url = `${API_BASE}/api/office/report-pdf?year=${yr}`;
+    try {
+      const resp = await fetch(url, {headers:{'Authorization':`Bearer ${token}`}});
+      if(!resp.ok) throw new Error('فشل');
+      const blob = await resp.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = `annual-report-${yr}.pdf`; a.click();
+    } catch(e){ showToast(e.message,'error'); }
+  };
+  await loadAnnual();
+}
+
+// ── Add/Edit Revenue Modal ────────────────────────────
+window.showAddRevenueModal = function(existing) {
+  const isEdit = !!existing;
+  const catOptions = {accounting:'محاسبة',formation:'تأسيس',tax:'ضرائب',insurance:'تأمينات',commercial:'سجل تجاري',tax_card:'بطاقة ضريبية',consultation:'استشارات',office_svc:'خدمات مكتبية',other:'أخرى'};
+  const html = `
+  <div class="modal-backdrop" id="addRevModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header"><h3>${isEdit?'تعديل إيراد':'إضافة إيراد'}</h3><button onclick="document.getElementById('addRevModal').remove()" class="modal-close">✕</button></div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div><label class="label">التاريخ</label><input id="revDate" class="input" type="date" value="${existing?.tx_date||new Date().toISOString().slice(0,10)}"/></div>
+        <div><label class="label">البيان</label><input id="revDesc" class="input" placeholder="وصف الإيراد" value="${existing?.description||''}"/></div>
+        <div><label class="label">الفئة</label>
+          <select id="revCat" class="input">
+            ${Object.entries(catOptions).map(([k,v])=>`<option value="${k}" ${existing?.category===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div><label class="label">المبلغ (ج.م)</label><input id="revAmount" class="input" type="number" min="0" step="0.01" value="${existing?.amount||''}"/></div>
+        <div><label class="label">اسم العميل (اختياري)</label><input id="revClient" class="input" placeholder="اسم العميل" value="${existing?.client_name||''}"/></div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="window.saveOwnerRevenue(${isEdit?existing.id:'null'})" class="btn btn-primary">💾 حفظ</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.saveOwnerRevenue = async function(id) {
+  const body = {
+    date: document.getElementById('revDate').value,
+    description: document.getElementById('revDesc').value,
+    category: document.getElementById('revCat').value,
+    amount: parseFloat(document.getElementById('revAmount').value||0),
+    client_name: document.getElementById('revClient').value||null,
+  };
+  if(!body.amount||!body.tx_date){ showToast('ادخل التاريخ والمبلغ','error'); return; }
+  if(id) await api('PUT', `/api/office/revenues/${id}`, body);
+  else   await api('POST', '/api/office/revenues', body);
+  document.getElementById('addRevModal')?.remove();
+  showToast('تم الحفظ');
+  await renderOwnerRevenues(document.getElementById('ownerContent'));
+};
+
+window.editOwnerRevenue = async function(id) {
+  const data = await api('GET', `/api/office/revenues/${id}`).catch(()=>null);
+  if(data) window.showAddRevenueModal(data);
+};
+
+window.deleteOwnerRevenue = async function(id) {
+  if(!confirm('حذف هذا الإيراد؟')) return;
+  await api('DELETE', `/api/office/revenues/${id}`);
+  showToast('تم الحذف');
+  await renderOwnerRevenues(document.getElementById('ownerContent'));
+};
+
+// ── Add/Edit Expense Modal ────────────────────────────
+window.showAddExpenseModal = function(existing) {
+  const isEdit = !!existing;
+  const catOptions = {rent:'إيجار',electricity:'كهرباء',internet:'إنترنت',salaries:'رواتب',advertising:'إعلانات',marketing:'تسويق',software:'برامج',transport:'مواصلات',hospitality:'ضيافة',other:'أخرى'};
+  const html = `
+  <div class="modal-backdrop" id="addExpModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header"><h3>${isEdit?'تعديل مصروف':'إضافة مصروف'}</h3><button onclick="document.getElementById('addExpModal').remove()" class="modal-close">✕</button></div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div><label class="label">التاريخ</label><input id="expDate" class="input" type="date" value="${existing?.tx_date||new Date().toISOString().slice(0,10)}"/></div>
+        <div><label class="label">البيان</label><input id="expDesc" class="input" placeholder="وصف المصروف" value="${existing?.description||''}"/></div>
+        <div><label class="label">الفئة</label>
+          <select id="expCat" class="input">
+            ${Object.entries(catOptions).map(([k,v])=>`<option value="${k}" ${existing?.category===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div><label class="label">المبلغ (ج.م)</label><input id="expAmount" class="input" type="number" min="0" step="0.01" value="${existing?.amount||''}"/></div>
+        <div><label class="label">ملاحظات</label><input id="expNotes" class="input" placeholder="ملاحظات إضافية" value="${existing?.notes||''}"/></div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="window.saveOwnerExpense(${isEdit?existing.id:'null'})" class="btn btn-primary">💾 حفظ</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.saveOwnerExpense = async function(id) {
+  const body = {
+    date: document.getElementById('expDate').value,
+    description: document.getElementById('expDesc').value,
+    category: document.getElementById('expCat').value,
+    amount: parseFloat(document.getElementById('expAmount').value||0),
+    notes: document.getElementById('expNotes').value||null,
+  };
+  if(!body.amount||!body.tx_date){ showToast('ادخل التاريخ والمبلغ','error'); return; }
+  if(id) await api('PUT', `/api/office/expenses/${id}`, body);
+  else   await api('POST', '/api/office/expenses', body);
+  document.getElementById('addExpModal')?.remove();
+  showToast('تم الحفظ');
+  await renderOwnerExpenses(document.getElementById('ownerContent'));
+};
+
+window.editOwnerExpense = async function(id) {
+  const data = await api('GET', `/api/office/expenses/${id}`).catch(()=>null);
+  if(data) window.showAddExpenseModal(data);
+};
+
+window.deleteOwnerExpense = async function(id) {
+  if(!confirm('حذف هذا المصروف؟')) return;
+  await api('DELETE', `/api/office/expenses/${id}`);
+  showToast('تم الحذف');
+  await renderOwnerExpenses(document.getElementById('ownerContent'));
+};
 
 // Apply saved language on load
 window.addEventListener('ms-app-ready', ()=>{
