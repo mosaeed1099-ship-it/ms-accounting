@@ -5,7 +5,7 @@ from typing import Optional
 
 class Settings(BaseSettings):
     APP_NAME: str = "MS Accounting"
-    APP_VERSION: str = "2.2.0-acc-fixes"
+    APP_VERSION: str = "2.2.1-vat-from-acc"
     DEBUG: bool = False
 
     DATABASE_URL: str = "sqlite:///./ms_accounting.db"

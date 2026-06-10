@@ -117,6 +117,49 @@ def build_vat_return(
                 in_credit_vat += vat
                 line_records.append(("input_credit", doc, net, vat, total))
 
+    # ── Supplement from Accounting Transactions (when no ETA docs) ──────────
+    # If the user added invoices manually in the accounting module,
+    # include them in the VAT return (ETA docs take priority if they exist)
+    from app.models.accounting import AccTransaction
+    acc_sales = db.query(AccTransaction).filter(
+        AccTransaction.client_id == client_id,
+        AccTransaction.year == year,
+        AccTransaction.month == month,
+        AccTransaction.transaction_type == "sale",
+        AccTransaction.vat_amount > 0,
+    ).all()
+    acc_purch = db.query(AccTransaction).filter(
+        AccTransaction.client_id == client_id,
+        AccTransaction.year == year,
+        AccTransaction.month == month,
+        AccTransaction.transaction_type == "purchase",
+        AccTransaction.vat_amount > 0,
+    ).all()
+
+    has_eta_output = eta_out_count > 0
+    has_eta_input  = eta_in_count > 0
+
+    for tx in acc_sales:
+        if not has_eta_output:  # only use accounting if no ETA sync
+            net = Decimal(str(tx.amount or 0))
+            vat = Decimal(str(tx.vat_amount or 0))
+            out_std_tax += net
+            out_std_vat += vat
+            line_records.append(("output_std_acc", tx, net, vat, net + vat))
+
+    for tx in acc_purch:
+        if not has_eta_input:
+            net = Decimal(str(tx.amount or 0))
+            vat = Decimal(str(tx.vat_amount or 0))
+            in_std_tax += net
+            in_std_vat += vat
+            line_records.append(("input_std_acc", tx, net, vat, net + vat))
+
+    if acc_sales and not has_eta_output:
+        warnings.append(f"تم تضمين {len(acc_sales)} فاتورة مبيعات من قسم الحسابات (لا توجد مستندات ETA لهذه الفترة)")
+    if acc_purch and not has_eta_input:
+        warnings.append(f"تم تضمين {len(acc_purch)} فاتورة مشتريات من قسم الحسابات (لا توجد مستندات ETA لهذه الفترة)")
+
     # ── Compute ───────────────────────────────────────────────────
     gross_output = out_std_vat - out_credit_vat + man_out
     gross_input  = in_std_vat + in_cap_vat - in_credit_vat + man_in
@@ -206,22 +249,41 @@ def build_vat_return(
     # ── Create lines ──────────────────────────────────────────────
     for line_type, doc, net, vat, total in line_records:
         is_out = line_type.startswith("output")
-        db.add(VATReturnLine(
-            vat_return_id    = ret.id,
-            client_id        = client_id,
-            line_type        = line_type,
-            eta_doc_uuid     = doc.eta_uuid,
-            doc_date         = doc.doc_date,
-            doc_type         = doc.doc_type,
-            internal_id      = doc.internal_id,
-            counterparty_name = doc.receiver_name if is_out else doc.issuer_name,
-            counterparty_tin  = doc.receiver_tin  if is_out else doc.issuer_tin,
-            taxable_amount   = float(net),
-            vat_rate         = 14 if vat > 0 else 0,
-            vat_amount       = float(vat),
-            total_amount     = float(total),
-            is_included      = True,
-        ))
+        if doc is not None:
+            db.add(VATReturnLine(
+                vat_return_id    = ret.id,
+                client_id        = client_id,
+                line_type        = line_type,
+                eta_doc_uuid     = doc.eta_uuid,
+                doc_date         = doc.doc_date,
+                doc_type         = doc.doc_type,
+                internal_id      = doc.internal_id,
+                counterparty_name = doc.receiver_name if is_out else doc.issuer_name,
+                counterparty_tin  = doc.receiver_tin  if is_out else doc.issuer_tin,
+                taxable_amount   = float(net),
+                vat_rate         = 14 if vat > 0 else 0,
+                vat_amount       = float(vat),
+                total_amount     = float(total),
+                is_included      = True,
+            ))
+        else:
+            # Accounting transaction line (AccTransaction object)
+            tx = doc  # reuse variable name
+            db.add(VATReturnLine(
+                vat_return_id    = ret.id,
+                client_id        = client_id,
+                line_type        = line_type,
+                doc_type         = "I",
+                internal_id      = tx.doc_number if tx else None,
+                doc_date         = tx.date if tx else None,
+                counterparty_name= tx.partner_name if tx else None,
+                counterparty_tin = tx.partner_tax_id if tx else None,
+                taxable_amount   = float(net),
+                vat_rate         = float(tx.vat_rate * 100) if (tx and tx.vat_rate) else (14 if vat > 0 else 0),
+                vat_amount       = float(vat),
+                total_amount     = float(total),
+                is_included      = True,
+            ))
 
     db.commit()
     db.refresh(ret)
