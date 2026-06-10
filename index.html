@@ -921,25 +921,25 @@ function renderLogin() {
       <p style="text-align:center;color:rgba(255,255,255,.18);font-size:11px;margin-top:20px;letter-spacing:.5px">© 2025 MS Accounting — جميع الحقوق محفوظة</p>
     </div>
   </div>
-  <script>
-    (function(){
-      const c=document.getElementById('loginStars');
-      if(!c)return;
-      const ctx=c.getContext('2d');
-      c.width=window.innerWidth; c.height=window.innerHeight;
-      const stars=Array.from({length:120},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*1.5+.3,a:Math.random(),sp:Math.random()*.4+.1}));
-      function draw(){
-        ctx.clearRect(0,0,c.width,c.height);
-        stars.forEach(s=>{
-          s.a+=s.sp*.015; if(s.a>1)s.a=0;
-          ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
-          ctx.fillStyle=\`rgba(255,255,255,\${Math.abs(Math.sin(s.a))*0.8})\`; ctx.fill();
-        });
-        requestAnimationFrame(draw);
-      }
-      draw();
-    })();
-  </script>`;
+`;
+  // Stars animation — runs after innerHTML is set
+  (function(){
+    const c=document.getElementById('loginStars');
+    if(!c)return;
+    const ctx=c.getContext('2d');
+    c.width=window.innerWidth; c.height=window.innerHeight;
+    const stars=Array.from({length:120},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*1.5+.3,a:Math.random(),sp:Math.random()*.4+.1}));
+    function draw(){
+      ctx.clearRect(0,0,c.width,c.height);
+      stars.forEach(function(s){
+        s.a+=s.sp*.015; if(s.a>1)s.a=0;
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+        ctx.fillStyle='rgba(255,255,255,'+Math.abs(Math.sin(s.a))*0.8+')'; ctx.fill();
+      });
+      requestAnimationFrame(draw);
+    }
+    draw();
+  })();
 
   document.getElementById('loginBtn').onclick = async () => {
     const btn=document.getElementById('loginBtn');
