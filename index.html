@@ -12892,6 +12892,10 @@ function _renderEmployeesGrid(el, employees) {
           style="flex:1;padding:8px;background:#f0fdf4;color:#15803d;border:1.5px solid #bbf7d0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
           💰 إضافة عهدة
         </button>
+        <button onclick="showEditCustody('${escH(emp.employee_name)}',${emp.current_balance||0})"
+          style="flex:1;padding:8px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
+          ✏️ تعديل
+        </button>
         <button onclick="resetEmployeeBalance('${escH(emp.employee_name)}')"
           title="تصفير الرصيد وحذف جميع التسويات"
           style="padding:8px 10px;background:#fef2f2;color:#dc2626;border:1.5px solid #fecaca;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
@@ -13312,6 +13316,46 @@ function showCustodyTopup(empName) {
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
 }
+
+function showEditCustody(empName, currentBalance) {
+  const html = `
+  <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:380px">
+      <div style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);border-radius:14px 14px 0 0;padding:16px 20px">
+        <div style="color:white;font-weight:700;font-size:15px">✏️ تعديل رصيد عهدة — ${escH(empName)}</div>
+        <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:3px">الرصيد الحالي: ${money(currentBalance)}</div>
+      </div>
+      <div style="padding:20px">
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#92400e">
+          ⚠️ هيتم تعديل رصيد العهدة مباشرة — استخدمه فقط لتصحيح الأرقام الغلط
+        </div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">الرصيد الصحيح (ج.م.)</label>
+        <input id="editCustodyAmt" class="input" type="number" value="${currentBalance}" step="0.01" style="margin-bottom:14px"/>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">سبب التعديل</label>
+        <input id="editCustodyNote" class="input" placeholder="مثال: تصحيح خطأ في الإدخال..." style="margin-bottom:20px"/>
+        <div style="display:flex;gap:10px">
+          <button onclick="saveEditCustody('${escH(empName)}')" class="btn btn-primary" style="flex:1">💾 حفظ التعديل</button>
+          <button onclick="this.closest('.modal-overlay').remove()" class="btn" style="flex:1">إلغاء</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(()=>document.getElementById('editCustodyAmt')?.focus(),100);
+}
+
+async function saveEditCustody(empName) {
+  const amt = parseFloat(document.getElementById('editCustodyAmt')?.value||'');
+  if (isNaN(amt) || amt < 0) { toast('ادخل مبلغ صحيح','error'); return; }
+  try {
+    await api('PATCH', `/api/settlements/employees/${encodeURIComponent(empName)}/balance`, {amount: amt});
+    document.querySelector('.modal-overlay')?.remove();
+    toast('✅ تم تعديل رصيد العهدة');
+    loadSettlements(true);
+  } catch(e) { toast(e.message,'error'); }
+}
+window.showEditCustody = showEditCustody;
+window.saveEditCustody = saveEditCustody;
 
 async function saveCustodyTopup() {
   const empName = document.getElementById('topupEmpName')?.value;
