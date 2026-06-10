@@ -31,6 +31,7 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     notes: Optional[str] = None
     specialization: Optional[List[str]] = None
+    password: Optional[str] = None
 
 
 def user_to_dict(user: User, db: Session = None) -> dict:
