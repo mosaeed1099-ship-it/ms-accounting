@@ -7994,7 +7994,7 @@ async function showEmployeeModal(userId=null) {
         <textarea id="empNotes" class="input" rows="2" style="resize:none">${escH(user?.notes||'')}</textarea></div>
       <div style="margin-bottom:4px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">التخصصات</label>
         <div id="specList" style="display:flex;flex-wrap:wrap;gap:6px">
-          ${SPEC_OPTS.map(s=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid ${specs.includes(s)?'#4478b0':'#e2e8f0'};border-radius:20px;background:${specs.includes(s)?'#eef1fb':'#fff'};transition:.15s" onclick="this.style.background=this.querySelector('input').checked?'#fff':'#eef1fb';this.style.borderColor=this.querySelector('input').checked?'#e2e8f0':'#4478b0'">
+          ${SPEC_OPTS.map(s=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid ${specs.includes(s)?'#4478b0':'#e2e8f0'};border-radius:20px;background:${specs.includes(s)?'#eef1fb':'#fff'};transition:.15s" onclick="toggleSpecLabel(this)">
             <input type="checkbox" style="display:none" value="${s}" ${specs.includes(s)?'checked':''}>${s}
           </label>`).join('')}
         </div>
@@ -10355,6 +10355,9 @@ window.showFolders    = ()    => { window._taskViewMode = 'folders'; window._tas
 window.setApptFilter  = (id)  => { window._apptFilter = id; window.renderAppointments && window.renderAppointments(); };
 window.setPapersStatus= (id)  => { window._papersStatus = id; window.renderGovernmentPapers && window.renderGovernmentPapers(); };
 window.setPostalStatus= (s)   => { window._postalStatus = s; window.loadPostal && window.loadPostal(); };
+window.setSettlDate   = (v)   => { window._settlDailyDate = v; window._refreshDailyView && window._refreshDailyView(); };
+window.setSettlToday  = ()    => { const t=new Date().toISOString().split('T')[0]; const el=document.getElementById('settlDailyPicker'); if(el) el.value=t; window._settlDailyDate=t; window._refreshDailyView && window._refreshDailyView(); };
+window.toggleSpecLabel= (el)  => { const chk=el.querySelector('input'); if(!chk) return; const checked=chk.checked; el.style.background=checked?'#fff':'#eef1fb'; el.style.borderColor=checked?'#e2e8f0':'#4478b0'; };
 
 // ── Client/company filter for tasks ──
 window._taskClientFilter = '';
@@ -12977,9 +12980,9 @@ async function _renderDailyView(el) {
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
     <label style="font-weight:700;font-size:13px;color:#374151">📅 اختر تاريخ:</label>
     <input type="date" id="settlDailyPicker" value="${_settlDailyDate}"
-      onchange="_settlDailyDate=this.value;_refreshDailyView()"
+      onchange="setSettlDate(this.value)"
       style="padding:8px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;color:#1e293b">
-    <button onclick="_settlDailyDate=new Date().toISOString().split('T')[0];document.getElementById('settlDailyPicker').value=_settlDailyDate;_refreshDailyView()"
+    <button onclick="setSettlToday()"
       style="padding:8px 14px;background:#eef1fb;color:#1a2472;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">
       اليوم
     </button>
@@ -15021,7 +15024,7 @@ function renderPostal(counts) {
   <!-- Stats row -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
     ${[['open','📬','مفتوح','#eef1fb','#1a2472'],['within','📩','استُلم','#fffbeb','#d97706'],['closed','✅','مغلق','#f0fdf4','#16a34a']].map(([s,ic,lb,bg,cl])=>`
-    <div onclick="_postalStatus='${s}';loadPostal()" style="background:${bg};border-radius:14px;padding:16px 20px;cursor:pointer;border:2px solid ${_postalStatus===s?cl:'transparent'};transition:all .15s">
+    <div onclick="setPostalStatus('${s}')" style="background:${bg};border-radius:14px;padding:16px 20px;cursor:pointer;border:2px solid ${_postalStatus===s?cl:'transparent'};transition:all .15s">
       <div style="font-size:24px;margin-bottom:4px">${ic}</div>
       <div style="font-size:22px;font-weight:800;color:${cl}">${counts[s]||0}</div>
       <div style="font-size:12px;color:#64748b">${lb}</div>
