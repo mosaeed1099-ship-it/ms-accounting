@@ -30,6 +30,7 @@ from app.models.company_document import CompanyDocument
 from app.models.audit_log import AuditLog
 from app.models.folder import Folder, FileItem
 from app.models.client_portal import ClientPortalUser
+from app.models.client_required_doc import ClientRequiredDoc
 from app.models.office_service import OfficeService, OfficeServiceTask
 
 __all__ = [

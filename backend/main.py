@@ -47,6 +47,7 @@ import app.models.company_document    # noqa: F401
 import app.models.audit_log           # noqa: F401
 import app.models.folder              # noqa: F401
 import app.models.client_portal       # noqa: F401
+import app.models.client_required_doc # noqa: F401
 import app.models.office_service      # noqa: F401
 import app.models.tax_center          # noqa: F401
 import app.models.establishment       # noqa: F401
