@@ -3362,7 +3362,7 @@ function renderTaskFolders() {
       <p style="font-size:13px;color:#64748b;margin:4px 0 0">${tasksData.length} مهمة — ${emps.filter(e=>e.pending.length>0).length} موظف لديه مهام قيد التنفيذ</p>
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="_taskViewMode='kanban';renderKanban()"
+      <button onclick="showKanban()"
         style="padding:8px 16px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">
         📋 الكانبان
       </button>
@@ -3519,7 +3519,7 @@ function renderEmployeeTasks() {
   const tab = window._empTab;
 
   const tabBtn = (id, icon, label, count, color='#475569', bg='white') =>
-    `<button onclick="window._empTab='${id}';renderEmployeeTasks()"
+    `<button onclick="setEmpTab('${id}')"
       style="padding:9px 18px;border:1.5px solid ${tab===id?color:'#e2e8f0'};border-radius:11px;background:${tab===id?color+'12':bg};color:${tab===id?color:'#64748b'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px">
       ${icon} ${label} <span style="background:${tab===id?color:'#e2e8f0'};color:${tab===id?'white':'#475569'};padding:1px 8px;border-radius:10px;font-size:11px">${count}</span>
     </button>`;
@@ -3527,7 +3527,7 @@ function renderEmployeeTasks() {
   main.innerHTML = `
   <!-- Header -->
   <div style="background:linear-gradient(135deg,#1a2472,#2563eb);border-radius:18px;padding:20px 24px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-    <button onclick="_taskEmpFilter=null;window._empTab='pending';loadTasks()"
+    <button onclick="backToTasks()"
       style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.3);border-radius:10px;padding:7px 14px;cursor:pointer;font-size:13px;color:white;font-family:inherit">← رجوع</button>
     <div style="width:54px;height:54px;border-radius:50%;background:${ac};display:flex;align-items:center;justify-content:center;color:white;font-size:22px;font-weight:800;border:3px solid rgba(255,255,255,.3);flex-shrink:0">${escH(emp.name[0])}</div>
     <div style="flex:1">
@@ -3647,7 +3647,7 @@ async function renderOverdueBoard(viewType='overdue') {
         <p style="font-size:13px;color:#64748b;margin:4px 0 0">${tasks.length} مهمة</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="_taskViewMode='folders';_taskEmpFilter=null;loadTasks()" style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
+        <button onclick="showFolders()" style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
         <button onclick="renderKanban()" style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;color:#475569">📋 الكانبان</button>
         <button onclick="renderOverdueBoard('overdue')" style="padding:7px 14px;background:${viewType==='overdue'?'#fee2e2':'white'};border:1.5px solid #fca5a5;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#dc2626">⚠️ المتأخرة</button>
         <button onclick="renderOverdueBoard('today')" style="padding:7px 14px;background:${viewType==='today'?'#eff6ff':'white'};border:1.5px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#1a2472">📅 اليوم</button>
@@ -3716,7 +3716,7 @@ function renderKanban() {
   main.innerHTML=`
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button onclick="_taskViewMode='folders';_taskEmpFilter=null;renderTaskFolders()"
+      <button onclick="showFolders()"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
       <button onclick="renderOverdueBoard('overdue')" style="padding:7px 14px;background:white;border:1.5px solid #fca5a5;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#dc2626">⚠️ المتأخرة</button>
       <button onclick="renderOverdueBoard('today')" style="padding:7px 14px;background:white;border:1.5px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#1a2472">📅 اليوم</button>
@@ -10332,6 +10332,15 @@ document.addEventListener('click', e => {
   if (e.target.closest('.sidebar-link') && window.innerWidth <= 768) closeSidebar();
 });
 
+// ── Safe onclick helpers (avoid = in onclick which Chrome blocks as "cookie data") ──
+window.setEmpTab      = (tab) => { window._empTab = tab; window.renderEmployeeTasks(); };
+window.backToTasks    = ()    => { window._taskEmpFilter = null; window._empTab = 'pending'; window.loadTasks && window.loadTasks(); };
+window.showKanban     = ()    => { window._taskViewMode = 'kanban'; window.renderKanban(); };
+window.showFolders    = ()    => { window._taskViewMode = 'folders'; window._taskEmpFilter = null; window.renderTaskFolders ? window.renderTaskFolders() : (window.loadTasks && window.loadTasks()); };
+window.setApptFilter  = (id)  => { window._apptFilter = id; window.renderAppointments && window.renderAppointments(); };
+window.setPapersStatus= (id)  => { window._papersStatus = id; window.renderGovernmentPapers && window.renderGovernmentPapers(); };
+window.setPostalStatus= (s)   => { window._postalStatus = s; window.loadPostal && window.loadPostal(); };
+
 // expose functions globally (required for inline onclick in module scripts)
 window.logout=logout;
 window.openSidebar=openSidebar;
@@ -13642,7 +13651,7 @@ async function renderAppointments() {
     <!-- Filter tabs -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">
       ${filterTabs.map(f=>`
-      <button onclick="_apptFilter='${f.id}';renderAppointments()"
+      <button onclick="setApptFilter('${f.id}')"
         style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${_apptFilter===f.id?'#1a2472':'#e2e8f0'};background:${_apptFilter===f.id?'#1a2472':'white'};color:${_apptFilter===f.id?'white':'#64748b'}">
         ${f.label}
       </button>`).join('')}
@@ -13847,7 +13856,7 @@ async function renderGovernmentPapers() {
       <input value="${escH(_papersSearch)}" oninput="_papersSearch=this.value;renderGovernmentPapers()"
         class="input" placeholder="🔍 بحث باسم العميل أو نوع الورقة..." style="max-width:280px">
       ${filterTabs.map(f=>`
-      <button onclick="_papersStatus='${f.id}';renderGovernmentPapers()"
+      <button onclick="setPapersStatus('${f.id}')"
         style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${_papersStatus===f.id?'#1a2472':'#e2e8f0'};background:${_papersStatus===f.id?'#1a2472':'white'};color:${_papersStatus===f.id?'white':'#64748b'}">
         ${f.label}
       </button>`).join('')}
@@ -14912,7 +14921,7 @@ function renderPostal(counts) {
   <!-- Toolbar -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;gap:8px">
-      ${['all','open','within','closed'].map(s=>`<button onclick="_postalStatus='${s}';loadPostal()" class="btn btn-sm ${_postalStatus===s?'btn-primary':'btn-secondary'}">${{all:'الكل',open:'مفتوح',within:'استُلم',closed:'مغلق'}[s]}</button>`).join('')}
+      ${['all','open','within','closed'].map(s=>`<button onclick="setPostalStatus('${s}')" class="btn btn-sm ${_postalStatus===s?'btn-primary':'btn-secondary'}">${{all:'الكل',open:'مفتوح',within:'استُلم',closed:'مغلق'}[s]}</button>`).join('')}
     </div>
     <button class="btn btn-primary" onclick="showAddPostal()">+ بوسطة جديدة</button>
   </div>
