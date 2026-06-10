@@ -1,14 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from typing import Optional
 from pydantic import BaseModel
 from datetime import date, datetime, timedelta
+import threading
 from app.database import get_db
 from app.models.task import Task, TaskComment, TaskStatus, TaskPriority, TaskCategory
 from app.models.activity import ActivityLog
 from app.core.deps import get_current_user
 from app.models.user import User
+
+def _send_wa_bg(phone: str, fn, *args):
+    """Run WhatsApp notification in a daemon background thread — never blocks the request."""
+    def _run():
+        try:
+            fn(*args)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[WA-BG] {e}")
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -244,13 +256,10 @@ async def create_task(
                     )
                 except Exception as e:
                     logger.warning(f"Email notification failed: {e}")
-            # WhatsApp
+            # WhatsApp — background (non-blocking)
             if assignee.whatsapp_phone:
-                try:
-                    from app.services.whatsapp_service import notify_task_created
-                    notify_task_created(task, assignee.whatsapp_phone, current_user.name)
-                except Exception as e:
-                    logger.warning(f"WhatsApp notification failed: {e}")
+                from app.services.whatsapp_service import notify_task_created
+                _send_wa_bg(assignee.whatsapp_phone, notify_task_created, task, assignee.whatsapp_phone, current_user.name)
 
     return task_to_dict(task)
 
@@ -308,24 +317,18 @@ async def update_task(
                 except Exception as e:
                     logger.warning(f"Email notification failed: {e}")
             if assignee.whatsapp_phone:
-                try:
-                    from app.services.whatsapp_service import notify_task_created
-                    notify_task_created(task, assignee.whatsapp_phone, current_user.name)
-                except Exception as e:
-                    logger.warning(f"WhatsApp notification failed: {e}")
+                from app.services.whatsapp_service import notify_task_created
+                _send_wa_bg(assignee.whatsapp_phone, notify_task_created, task, assignee.whatsapp_phone, current_user.name)
 
-    # Status changed → notify assigned employee
+    # Status changed → notify assigned employee — background
     if "status" in updates and task.assigned_to and new_status_val != old_status_val:
         assignee = db.query(User).filter(User.id == task.assigned_to).first()
         if assignee and assignee.whatsapp_phone:
-            try:
-                from app.services.whatsapp_service import notify_task_status_changed, notify_task_done
-                if new_status_val == "done":
-                    notify_task_done(task, current_user.name, assignee.whatsapp_phone)
-                else:
-                    notify_task_status_changed(task, current_user.name, old_status_val, assignee.whatsapp_phone)
-            except Exception as e:
-                logger.warning(f"WhatsApp status notification failed: {e}")
+            from app.services.whatsapp_service import notify_task_status_changed, notify_task_done
+            if new_status_val == "done":
+                _send_wa_bg(assignee.whatsapp_phone, notify_task_done, task, current_user.name, assignee.whatsapp_phone)
+            else:
+                _send_wa_bg(assignee.whatsapp_phone, notify_task_status_changed, task, current_user.name, old_status_val, assignee.whatsapp_phone)
 
     return task_to_dict(task)
 
