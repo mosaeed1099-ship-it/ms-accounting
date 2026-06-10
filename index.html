@@ -10367,29 +10367,25 @@ window.filterTasksByClient = (val) => {
 // ── رسالة الغد — copy tomorrow's tasks grouped by employee ──
 window.copyTomorrowMsg = async () => {
   const tasks = window.tasksData || [];
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tY = tomorrow.getFullYear(), tM = tomorrow.getMonth(), tD = tomorrow.getDate();
-  const tomorrowTasks = tasks.filter(t => {
-    if(!t.due_date) return false;
-    const d = new Date(t.due_date);
-    return d.getFullYear()===tY && d.getMonth()===tM && d.getDate()===tD && t.status !== 'done';
-  });
-  if(!tomorrowTasks.length){
-    toast('لا توجد مهام لغد 🎉');
+  // كل المهام المعلقة (مش خلصت ومش ملغاة) — بتتحدث تلقائي لما توزع شغل جديد
+  const pendingTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled' && t.assigned_to);
+  if(!pendingTasks.length){
+    toast('لا توجد مهام معلقة حالياً 🎉');
     return;
   }
-  // group by assigned_to
+  // group by assigned_to_name
   const groups = {};
-  tomorrowTasks.forEach(t => {
-    const name = t.assigned_to || 'غير محدد';
-    if(!groups[name]) groups[name] = [];
+  const groupOrder = [];
+  pendingTasks.forEach(t => {
+    const name = t.assigned_to_name || ('موظف #' + t.assigned_to);
+    if(!groups[name]){ groups[name] = []; groupOrder.push(name); }
     groups[name].push(t);
   });
-  const tomorrowStr = tomorrow.toLocaleDateString('ar-EG', {weekday:'long', day:'numeric', month:'long'});
-  let msg = '📋 *مهام غد — ' + tomorrowStr + '*\n';
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('ar-EG', {weekday:'long', day:'numeric', month:'long'});
+  let msg = '📋 *شغل الفريق — ' + dateStr + '*\n';
   msg += '━━━━━━━━━━━━━━━━\n';
-  Object.keys(groups).forEach(emp => {
+  groupOrder.forEach(emp => {
     msg += '\n👤 *' + emp + '*\n';
     groups[emp].forEach((t,i) => {
       const client = t.client_name ? ' — ' + t.client_name : '';
@@ -10399,15 +10395,14 @@ window.copyTomorrowMsg = async () => {
   msg += '\n━━━━━━━━━━━━━━━━\n✅ وفقكم الله';
   try {
     await navigator.clipboard.writeText(msg);
-    toast('✅ تم نسخ رسالة الغد — جاهزة للإرسال على الجروب');
+    toast('✅ تم نسخ الرسالة — جاهزة للإرسال على الجروب');
   } catch(e) {
-    // fallback
     const ta = document.createElement('textarea');
     ta.value = msg; ta.style.position='fixed'; ta.style.opacity='0';
     document.body.appendChild(ta); ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    toast('✅ تم نسخ رسالة الغد');
+    toast('✅ تم نسخ الرسالة');
   }
 };
 
