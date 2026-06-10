@@ -247,9 +247,29 @@ def build_vat_return(
     db.flush()
 
     # ── Create lines ──────────────────────────────────────────────
+    from app.models.accounting import AccTransaction as _AccTx
     for line_type, doc, net, vat, total in line_records:
         is_out = line_type.startswith("output")
-        if doc is not None:
+        is_acc_tx = isinstance(doc, _AccTx)
+        if is_acc_tx:
+            # Accounting transaction — access AccTransaction fields
+            db.add(VATReturnLine(
+                vat_return_id    = ret.id,
+                client_id        = client_id,
+                line_type        = line_type,
+                doc_type         = "I",
+                internal_id      = doc.doc_number,
+                doc_date         = doc.date,
+                counterparty_name= doc.partner_name,
+                counterparty_tin = doc.partner_tax_id,
+                taxable_amount   = float(net),
+                vat_rate         = float((doc.vat_rate or 0) * 100),
+                vat_amount       = float(vat),
+                total_amount     = float(total),
+                is_included      = True,
+            ))
+        elif doc is not None:
+            # ETA document
             db.add(VATReturnLine(
                 vat_return_id    = ret.id,
                 client_id        = client_id,
@@ -262,24 +282,6 @@ def build_vat_return(
                 counterparty_tin  = doc.receiver_tin  if is_out else doc.issuer_tin,
                 taxable_amount   = float(net),
                 vat_rate         = 14 if vat > 0 else 0,
-                vat_amount       = float(vat),
-                total_amount     = float(total),
-                is_included      = True,
-            ))
-        else:
-            # Accounting transaction line (AccTransaction object)
-            tx = doc  # reuse variable name
-            db.add(VATReturnLine(
-                vat_return_id    = ret.id,
-                client_id        = client_id,
-                line_type        = line_type,
-                doc_type         = "I",
-                internal_id      = tx.doc_number if tx else None,
-                doc_date         = tx.date if tx else None,
-                counterparty_name= tx.partner_name if tx else None,
-                counterparty_tin = tx.partner_tax_id if tx else None,
-                taxable_amount   = float(net),
-                vat_rate         = float(tx.vat_rate * 100) if (tx and tx.vat_rate) else (14 if vat > 0 else 0),
                 vat_amount       = float(vat),
                 total_amount     = float(total),
                 is_included      = True,
