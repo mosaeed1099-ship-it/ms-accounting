@@ -281,20 +281,38 @@ def _start_scheduler():
 # ── DB init ──────────────────────────────────────────────────────────────────
 
 def seed_admin():
+    import os
+    admin_email    = os.environ.get("ADMIN_EMAIL", "admin@ms-accounting.com")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.email == "admin@ms-accounting.com").first()
-        if not existing:
-            admin = User(
-                name="مدير النظام",
-                email="admin@ms-accounting.com",
-                hashed_password=get_password_hash("admin123"),
-                role=UserRole.ADMIN,
-                is_active=True,
-            )
-            db.add(admin)
+        # Migrate old default admin to new env-configured credentials
+        old = db.query(User).filter(User.email == "admin@ms-accounting.com").first()
+        if old and admin_email != "admin@ms-accounting.com":
+            old.email           = admin_email
+            old.hashed_password = get_password_hash(admin_password)
+            old.name            = "مدير النظام"
+            old.role            = UserRole.ADMIN
+            old.is_active       = True
             db.commit()
-            print("✅ Admin user created: admin@ms-accounting.com / admin123")
+            print(f"✅ Admin migrated → {admin_email}")
+            return
+        existing = db.query(User).filter(User.email == admin_email).first()
+        if existing:
+            # Always sync password from env on startup
+            existing.hashed_password = get_password_hash(admin_password)
+            db.commit()
+            return
+        admin = User(
+            name="مدير النظام",
+            email=admin_email,
+            hashed_password=get_password_hash(admin_password),
+            role=UserRole.ADMIN,
+            is_active=True,
+        )
+        db.add(admin)
+        db.commit()
+        print(f"✅ Admin user created: {admin_email}")
     finally:
         db.close()
 
