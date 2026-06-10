@@ -5794,7 +5794,7 @@ function addLeadRow() {
   const tr = tmp.querySelector('tr');
   tr.dataset.id = tempId; // override data-id with unique temp ID
   tr.style.background='#f0fdf4';
-  tbody.appendChild(tr);
+  tbody.prepend(tr);
   tr.scrollIntoView({behavior:'smooth',block:'nearest'});
   const n=tr.querySelector('[data-field="name"]');
   if(n){n.focus();n.style.borderColor='#4478b0';n.style.background='#fff';}
