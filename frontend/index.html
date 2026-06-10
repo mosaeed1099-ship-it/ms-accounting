@@ -901,7 +901,7 @@ function renderLogin() {
       </div>
 
       <!-- Form Card -->
-      <div style="background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.14);border-radius:24px;padding:36px;backdrop-filter:blur(28px);box-shadow:0 32px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.1)">
+      <div style="background:rgba(20,30,60,.75);border:1.5px solid rgba(255,255,255,.14);border-radius:24px;padding:36px;box-shadow:0 24px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08)">
         <h2 style="font-size:19px;font-weight:700;color:white;margin:0 0 5px;text-align:center">أهلاً بك 👋</h2>
         <p style="font-size:13px;color:rgba(255,255,255,.45);text-align:center;margin:0 0 26px">سجّل دخولك للمتابعة</p>
 
@@ -922,21 +922,23 @@ function renderLogin() {
     </div>
   </div>
 `;
-  // Stars animation — runs after innerHTML is set
+  // Stars animation — stores RAF id so it can be cancelled on login
+  window._loginRaf = null;
   (function(){
     const c=document.getElementById('loginStars');
     if(!c)return;
     const ctx=c.getContext('2d');
     c.width=window.innerWidth; c.height=window.innerHeight;
-    const stars=Array.from({length:120},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*1.5+.3,a:Math.random(),sp:Math.random()*.4+.1}));
+    const stars=Array.from({length:80},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*1.4+.3,a:Math.random(),sp:Math.random()*.3+.08}));
     function draw(){
+      if(!document.getElementById('loginStars')){ cancelAnimationFrame(window._loginRaf); return; }
       ctx.clearRect(0,0,c.width,c.height);
       stars.forEach(function(s){
-        s.a+=s.sp*.015; if(s.a>1)s.a=0;
+        s.a+=s.sp*.012; if(s.a>1)s.a=0;
         ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
-        ctx.fillStyle='rgba(255,255,255,'+Math.abs(Math.sin(s.a))*0.8+')'; ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,'+Math.abs(Math.sin(s.a))*0.75+')'; ctx.fill();
       });
-      requestAnimationFrame(draw);
+      window._loginRaf=requestAnimationFrame(draw);
     }
     draw();
   })();
