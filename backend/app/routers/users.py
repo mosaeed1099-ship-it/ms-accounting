@@ -121,7 +121,9 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     for field, value in data.dict(exclude_none=True).items():
-        if field == "specialization":
+        if field == "password":
+            user.hashed_password = get_password_hash(value)
+        elif field == "specialization":
             setattr(user, field, json.dumps(value, ensure_ascii=False))
         else:
             setattr(user, field, value)
