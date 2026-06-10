@@ -9800,6 +9800,11 @@ async function loadSettings(activeTab) {
     ${tabBtn('team','👥','الفريق')}
     ${tabBtn('import','📥','الاستيراد')}
     ${tabBtn('backup','🗄️','النسخ الاحتياطي')}
+    <div style="margin-right:auto;display:flex;align-items:center">
+      <button onclick="if(confirm('هل تريد تسجيل الخروج؟'))logout()" style="display:flex;align-items:center;gap:7px;padding:8px 18px;background:#fff1f2;border:1.5px solid #fecdd3;border-radius:10px;color:#e11d48;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#ffe4e6'" onmouseout="this.style.background='#fff1f2'">
+        🚪 تسجيل الخروج
+      </button>
+    </div>
   </div>
 
   <!-- General tab -->
