@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>بوابة العملاء — MS للمحاسبة</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#f1f5f9;color:#1e293b;direction:rtl}
+:root{
+  --primary:#1d4ed8;--primary-dark:#1e40af;--primary-light:#dbeafe;
+  --sidebar-bg:#0f172a;--sidebar-text:#94a3b8;--sidebar-active:#fff;
+  --success:#16a34a;--warning:#d97706;--danger:#dc2626;--info:#0891b2;
+  --card-bg:#fff;--border:#e2e8f0;--text:#1e293b;--text-muted:#64748b;
+}
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#f1f5f9}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px}
+
+/* ── Layout ── */
+#app{min-height:100vh}
+.layout{display:flex;min-height:100vh}
+
+/* ── Sidebar ── */
+.sidebar{
+  width:240px;min-height:100vh;background:var(--sidebar-bg);
+  display:flex;flex-direction:column;position:fixed;top:0;right:0;bottom:0;
+  z-index:100;transition:transform .3s ease;
+}
+.sidebar-logo{
+  padding:24px 20px 16px;border-bottom:1px solid #1e293b;
+  display:flex;align-items:center;gap:12px;
+}
+.sidebar-logo .logo-icon{
+  width:40px;height:40px;background:var(--primary);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;
+  flex-shrink:0;
+}
+.sidebar-logo .logo-text{flex:1;min-width:0}
+.sidebar-logo .logo-text .name{font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-logo .logo-text .sub{font-size:11px;color:#64748b;margin-top:2px}
+
+.sidebar-nav{flex:1;padding:16px 0;overflow-y:auto}
+.nav-item{
+  display:flex;align-items:center;gap:12px;padding:11px 20px;
+  cursor:pointer;transition:.15s;color:var(--sidebar-text);font-size:13px;font-weight:500;
+  border-right:3px solid transparent;margin-bottom:2px;
+}
+.nav-item:hover{color:#e2e8f0;background:rgba(255,255,255,.05)}
+.nav-item.active{color:var(--sidebar-active);background:rgba(29,78,216,.2);border-right-color:var(--primary)}
+.nav-item .nav-icon{font-size:18px;width:22px;text-align:center;flex-shrink:0}
+.nav-badge{
+  margin-right:auto;background:var(--danger);color:#fff;
+  font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:18px;text-align:center;
+}
+
+.sidebar-footer{
+  padding:16px 20px;border-top:1px solid #1e293b;
+}
+.sidebar-footer .user-info{display:flex;align-items:center;gap:10px}
+.sidebar-footer .avatar{
+  width:34px;height:34px;border-radius:50%;background:var(--primary);
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;
+}
+.sidebar-footer .user-name{font-size:12px;color:#cbd5e1;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.logout-btn{
+  background:none;border:none;cursor:pointer;color:#64748b;font-size:18px;
+  padding:4px;border-radius:6px;transition:.15s;
+}
+.logout-btn:hover{color:#ef4444;background:rgba(239,68,68,.1)}
+
+/* ── Main content ── */
+.main-wrap{margin-right:240px;min-height:100vh;display:flex;flex-direction:column}
+.topbar{
+  background:#fff;border-bottom:1px solid var(--border);padding:14px 28px;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;
+}
+.topbar-title{font-size:16px;font-weight:700;color:var(--text)}
+.topbar-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.refresh-btn{
+  background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;
+  font-size:12px;cursor:pointer;color:var(--text-muted);transition:.15s;display:flex;align-items:center;gap:5px;
+}
+.refresh-btn:hover{background:#f8fafc;color:var(--text)}
+.hamburger{display:none;background:none;border:none;cursor:pointer;font-size:22px;color:var(--text);padding:4px}
+
+.page-content{padding:24px 28px;flex:1}
+
+/* ── Cards ── */
+.card{background:var(--card-bg);border-radius:14px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04)}
+.card-sm{padding:16px}
+.card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+
+/* ── Status Banner ── */
+.status-banner{
+  border-radius:14px;padding:18px 22px;display:flex;align-items:center;gap:16px;margin-bottom:24px;
+}
+.status-banner.green{background:#f0fdf4;border:1.5px solid #86efac}
+.status-banner.yellow{background:#fffbeb;border:1.5px solid #fde68a}
+.status-banner.red{background:#fff5f5;border:1.5px solid #fca5a5}
+.status-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.status-banner.green .status-dot{background:#16a34a;box-shadow:0 0 0 3px #bbf7d0}
+.status-banner.yellow .status-dot{background:#d97706;box-shadow:0 0 0 3px #fde68a}
+.status-banner.red .status-dot{background:#dc2626;box-shadow:0 0 0 3px #fecaca}
+.status-text{flex:1}
+.status-text .title{font-size:14px;font-weight:700}
+.status-banner.green .title{color:#15803d}
+.status-banner.yellow .title{color:#92400e}
+.status-banner.red .title{color:#991b1b}
+.status-text .sub{font-size:12px;color:var(--text-muted);margin-top:3px}
+
+/* ── Stat cards grid ── */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stat-card{background:var(--card-bg);border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.stat-card .icon{font-size:24px;margin-bottom:10px}
+.stat-card .value{font-size:22px;font-weight:800;color:var(--text);line-height:1}
+.stat-card .label{font-size:12px;color:var(--text-muted);margin-top:5px}
+.stat-card .sub{font-size:11px;margin-top:6px;font-weight:600}
+.stat-card .sub.danger{color:var(--danger)}
+.stat-card .sub.warning{color:var(--warning)}
+.stat-card .sub.success{color:var(--success)}
+
+/* ── Two col grid ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* ── Timeline ── */
+.timeline{position:relative;padding-right:32px}
+.timeline::before{
+  content:'';position:absolute;right:10px;top:0;bottom:0;
+  width:2px;background:var(--border);
+}
+.tl-item{position:relative;padding-bottom:24px;display:flex;align-items:flex-start;gap:14px}
+.tl-item:last-child{padding-bottom:0}
+.tl-dot{
+  position:absolute;right:-22px;top:2px;
+  width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;flex-shrink:0;border:2px solid #fff;
+}
+.tl-dot.done{background:var(--success);color:#fff}
+.tl-dot.current{background:var(--primary);color:#fff;box-shadow:0 0 0 4px var(--primary-light)}
+.tl-dot.pending{background:var(--border);color:var(--text-muted)}
+.tl-content .tl-label{font-size:13px;font-weight:600;color:var(--text)}
+.tl-content .tl-state{font-size:11px;margin-top:3px}
+.tl-content .tl-state.done{color:var(--success)}
+.tl-content .tl-state.current{color:var(--primary)}
+.tl-content .tl-state.pending{color:var(--text-muted)}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:4px;background:#f8fafc;border-radius:10px;padding:4px;margin-bottom:20px}
+.tab-btn{
+  flex:1;padding:8px 12px;border:none;background:none;border-radius:8px;
+  font-size:13px;font-weight:600;cursor:pointer;color:var(--text-muted);transition:.15s;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.tab-btn.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.tab-count{
+  background:var(--border);color:var(--text-muted);font-size:10px;
+  padding:1px 6px;border-radius:10px;font-weight:700;
+}
+.tab-btn.active .tab-count{background:var(--primary);color:#fff}
+
+/* ── Table ── */
+.portal-table{width:100%;border-collapse:collapse;font-size:13px}
+.portal-table th{
+  background:#f8fafc;padding:10px 14px;text-align:right;font-size:12px;
+  color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);
+}
+.portal-table td{padding:11px 14px;border-bottom:1px solid #f1f5f9;color:var(--text)}
+.portal-table tr:last-child td{border-bottom:none}
+.portal-table tr:hover td{background:#f8fafc}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.badge-success{background:#dcfce7;color:#15803d}
+.badge-warning{background:#fef9c3;color:#854d0e}
+.badge-danger{background:#fee2e2;color:#991b1b}
+.badge-info{background:#e0f2fe;color:#075985}
+.badge-gray{background:#f1f5f9;color:#475569}
+
+/* ── Progress bar ── */
+.progress-wrap{background:#f1f5f9;border-radius:10px;height:10px;overflow:hidden;margin:10px 0}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--primary),#60a5fa);border-radius:10px;transition:width .6s ease}
+
+/* ── Folders grid ── */
+.folders-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.folder-card{
+  background:var(--card-bg);border-radius:12px;padding:18px 16px;cursor:pointer;
+  border:1.5px solid var(--border);transition:.15s;text-align:center;
+}
+.folder-card:hover{border-color:var(--primary);background:var(--primary-light)}
+.folder-icon{font-size:32px;margin-bottom:8px}
+.folder-name{font-size:13px;font-weight:700;color:var(--text)}
+.folder-count{font-size:11px;color:var(--text-muted);margin-top:4px}
+
+/* ── File list ── */
+.file-item{
+  display:flex;align-items:center;gap:12px;padding:12px 0;
+  border-bottom:1px solid #f1f5f9;
+}
+.file-item:last-child{border-bottom:none}
+.file-icon{font-size:22px;flex-shrink:0}
+.file-info{flex:1;min-width:0}
+.file-info .fname{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-info .fmeta{font-size:11px;color:var(--text-muted);margin-top:2px}
+.download-btn{
+  background:var(--primary-light);color:var(--primary);border:none;border-radius:8px;
+  padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit;
+  display:flex;align-items:center;gap:5px;white-space:nowrap;flex-shrink:0;
+}
+.download-btn:hover{background:var(--primary);color:#fff}
+
+/* ── Required docs ── */
+.req-item{
+  display:flex;align-items:center;gap:14px;padding:14px;
+  border-radius:10px;margin-bottom:10px;
+}
+.req-item.received{background:#f0fdf4;border:1.5px solid #bbf7d0}
+.req-item.pending{background:#fff5f5;border:1.5px solid #fecaca}
+.req-icon{font-size:24px;flex-shrink:0}
+.req-info{flex:1;min-width:0}
+.req-info .rname{font-size:13px;font-weight:700;color:var(--text)}
+.req-info .rnotes{font-size:11px;color:var(--text-muted);margin-top:3px}
+.req-status{font-size:12px;font-weight:700;flex-shrink:0}
+.req-status.ok{color:var(--success)}
+.req-status.no{color:var(--danger)}
+
+/* ── Contact card ── */
+.contact-card{
+  background:linear-gradient(135deg,#1e3a5f,#1d4ed8);
+  border-radius:16px;padding:24px;color:#fff;
+}
+.contact-card .contact-name{font-size:18px;font-weight:800;margin-bottom:4px}
+.contact-card .contact-role{font-size:13px;opacity:.8;margin-bottom:20px}
+.contact-info-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:13px}
+.contact-info-row .ci-icon{font-size:18px;opacity:.9}
+.contact-btns{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+.contact-btn{
+  flex:1;min-width:120px;padding:10px;border-radius:10px;border:1.5px solid rgba(255,255,255,.3);
+  background:rgba(255,255,255,.1);color:#fff;font-size:13px;font-weight:600;cursor:pointer;
+  transition:.15s;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.contact-btn:hover{background:rgba(255,255,255,.2)}
+
+/* ── Activity feed ── */
+.activity-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #f1f5f9}
+.activity-item:last-child{border-bottom:none}
+.activity-dot{width:8px;height:8px;border-radius:50%;background:var(--primary);margin-top:5px;flex-shrink:0}
+.activity-text{font-size:13px;color:var(--text);flex:1}
+.activity-time{font-size:11px;color:var(--text-muted);margin-top:3px}
+
+/* ── Obligation item ── */
+.obl-item{
+  background:var(--card-bg);border-radius:12px;padding:16px;margin-bottom:10px;
+  border:1.5px solid var(--border);display:flex;align-items:center;gap:16px;
+}
+.obl-item.overdue{border-color:#fca5a5;background:#fff5f5}
+.obl-item.upcoming{border-color:#bfdbfe}
+.obl-item.completed{opacity:.7}
+.obl-icon{font-size:24px;flex-shrink:0}
+.obl-info{flex:1;min-width:0}
+.obl-info .obl-title{font-size:14px;font-weight:700;color:var(--text)}
+.obl-info .obl-period{font-size:12px;color:var(--text-muted);margin-top:3px}
+.obl-right{text-align:left;flex-shrink:0}
+.obl-days{font-size:13px;font-weight:700}
+.obl-days.red{color:var(--danger)}
+.obl-days.orange{color:var(--warning)}
+.obl-days.green{color:var(--success)}
+
+/* ── Empty state ── */
+.empty-state{text-align:center;padding:48px 20px;color:var(--text-muted)}
+.empty-state .ei{font-size:40px;margin-bottom:12px}
+.empty-state .et{font-size:14px;font-weight:600}
+.empty-state .es{font-size:12px;margin-top:6px}
+
+/* ── Login page ── */
+#loginPage{
+  min-height:100vh;background:linear-gradient(145deg,#0b1120 0%,#111827 40%,#0f1e3d 100%);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.login-card{
+  background:rgba(255,255,255,.06);backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.1);border-radius:24px;
+  padding:40px 36px;width:100%;max-width:400px;
+  animation:cardIn .5s ease both;
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.login-logo{text-align:center;margin-bottom:32px}
+.login-logo .lg-circle{
+  width:72px;height:72px;background:linear-gradient(135deg,#1d6fe8,#4f46e5);
+  border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  font-size:28px;font-weight:800;color:#fff;margin-bottom:14px;
+}
+.login-logo .lg-title{font-size:22px;font-weight:800;color:#fff}
+.login-logo .lg-sub{font-size:13px;color:#94a3b8;margin-top:6px}
+.login-field{margin-bottom:18px}
+.login-field label{display:block;font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:8px}
+.login-field input{
+  width:100%;padding:13px 16px;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.15);border-radius:12px;
+  color:#fff;font-size:14px;font-family:inherit;outline:none;transition:.2s;
+}
+.login-field input::placeholder{color:rgba(255,255,255,.35)}
+.login-field input:focus{border-color:#4f46e5;background:rgba(79,70,229,.15)}
+.login-submit{
+  width:100%;padding:14px;background:linear-gradient(135deg,#1d6fe8,#4f46e5);
+  border:none;border-radius:12px;color:#fff;font-size:15px;font-weight:700;
+  cursor:pointer;font-family:inherit;margin-top:8px;transition:.2s;
+}
+.login-submit:hover{opacity:.9;transform:translateY(-1px)}
+.login-error{
+  background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);
+  border-radius:10px;padding:11px 14px;font-size:13px;color:#fca5a5;
+  margin-bottom:16px;display:none;
+}
+.login-error.show{display:block}
+
+/* ── Spinner ── */
+.spinner{
+  width:36px;height:36px;border:3px solid var(--border);
+  border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;
+  margin:40px auto;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-wrap{display:flex;justify-content:center;padding:60px}
+
+/* ── Toast ── */
+#portalToast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;
+  font-size:13px;font-weight:600;z-index:9999;transition:.3s;pointer-events:none;
+  box-shadow:0 4px 20px rgba(0,0,0,.3);
+}
+#portalToast.show{transform:translateX(-50%) translateY(0)}
+
+/* ── Mobile ── */
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99}
+@media(max-width:768px){
+  .sidebar{transform:translateX(100%)}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-overlay.show{display:block}
+  .main-wrap{margin-right:0}
+  .hamburger{display:block}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .two-col{grid-template-columns:1fr}
+  .page-content{padding:16px}
+  .topbar{padding:12px 16px}
+  .folders-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+}
+@media(max-width:420px){
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .login-card{padding:28px 20px}
+}
+</style>
+</head>
+<body>
+
+<div id="portalToast"></div>
+<div id="app"></div>
+
+<script>
+const API = 'https://ms-accounting-api-production.up.railway.app';
+let _token = localStorage.getItem('portalToken') || '';
+let _client = JSON.parse(localStorage.getItem('portalClient') || 'null');
+let _perms  = JSON.parse(localStorage.getItem('portalPerms') || '{}');
+let _page   = 'dashboard';
+let _oblTab = 'upcoming';
+let _docFolder = null;
+let _badges = {};
+
+// ── API helper ──────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token},
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (r.status === 401) { doLogout(); return null; }
+  if (!r.ok) { const e = await r.json().catch(()=>({detail:'خطأ'})); throw new Error(e.detail || 'خطأ'); }
+  return r.json();
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.getElementById('portalToast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Time helper ───────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'منذ لحظات';
+  if (m < 60) return `منذ ${m} دقيقة`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `منذ ${h} ساعة`;
+  return `منذ ${Math.floor(h/24)} يوم`;
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ar-EG', {day:'numeric', month:'long', year:'numeric'});
+}
+function escH(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtMoney(n) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('ar-EG') + ' ج.م';
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+function isLoggedIn() { return !!_token && !!_client; }
+
+async function doLogin(username, password) {
+  const fd = new URLSearchParams();
+  fd.append('username', username); fd.append('password', password);
+  const r = await fetch(API + '/api/portal/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: fd.toString(),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.detail || 'خطأ في تسجيل الدخول');
+  _token = data.access_token;
+  _client = {id: data.client_id, name: data.client_name};
+  _perms = data.permissions || {};
+  localStorage.setItem('portalToken', _token);
+  localStorage.setItem('portalClient', JSON.stringify(_client));
+  localStorage.setItem('portalPerms', JSON.stringify(_perms));
+  renderPortal();
+}
+
+function doLogout() {
+  _token = ''; _client = null; _perms = {};
+  localStorage.removeItem('portalToken');
+  localStorage.removeItem('portalClient');
+  localStorage.removeItem('portalPerms');
+  renderLogin();
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+const PAGE_TITLES = {
+  dashboard:    {title:'نظرة عامة',   icon:'🏠'},
+  obligations:  {title:'الالتزامات', icon:'⚖️'},
+  payments:     {title:'المدفوعات',  icon:'💰'},
+  documents:    {title:'المستندات',  icon:'📁'},
+  required:     {title:'مطلوب منك', icon:'📤'},
+  timeline:     {title:'Timeline الشركة', icon:'⏱️'},
+  declarations: {title:'الإقرارات', icon:'📑'},
+  contact:      {title:'التواصل',    icon:'💬'},
+};
+
+function navTo(page) {
+  _page = page; _docFolder = null;
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+  // close sidebar on mobile
+  document.querySelector('.sidebar')?.classList.remove('open');
+  document.querySelector('.sidebar-overlay')?.classList.remove('show');
+  loadPage(page);
+}
+window.navTo = navTo;
+
+// ── Sidebar toggle (mobile) ────────────────────────────────────────────────
+window.toggleSidebar = () => {
+  document.querySelector('.sidebar')?.classList.toggle('open');
+  document.querySelector('.sidebar-overlay')?.classList.toggle('show');
+};
+window.closeSidebarPortal = () => {
+  document.querySelector('.sidebar')?.classList.remove('open');
+  document.querySelector('.sidebar-overlay')?.classList.remove('show');
+};
+
+// ── Render Login ──────────────────────────────────────────────────────────────
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+  <div id="loginPage">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="lg-circle">MS</div>
+        <div class="lg-title">بوابة العملاء</div>
+        <div class="lg-sub">مكتب MS للمحاسبة والاستشارات الضريبية</div>
+      </div>
+      <div class="login-error" id="loginErr"></div>
+      <div class="login-field">
+        <label>اسم المستخدم</label>
+        <input type="text" id="loginUser" placeholder="أدخل اسم المستخدم" autocomplete="username"/>
+      </div>
+      <div class="login-field">
+        <label>كلمة المرور</label>
+        <input type="password" id="loginPass" placeholder="أدخل كلمة المرور" autocomplete="current-password"/>
+      </div>
+      <button class="login-submit" id="loginBtn">دخول ←</button>
+    </div>
+  </div>`;
+
+  const submit = async () => {
+    const u = document.getElementById('loginUser').value.trim();
+    const p = document.getElementById('loginPass').value;
+    const err = document.getElementById('loginErr');
+    const btn = document.getElementById('loginBtn');
+    if (!u || !p) { err.textContent='يرجى إدخال اسم المستخدم وكلمة المرور'; err.classList.add('show'); return; }
+    btn.textContent = '...جاري الدخول'; btn.disabled = true;
+    try {
+      await doLogin(u, p);
+    } catch (e) {
+      err.textContent = e.message; err.classList.add('show');
+      btn.textContent = 'دخول ←'; btn.disabled = false;
+    }
+  };
+  document.getElementById('loginBtn').onclick = submit;
+  document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  document.getElementById('loginUser').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
+
+// ── Render Portal Shell ───────────────────────────────────────────────────────
+function renderPortal() {
+  const navItems = [
+    {page:'dashboard',  icon:'🏠', label:'نظرة عامة'},
+    {page:'timeline',   icon:'⏱️', label:'Timeline الشركة'},
+    {page:'obligations',icon:'⚖️', label:'الالتزامات', badgeKey:'overdue_obs'},
+    {page:'payments',   icon:'💰', label:'المدفوعات'},
+    {page:'documents',  icon:'📁', label:'المستندات'},
+    {page:'declarations',icon:'📑',label:'الإقرارات'},
+    {page:'required',   icon:'📤', label:'مطلوب منك', badgeKey:'pending_req'},
+    {page:'contact',    icon:'💬', label:'التواصل'},
+  ];
+
+  const initials = (_client?.name || 'ش').charAt(0);
+
+  document.getElementById('app').innerHTML = `
+  <div class="sidebar-overlay" onclick="closeSidebarPortal()"></div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">MS</div>
+        <div class="logo-text">
+          <div class="name">${escH(_client?.name || '')}</div>
+          <div class="sub">بوابة العميل</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        ${navItems.map(n => `
+          <div class="nav-item${_page===n.page?' active':''}" data-page="${n.page}" onclick="navTo('${n.page}')">
+            <span class="nav-icon">${n.icon}</span>
+            <span>${n.label}</span>
+            ${n.badgeKey && _badges[n.badgeKey] ? `<span class="nav-badge">${_badges[n.badgeKey]}</span>` : ''}
+          </div>
+        `).join('')}
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="avatar">${escH(initials)}</div>
+          <div class="user-name">${escH(_client?.name || '')}</div>
+          <button class="logout-btn" onclick="if(confirm('هل تريد تسجيل الخروج؟'))doLogout()" title="تسجيل الخروج">🚪</button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-wrap">
+      <div class="topbar">
+        <button class="hamburger" onclick="toggleSidebar()">☰</button>
+        <div>
+          <div class="topbar-title" id="topbarTitle">نظرة عامة</div>
+          <div class="topbar-sub" id="topbarSub">${escH(_client?.name || '')}</div>
+        </div>
+        <div class="topbar-right">
+          <button class="refresh-btn" onclick="loadPage(_page)">🔄 تحديث</button>
+        </div>
+      </div>
+      <div class="page-content" id="pageContent">
+        <div class="loading-wrap"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>`;
+
+  loadPage('dashboard');
+}
+
+// ── Load Page ─────────────────────────────────────────────────────────────────
+async function loadPage(page) {
+  const info = PAGE_TITLES[page] || {title: page, icon:''};
+  document.getElementById('topbarTitle').textContent = info.icon + ' ' + info.title;
+  const content = document.getElementById('pageContent');
+  content.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+
+  try {
+    switch(page) {
+      case 'dashboard':    await renderDashboard(content); break;
+      case 'obligations':  await renderObligations(content); break;
+      case 'payments':     await renderPayments(content); break;
+      case 'documents':    await renderDocuments(content); break;
+      case 'required':     await renderRequired(content); break;
+      case 'timeline':     await renderTimeline(content); break;
+      case 'declarations': await renderDeclarations(content); break;
+      case 'contact':      await renderContact(content); break;
+      default: content.innerHTML = '<div class="empty-state"><div class="ei">🚧</div><div class="et">قريباً</div></div>';
+    }
+  } catch(e) {
+    content.innerHTML = `<div class="empty-state"><div class="ei">⚠️</div><div class="et">تعذر التحميل</div><div class="es">${escH(e.message)}</div></div>`;
+  }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function renderDashboard(el) {
+  const data = await api('GET', '/api/portal/dashboard');
+  if (!data) return;
+
+  // store badges
+  _badges.overdue_obs = data.obligations?.overdue || 0;
+  _badges.pending_req = data.required_docs?.pending || 0;
+
+  const fin = data.financials || {};
+  const pct = fin.total_agreed > 0 ? Math.round((fin.total_paid / fin.total_agreed) * 100) : 0;
+  const fs  = data.file_status || {color:'green', message:''};
+
+  el.innerHTML = `
+  <div class="status-banner ${escH(fs.color)}">
+    <div class="status-dot"></div>
+    <div class="status-text">
+      <div class="title">${escH(fs.message)}</div>
+      <div class="sub">آخر تحديث: ${timeAgo(new Date().toISOString())}</div>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="icon">💰</div>
+      <div class="value">${Number(fin.total_paid||0).toLocaleString('ar-EG')}</div>
+      <div class="label">إجمالي المدفوع (ج.م)</div>
+      <div class="sub success">${pct}% من إجمالي التعاقد</div>
+    </div>
+    <div class="stat-card">
+      <div class="icon">📊</div>
+      <div class="value">${Number(fin.total_remaining||0).toLocaleString('ar-EG')}</div>
+      <div class="label">المتبقي (ج.م)</div>
+      <div class="sub ${fin.total_remaining > 0 ? 'warning' : 'success'}">${fin.total_remaining > 0 ? 'قيد السداد' : 'تم السداد بالكامل'}</div>
+    </div>
+    <div class="stat-card" onclick="navTo('obligations')" style="cursor:pointer">
+      <div class="icon">⚖️</div>
+      <div class="value">${data.obligations?.upcoming || 0}</div>
+      <div class="label">التزامات قادمة</div>
+      ${data.obligations?.overdue > 0 ? `<div class="sub danger">⚠️ ${data.obligations.overdue} متأخر</div>` : '<div class="sub success">لا توجد متأخرات</div>'}
+    </div>
+    <div class="stat-card" onclick="navTo('documents')" style="cursor:pointer">
+      <div class="icon">📁</div>
+      <div class="value">${data.documents?.total || 0}</div>
+      <div class="label">المستندات المتاحة</div>
+      ${data.required_docs?.pending > 0 ? `<div class="sub warning">📤 ${data.required_docs.pending} مطلوب منك</div>` : '<div class="sub success">لا مستندات مطلوبة</div>'}
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">📊 تقدم المدفوعات</div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:6px">
+        <span>المدفوع: ${fmtMoney(fin.total_paid)}</span>
+        <span>الإجمالي: ${fmtMoney(fin.total_agreed)}</span>
+      </div>
+      <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+      <div style="text-align:center;font-size:13px;font-weight:700;color:var(--primary);margin-top:8px">${pct}%</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🕐 آخر نشاط</div>
+      ${(data.last_activities||[]).length === 0
+        ? '<div class="empty-state" style="padding:20px"><div class="ei" style="font-size:28px">📭</div><div class="et">لا يوجد نشاط حتى الآن</div></div>'
+        : (data.last_activities||[]).slice(0,4).map(a => `
+          <div class="activity-item">
+            <div class="activity-dot"></div>
+            <div>
+              <div class="activity-text">${escH(a.description || a.action)}</div>
+              <div class="activity-time">${timeAgo(a.created_at)}</div>
+            </div>
+          </div>`).join('')
+      }
+    </div>
+  </div>`;
+}
+
+// ── Timeline ──────────────────────────────────────────────────────────────────
+async function renderTimeline(el) {
+  const data = await api('GET', '/api/portal/timeline');
+  if (!data) return;
+
+  if (!data.stages || data.stages.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="ei">⏱️</div><div class="et">لا يوجد ملف تأسيس مرتبط</div><div class="es">تواصل مع المكتب لمزيد من المعلومات</div></div>`;
+    return;
+  }
+
+  const stateLabel = {done:'✅ مكتمل', current:'🔄 قيد التنفيذ', pending:'⏳ لم يبدأ'};
+
+  el.innerHTML = `
+  <div class="card" style="max-width:600px;margin:0 auto">
+    <div class="card-title">⏱️ رحلة تأسيس الشركة${data.company_name ? ' — ' + escH(data.company_name) : ''}</div>
+    ${data.is_completed ? '<div class="status-banner green" style="margin-bottom:20px"><div class="status-dot"></div><div class="status-text"><div class="title">🎉 تم إتمام التأسيس بنجاح</div></div></div>' : ''}
+    <div class="timeline">
+      ${data.stages.map(s => `
+        <div class="tl-item">
+          <div>
+            <div class="tl-dot ${s.state}">
+              ${s.state === 'done' ? '✓' : s.state === 'current' ? '●' : '○'}
+            </div>
+          </div>
+          <div class="tl-content">
+            <div class="tl-label">${escH(s.icon)} ${escH(s.label)}</div>
+            <div class="tl-state ${s.state}">${stateLabel[s.state] || s.state}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+    ${data.commercial_register ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:24px;font-size:12px"><div><div style="color:var(--text-muted)">السجل التجاري</div><div style="font-weight:700;margin-top:3px">${escH(data.commercial_register)}</div></div>${data.tax_card ? `<div><div style="color:var(--text-muted)">البطاقة الضريبية</div><div style="font-weight:700;margin-top:3px">${escH(data.tax_card)}</div></div>` : ''}</div>` : ''}
+  </div>`;
+}
+
+// ── Obligations ───────────────────────────────────────────────────────────────
+async function renderObligations(el) {
+  const data = await api('GET', '/api/portal/obligations');
+  if (!data) return;
+
+  const tabs = [
+    {key:'overdue', label:'المتأخرة', icon:'🔴', items: data.overdue || []},
+    {key:'upcoming', label:'القادمة', icon:'🟡', items: data.upcoming || []},
+    {key:'completed', label:'المكتملة', icon:'✅', items: data.completed || []},
+  ];
+
+  const renderItems = (items, type) => {
+    if (!items.length) return '<div class="empty-state" style="padding:32px"><div class="ei" style="font-size:32px">✅</div><div class="et">لا توجد التزامات في هذا القسم</div></div>';
+    return items.map(o => {
+      let daysHtml = '';
+      if (o.days_left !== null && o.days_left !== undefined) {
+        if (o.days_left < 0) daysHtml = `<div class="obl-days red">متأخر ${Math.abs(o.days_left)} يوم</div>`;
+        else if (o.days_left === 0) daysHtml = '<div class="obl-days red">اليوم آخر موعد</div>';
+        else if (o.days_left <= 7) daysHtml = `<div class="obl-days orange">يتبقى ${o.days_left} أيام</div>`;
+        else daysHtml = `<div class="obl-days green">يتبقى ${o.days_left} يوم</div>`;
+      }
+      return `
+        <div class="obl-item ${type}">
+          <div class="obl-icon">${type === 'overdue' ? '🔴' : type === 'upcoming' ? '📅' : '✅'}</div>
+          <div class="obl-info">
+            <div class="obl-title">${escH(o.obligation_type || o.period_label || 'التزام ضريبي')}</div>
+            <div class="obl-period">${escH(o.period_label || '')}${o.due_date ? ' — ' + fmtDate(o.due_date) : ''}</div>
+          </div>
+          <div class="obl-right">${daysHtml}</div>
+        </div>`;
+    }).join('');
+  };
+
+  el.innerHTML = `
+  <div class="tabs" id="oblTabs">
+    ${tabs.map(t => `
+      <button class="tab-btn${_oblTab===t.key?' active':''}" onclick="setOblTab('${t.key}')">
+        ${t.icon} ${t.label} <span class="tab-count">${t.items.length}</span>
+      </button>`).join('')}
+  </div>
+  <div id="oblContent">
+    ${renderItems(tabs.find(t=>t.key===_oblTab)?.items||[], _oblTab)}
+  </div>`;
+
+  window._oblData = data;
+}
+
+window.setOblTab = (tab) => {
+  _oblTab = tab;
+  const data = window._oblData || {};
+  const map = {overdue: data.overdue||[], upcoming: data.upcoming||[], completed: data.completed||[]};
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent.includes({overdue:'المتأخرة',upcoming:'القادمة',completed:'المكتملة'}[tab]||'?')));
+  document.getElementById('oblTabs')?.querySelectorAll('.tab-btn').forEach(b => {
+    const labels = {overdue:'المتأخرة', upcoming:'القادمة', completed:'المكتملة'};
+    b.classList.toggle('active', b.textContent.includes(labels[tab]));
+  });
+  const items = map[tab] || [];
+  const renderItems = (items, type) => {
+    if (!items.length) return '<div class="empty-state" style="padding:32px"><div class="ei" style="font-size:32px">✅</div><div class="et">لا توجد التزامات في هذا القسم</div></div>';
+    return items.map(o => {
+      let daysHtml = '';
+      if (o.days_left !== null && o.days_left !== undefined) {
+        if (o.days_left < 0) daysHtml = `<div class="obl-days red">متأخر ${Math.abs(o.days_left)} يوم</div>`;
+        else if (o.days_left === 0) daysHtml = '<div class="obl-days red">اليوم آخر موعد</div>';
+        else if (o.days_left <= 7) daysHtml = `<div class="obl-days orange">يتبقى ${o.days_left} أيام</div>`;
+        else daysHtml = `<div class="obl-days green">يتبقى ${o.days_left} يوم</div>`;
+      }
+      return `<div class="obl-item ${type}">
+        <div class="obl-icon">${type==='overdue'?'🔴':type==='upcoming'?'📅':'✅'}</div>
+        <div class="obl-info">
+          <div class="obl-title">${escH(o.obligation_type||o.period_label||'التزام ضريبي')}</div>
+          <div class="obl-period">${escH(o.period_label||'')}${o.due_date?' — '+fmtDate(o.due_date):''}</div>
+        </div>
+        <div class="obl-right">${daysHtml}</div>
+      </div>`;
+    }).join('');
+  };
+  document.getElementById('oblContent').innerHTML = renderItems(items, tab);
+};
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+async function renderPayments(el) {
+  const data = await api('GET', '/api/portal/payments');
+  if (!data) return;
+  const s = data.summary || {};
+
+  el.innerHTML = `
+  <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px">
+    <div class="stat-card">
+      <div class="icon">📋</div>
+      <div class="value">${fmtMoney(s.total_agreed)}</div>
+      <div class="label">إجمالي التعاقد</div>
+    </div>
+    <div class="stat-card">
+      <div class="icon">✅</div>
+      <div class="value">${fmtMoney(s.total_paid)}</div>
+      <div class="label">إجمالي المدفوع</div>
+      <div class="sub success">${s.percent_paid}%</div>
+    </div>
+    <div class="stat-card">
+      <div class="icon">⏳</div>
+      <div class="value">${fmtMoney(s.total_remaining)}</div>
+      <div class="label">المتبقي</div>
+      ${s.total_remaining > 0 ? '<div class="sub warning">قيد السداد</div>' : '<div class="sub success">مسدد بالكامل</div>'}
+    </div>
+  </div>
+  <div class="progress-wrap" style="margin-bottom:24px;height:14px">
+    <div class="progress-bar" style="width:${s.percent_paid}%"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">💳 سجل الدفعات</div>
+    ${(data.payments||[]).length === 0
+      ? '<div class="empty-state" style="padding:24px"><div class="ei">💳</div><div class="et">لا توجد دفعات مسجلة حتى الآن</div></div>'
+      : `<div style="overflow-x:auto">
+          <table class="portal-table">
+            <thead><tr>
+              <th>#</th><th>التاريخ</th><th>المبلغ</th><th>طريقة الدفع</th><th>الخدمة</th>
+            </tr></thead>
+            <tbody>
+              ${(data.payments||[]).map((p,i) => `
+                <tr>
+                  <td style="color:var(--text-muted)">${i+1}</td>
+                  <td>${fmtDate(p.payment_date)}</td>
+                  <td style="font-weight:700;color:var(--success)">${fmtMoney(p.amount)}</td>
+                  <td><span class="badge badge-info">${escH(p.payment_method_label||p.payment_method)}</span></td>
+                  <td style="color:var(--text-muted);font-size:12px">${escH(p.contract_title||'')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+    }
+  </div>`;
+}
+
+// ── Documents ─────────────────────────────────────────────────────────────────
+async function renderDocuments(el) {
+  const data = await api('GET', '/api/portal/documents');
+  if (!data) return;
+  const folders = data.folders || [];
+
+  if (_docFolder) {
+    const folder = folders.find(f => f.key === _docFolder);
+    if (!folder) { _docFolder = null; renderDocuments(el); return; }
+    el.innerHTML = `
+    <button onclick="setDocFolder(null)" style="display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;color:var(--primary);font-size:14px;font-weight:600;margin-bottom:20px;font-family:inherit;padding:0">
+      ← رجوع للمجلدات
+    </button>
+    <div class="card">
+      <div class="card-title">📁 ${escH(folder.label)}</div>
+      ${folder.files.length === 0
+        ? '<div class="empty-state" style="padding:32px"><div class="ei">📭</div><div class="et">لا توجد ملفات في هذا المجلد</div></div>'
+        : folder.files.map(f => `
+          <div class="file-item">
+            <div class="file-icon">${getFileIcon(f.file_type)}</div>
+            <div class="file-info">
+              <div class="fname">${escH(f.name)}</div>
+              <div class="fmeta">${fmtDate(f.created_at)}${f.year?' — '+f.year:''}${f.file_size?' — '+fmtFileSize(f.file_size):''}</div>
+            </div>
+            ${f.gdrive_file_id
+              ? `<a href="https://drive.google.com/file/d/${escH(f.gdrive_file_id)}/view" target="_blank" class="download-btn">⬇️ تحميل</a>`
+              : '<span style="font-size:12px;color:var(--text-muted)">غير متاح</span>'
+            }
+          </div>`).join('')}
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+  <div style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:16px;font-weight:700">${data.total || 0} مستند متاح</div>
+  </div>
+  ${folders.length === 0
+    ? '<div class="empty-state"><div class="ei">📭</div><div class="et">لا توجد مستندات متاحة حتى الآن</div></div>'
+    : `<div class="folders-grid">
+        ${folders.map(f => `
+          <div class="folder-card" onclick="setDocFolder('${f.key}')">
+            <div class="folder-icon">📁</div>
+            <div class="folder-name">${escH(f.label)}</div>
+            <div class="folder-count">${f.files.length} ملف</div>
+          </div>`).join('')}
+      </div>`}`;
+}
+
+window.setDocFolder = (key) => { _docFolder = key; loadPage('documents'); };
+
+function getFileIcon(type) {
+  if (!type) return '📄';
+  if (type.includes('pdf')) return '📕';
+  if (type.includes('image') || type.includes('jpg') || type.includes('png')) return '🖼️';
+  if (type.includes('word') || type.includes('doc')) return '📝';
+  if (type.includes('excel') || type.includes('xls')) return '📊';
+  return '📄';
+}
+function fmtFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1048576).toFixed(1) + ' MB';
+}
+
+// ── Required Docs ─────────────────────────────────────────────────────────────
+async function renderRequired(el) {
+  const docs = await api('GET', '/api/portal/required-docs');
+  if (!docs) return;
+
+  const pending  = docs.filter(d => !d.is_received);
+  const received = docs.filter(d => d.is_received);
+
+  el.innerHTML = `
+  ${docs.length === 0
+    ? `<div class="status-banner green" style="margin-bottom:0">
+        <div class="status-dot"></div>
+        <div class="status-text"><div class="title">لا توجد مستندات مطلوبة منك حالياً</div></div>
+       </div>`
+    : `
+    ${pending.length > 0 ? `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="color:var(--danger)">📤 مطلوب منك تقديمها (${pending.length})</div>
+        ${pending.map(d => `
+          <div class="req-item pending">
+            <div class="req-icon">📄</div>
+            <div class="req-info">
+              <div class="rname">${escH(d.doc_name)}</div>
+              ${d.notes ? `<div class="rnotes">${escH(d.notes)}</div>` : ''}
+            </div>
+            <div class="req-status no">❌ مطلوب</div>
+          </div>`).join('')}
+      </div>` : ''}
+    ${received.length > 0 ? `
+      <div class="card">
+        <div class="card-title" style="color:var(--success)">✅ تم الاستلام (${received.length})</div>
+        ${received.map(d => `
+          <div class="req-item received">
+            <div class="req-icon">📄</div>
+            <div class="req-info">
+              <div class="rname">${escH(d.doc_name)}</div>
+              ${d.received_at ? `<div class="rnotes">تم الاستلام: ${fmtDate(d.received_at)}</div>` : ''}
+            </div>
+            <div class="req-status ok">✅ تم</div>
+          </div>`).join('')}
+      </div>` : ''}
+  `}`;
+}
+
+// ── Declarations ──────────────────────────────────────────────────────────────
+async function renderDeclarations(el) {
+  const data = await api('GET', '/api/portal/declarations');
+  if (!data) return;
+
+  const statusBadge = (s) => {
+    const map = {submitted:'badge-info', accepted:'badge-success', rejected:'badge-danger', draft:'badge-gray'};
+    return `<span class="badge ${map[s]||'badge-gray'}">${escH(s)}</span>`;
+  };
+
+  el.innerHTML = `
+  <div class="card">
+    <div class="card-title">📑 الإقرارات الضريبية</div>
+    ${(!data || data.length === 0)
+      ? '<div class="empty-state" style="padding:32px"><div class="ei">📑</div><div class="et">لا توجد إقرارات مسجلة حتى الآن</div></div>'
+      : `<div style="overflow-x:auto">
+          <table class="portal-table">
+            <thead><tr>
+              <th>نوع الإقرار</th><th>الفترة</th><th>تاريخ التقديم</th><th>الحالة</th><th>المبلغ</th>
+            </tr></thead>
+            <tbody>
+              ${data.map(r => `
+                <tr>
+                  <td style="font-weight:600">${escH(r.return_type_label||r.return_type)}</td>
+                  <td>${escH(r.period||'—')}</td>
+                  <td>${fmtDate(r.submission_date)}</td>
+                  <td>${statusBadge(r.status_label||r.status)}</td>
+                  <td>${r.tax_amount != null ? fmtMoney(r.tax_amount) : '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+    }
+  </div>`;
+}
+
+// ── Contact ───────────────────────────────────────────────────────────────────
+async function renderContact(el) {
+  const data = await api('GET', '/api/portal/contact');
+  if (!data) return;
+  const acc = data.accountant || {};
+
+  el.innerHTML = `
+  <div style="max-width:500px;margin:0 auto">
+    <div class="contact-card">
+      <div style="font-size:36px;margin-bottom:12px">👤</div>
+      <div class="contact-name">${escH(acc.name || 'مكتب المحاسبة')}</div>
+      <div class="contact-role">المحاسب المسؤول عن ملفك</div>
+      ${acc.phone ? `<div class="contact-info-row"><span class="ci-icon">📞</span><span>${escH(acc.phone)}</span></div>` : ''}
+      ${acc.email ? `<div class="contact-info-row"><span class="ci-icon">✉️</span><span>${escH(acc.email)}</span></div>` : ''}
+      <div class="contact-btns">
+        ${acc.phone ? `<button class="contact-btn" onclick="window.open('tel:${escH(acc.phone)}')">📞 اتصال</button>` : ''}
+        ${acc.phone ? `<button class="contact-btn" onclick="window.open('https://wa.me/2${escH(acc.phone).replace(/^0/,'')}')">💬 واتساب</button>` : ''}
+        ${acc.email ? `<button class="contact-btn" onclick="window.open('mailto:${escH(acc.email)}')">✉️ إيميل</button>` : ''}
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;text-align:center">
+      <div style="font-size:28px;margin-bottom:8px">🏢</div>
+      <div style="font-size:16px;font-weight:700">${escH(data.office?.name||'')}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">نحن هنا لخدمتكم على مدار الساعة</div>
+    </div>
+  </div>`;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+if (isLoggedIn()) renderPortal();
+else renderLogin();
+</script>
+</body>
+</html>
