@@ -160,7 +160,9 @@ def _account_balances(client_id: int, db: Session,
     for r in rows:
         d = float(r.total_debit or 0)
         c = float(r.total_credit or 0)
-        result[r.account_id] = {
+        # Use account_code as key when account_id is NULL to avoid overwriting
+        key = r.account_id if r.account_id is not None else f"code:{r.account_code or ''}"
+        result[key] = {
             "account_id": r.account_id,
             "account_code": r.account_code or "",
             "account_name": r.account_name or "",
