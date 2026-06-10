@@ -840,87 +840,106 @@ function renderLogin() {
     @keyframes floatOrb1 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(60px,-80px) scale(1.15)} 66%{transform:translate(-40px,50px) scale(0.9)} }
     @keyframes floatOrb2 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-70px,60px) scale(1.1)} 66%{transform:translate(50px,-40px) scale(0.95)} }
     @keyframes floatOrb3 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(40px,70px) scale(1.2)} }
-    @keyframes gridPulse { 0%,100%{opacity:.18} 50%{opacity:.32} }
     @keyframes cardIn { from{opacity:0;transform:translateY(36px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
-    @keyframes logoGlow { 0%,100%{box-shadow:0 0 0 0 rgba(99,179,237,0)} 50%{box-shadow:0 0 40px 12px rgba(99,179,237,.22)} }
-    @keyframes inputFocusLine { from{width:0} to{width:100%} }
+    @keyframes logoFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+    @keyframes logoPulse { 0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0),0 12px 40px rgba(59,130,246,.4)} 50%{box-shadow:0 0 0 10px rgba(255,255,255,.05),0 16px 60px rgba(59,130,246,.6)} }
     @keyframes btnShine { 0%{background-position:200% center} 100%{background-position:-200% center} }
-    @keyframes spinRing { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-    @keyframes particles { 0%{opacity:0;transform:translateY(0) scale(0)} 20%{opacity:1} 100%{opacity:0;transform:translateY(-120px) scale(.5)} }
-    .login-orb { position:absolute; border-radius:50%; filter:blur(70px); pointer-events:none; }
-    .login-input-wrap { position:relative; margin-bottom:18px; }
+    @keyframes spinRing1 { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+    @keyframes spinRing2 { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
+    @keyframes starsMove { from{transform:translateY(0)} to{transform:translateY(-50%)} }
+    .login-orb { position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; }
+    .login-input-wrap { position:relative; margin-bottom:16px; }
     .login-input-wrap input {
-      width:100%; box-sizing:border-box; padding:14px 16px 14px 42px;
-      background:rgba(255,255,255,.06); border:1.5px solid rgba(255,255,255,.15);
+      width:100%; box-sizing:border-box; padding:14px 16px 14px 44px;
+      background:rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.18);
       border-radius:14px; color:white; font-size:14px; font-family:inherit;
-      outline:none; transition:border-color .3s, background .3s;
+      outline:none; transition:border-color .3s, background .3s, box-shadow .3s;
     }
-    .login-input-wrap input::placeholder { color:rgba(255,255,255,.4); }
-    .login-input-wrap input:focus { border-color:rgba(99,179,237,.8); background:rgba(255,255,255,.1); }
-    .login-input-wrap .inp-icon { position:absolute; right:auto; left:14px; top:50%; transform:translateY(-50%); font-size:16px; pointer-events:none; opacity:.7; }
+    .login-input-wrap input::placeholder { color:rgba(255,255,255,.35); }
+    .login-input-wrap input:focus { border-color:rgba(147,197,253,.8); background:rgba(255,255,255,.12); box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+    .login-input-wrap .inp-icon { position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:17px; pointer-events:none; }
     .login-submit-btn {
-      width:100%; padding:14px; border:none; border-radius:14px; cursor:pointer;
-      font-size:15px; font-weight:700; font-family:inherit; color:white;
-      background:linear-gradient(135deg,#3b82f6,#6366f1,#8b5cf6,#3b82f6);
+      width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer;
+      font-size:16px; font-weight:700; font-family:inherit; color:white; letter-spacing:.5px;
+      background:linear-gradient(135deg,#1d6fe8,#4f46e5,#7c3aed,#1d6fe8);
       background-size:300% auto;
-      box-shadow:0 8px 32px rgba(99,102,241,.5);
+      box-shadow:0 8px 30px rgba(79,70,229,.55);
       transition:transform .2s, box-shadow .2s;
-      animation: btnShine 4s linear infinite;
+      animation: btnShine 3.5s linear infinite;
     }
-    .login-submit-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 12px 40px rgba(99,102,241,.65); }
+    .login-submit-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 14px 40px rgba(79,70,229,.7); }
     .login-submit-btn:disabled { opacity:.7; cursor:not-allowed; transform:none; }
-    .particle { position:absolute; width:6px; height:6px; border-radius:50%; pointer-events:none; }
   </style>
-  <div id="loginRoot" style="min-height:100vh;background:#060d1f;display:flex;align-items:center;justify-content:center;padding:16px;position:relative;overflow:hidden;font-family:'Segoe UI',Tahoma,sans-serif">
+  <div id="loginRoot" style="min-height:100vh;background:linear-gradient(145deg,#0b1120 0%,#111827 40%,#0f1e3d 100%);display:flex;align-items:center;justify-content:center;padding:16px;position:relative;overflow:hidden;font-family:'Segoe UI',Tahoma,sans-serif">
 
-    <!-- Animated orbs -->
-    <div class="login-orb" style="width:500px;height:500px;background:radial-gradient(circle,rgba(59,130,246,.45),transparent 70%);top:-120px;left:-150px;animation:floatOrb1 12s ease-in-out infinite"></div>
-    <div class="login-orb" style="width:400px;height:400px;background:radial-gradient(circle,rgba(139,92,246,.4),transparent 70%);bottom:-80px;right:-100px;animation:floatOrb2 15s ease-in-out infinite"></div>
-    <div class="login-orb" style="width:300px;height:300px;background:radial-gradient(circle,rgba(6,182,212,.3),transparent 70%);bottom:20%;left:10%;animation:floatOrb3 10s ease-in-out infinite"></div>
+    <!-- Stars background -->
+    <canvas id="loginStars" style="position:absolute;inset:0;pointer-events:none;z-index:0"></canvas>
 
-    <!-- Grid overlay -->
-    <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(99,179,237,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(99,179,237,.08) 1px,transparent 1px);background-size:50px 50px;animation:gridPulse 4s ease-in-out infinite;pointer-events:none"></div>
+    <!-- Colored orbs — brighter & warmer -->
+    <div class="login-orb" style="width:550px;height:550px;background:radial-gradient(circle,rgba(59,130,246,.55),transparent 65%);top:-160px;left:-180px;animation:floatOrb1 13s ease-in-out infinite"></div>
+    <div class="login-orb" style="width:450px;height:450px;background:radial-gradient(circle,rgba(168,85,247,.5),transparent 65%);bottom:-100px;right:-120px;animation:floatOrb2 16s ease-in-out infinite"></div>
+    <div class="login-orb" style="width:320px;height:320px;background:radial-gradient(circle,rgba(6,182,212,.38),transparent 65%);top:40%;left:5%;animation:floatOrb3 11s ease-in-out infinite"></div>
+    <div class="login-orb" style="width:250px;height:250px;background:radial-gradient(circle,rgba(251,191,36,.22),transparent 65%);top:15%;right:8%;animation:floatOrb1 9s ease-in-out infinite reverse"></div>
 
     <!-- Card -->
     <div style="width:100%;max-width:420px;position:relative;z-index:10;animation:cardIn .7s cubic-bezier(.22,1,.36,1) both">
 
-      <!-- Logo + Title -->
-      <div style="text-align:center;margin-bottom:32px">
-        <div style="position:relative;display:inline-block;margin-bottom:20px">
-          <div style="position:absolute;inset:-8px;border-radius:32px;border:2px solid rgba(99,179,237,.3);animation:spinRing 8s linear infinite"></div>
-          <div style="width:100px;height:100px;background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.04));border-radius:28px;display:flex;align-items:center;justify-content:center;border:1.5px solid rgba(255,255,255,.2);backdrop-filter:blur(12px);animation:logoGlow 3s ease-in-out infinite">
-            <img src="assets/logo.svg" alt="MS" style="width:72px;height:72px;object-fit:contain"/>
+      <!-- Logo -->
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="position:relative;display:inline-block;margin-bottom:16px">
+          <!-- Outer slow ring -->
+          <div style="position:absolute;inset:-14px;border-radius:50%;border:1.5px dashed rgba(147,197,253,.3);animation:spinRing1 18s linear infinite"></div>
+          <!-- Inner fast ring -->
+          <div style="position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(147,197,253,.2);animation:spinRing2 8s linear infinite"></div>
+          <!-- Logo circle - white background for clarity -->
+          <div style="width:110px;height:110px;background:white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 12px 50px rgba(59,130,246,.5),0 0 0 4px rgba(255,255,255,.15);animation:logoFloat 4s ease-in-out infinite, logoPulse 4s ease-in-out infinite">
+            <img src="assets/logo.svg" alt="MS" style="width:80px;height:80px;object-fit:contain"/>
           </div>
         </div>
-        <h1 style="color:white;font-size:28px;font-weight:800;margin:0 0 6px;letter-spacing:.5px;text-shadow:0 2px 20px rgba(99,179,237,.4)">MS Accounting</h1>
-        <p style="color:rgba(255,255,255,.45);font-size:11px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;margin:0">Corporate Accounting Services</p>
-        <div style="margin-top:12px;display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);padding:4px 14px;border-radius:20px">
-          <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;box-shadow:0 0 8px #22c55e"></span>
-          <span style="color:rgba(34,197,94,.9);font-size:11px;font-weight:600">النظام يعمل</span>
-        </div>
+        <h1 style="color:white;font-size:30px;font-weight:800;margin:0 0 5px;letter-spacing:.5px;text-shadow:0 4px 24px rgba(99,179,237,.5)">MS Accounting</h1>
+        <p style="color:rgba(255,255,255,.5);font-size:11px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;margin:0">Corporate Accounting Services</p>
       </div>
 
       <!-- Form Card -->
-      <div style="background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.12);border-radius:24px;padding:36px;backdrop-filter:blur(24px);box-shadow:0 32px 80px rgba(0,0,0,.5)">
-        <h2 style="font-size:18px;font-weight:700;color:white;margin:0 0 6px;text-align:center">أهلاً بك</h2>
-        <p style="font-size:13px;color:rgba(255,255,255,.4);text-align:center;margin:0 0 28px">سجّل دخولك للمتابعة</p>
+      <div style="background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.14);border-radius:24px;padding:36px;backdrop-filter:blur(28px);box-shadow:0 32px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.1)">
+        <h2 style="font-size:19px;font-weight:700;color:white;margin:0 0 5px;text-align:center">أهلاً بك 👋</h2>
+        <p style="font-size:13px;color:rgba(255,255,255,.45);text-align:center;margin:0 0 26px">سجّل دخولك للمتابعة</p>
 
         <div class="login-input-wrap">
           <span class="inp-icon">📧</span>
           <input id="loginEmail" type="email" placeholder="البريد الإلكتروني" autocomplete="email"/>
         </div>
-        <div class="login-input-wrap" style="margin-bottom:28px">
-          <span class="inp-icon">🔑</span>
+        <div class="login-input-wrap" style="margin-bottom:26px">
+          <span class="inp-icon">🔒</span>
           <input id="loginPass" type="password" placeholder="كلمة المرور" autocomplete="current-password"/>
         </div>
 
         <button id="loginBtn" class="login-submit-btn">دخول ←</button>
-        <div id="loginErr" style="color:#f87171;font-size:13px;text-align:center;margin-top:14px;min-height:20px"></div>
+        <div id="loginErr" style="color:#fca5a5;font-size:13px;text-align:center;margin-top:14px;min-height:20px"></div>
       </div>
 
-      <p style="text-align:center;color:rgba(255,255,255,.2);font-size:11px;margin-top:24px;letter-spacing:.5px">© 2025 MS Accounting — جميع الحقوق محفوظة</p>
+      <p style="text-align:center;color:rgba(255,255,255,.18);font-size:11px;margin-top:20px;letter-spacing:.5px">© 2025 MS Accounting — جميع الحقوق محفوظة</p>
     </div>
-  </div>`;
+  </div>
+  <script>
+    (function(){
+      const c=document.getElementById('loginStars');
+      if(!c)return;
+      const ctx=c.getContext('2d');
+      c.width=window.innerWidth; c.height=window.innerHeight;
+      const stars=Array.from({length:120},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*1.5+.3,a:Math.random(),sp:Math.random()*.4+.1}));
+      function draw(){
+        ctx.clearRect(0,0,c.width,c.height);
+        stars.forEach(s=>{
+          s.a+=s.sp*.015; if(s.a>1)s.a=0;
+          ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+          ctx.fillStyle=\`rgba(255,255,255,\${Math.abs(Math.sin(s.a))*0.8})\`; ctx.fill();
+        });
+        requestAnimationFrame(draw);
+      }
+      draw();
+    })();
+  </script>`;
 
   document.getElementById('loginBtn').onclick = async () => {
     const btn=document.getElementById('loginBtn');
