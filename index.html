@@ -826,7 +826,73 @@ async function login(email, password) {
   localStorage.setItem('ms_token',token);
   localStorage.setItem('ms_user',JSON.stringify(currentUser));
   renderApp();
+  setTimeout(()=>showWelcomeGreeting(currentUser?.name||''), 600);
 }
+function showWelcomeGreeting(name) {
+  const h = new Date().getHours();
+  const firstName = name.split(' ')[0] || name;
+
+  // حدد الوقت
+  const timeSlot = h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 17 ? 'noon' : h >= 17 && h < 21 ? 'evening' : 'night';
+
+  const greetings = {
+    morning: [
+      `صباح النور يا ${firstName}! ☀️ يوم جديد وفرصة جديدة — هنعملها النهارده`,
+      `صباح الفل يا عم ${firstName} 🌸 شيل القهوة وابدأ تفتح الملفات`,
+      `صباح الخير يا ${firstName} 😄 ربنا يجعله يوم مبارك وشغل كتير`,
+      `أهلاً بيك يا ${firstName}! ☕ يلا نحط الدنيا على السكة من الصبح`,
+      `يصبح على خير يا ${firstName} 🌤️ المكتب وحشه — يلا افتح الكمبيوتر`,
+    ],
+    noon: [
+      `النهارده بتمشي زي الحلاوة يا ${firstName} 💪 كمّل شوية وهتخلص`,
+      `أهلاً يا ${firstName}! 🕛 بالظهر والشغل بيحلى — خليك متقطع`,
+      `يا ${firstName} الأكل الظهر مش هيهرب منك 😄 خلص اللي عندك الأول`,
+      `هالو يا ${firstName}! 🙌 نص اليوم فات ونص تاني هنعمله حلو`,
+    ],
+    evening: [
+      `مساء النور يا ${firstName} 🌆 بعد شوية وهتبقى في البيت — كمّل`,
+      `مساء الفل يا عم ${firstName}! 🌙 الشغل ع الآخر ولا هادي النهارده؟`,
+      `أهلاً يا ${firstName} 🌇 المساء ببركاته — يلا نخلص اللي باقي`,
+      `مساء الخير يا ${firstName} ✨ آخر جهد وبعدها راحة مستاهلها`,
+    ],
+    night: [
+      `يا ${firstName}! 🌙 إنت بتشتغل بالليل؟ مش لازم تفضل — الشغل مش هيخلص خلاص`,
+      `أهلاً يا ${firstName} 🌟 إنت صاحي لسه؟ الملفات تستنى بكره عادي`,
+      `يا ${firstName} بالليل دا! 🦉 المكتب الأوفر في الشرق الأوسط مستني إنت؟`,
+      `ليلة سعيدة يا ${firstName} 🌙 استرح بقى — بكره ربنا يعينك`,
+    ],
+  };
+
+  const msgs = greetings[timeSlot];
+  const msg = msgs[Math.floor(Math.random() * msgs.length)];
+
+  const icons = { morning:'☀️', noon:'🕛', evening:'🌆', night:'🌙' };
+  const colors = { morning:'linear-gradient(135deg,#f59e0b,#fbbf24)', noon:'linear-gradient(135deg,#0ea5e9,#38bdf8)', evening:'linear-gradient(135deg,#8b5cf6,#a78bfa)', night:'linear-gradient(135deg,#1e3a8a,#3b82f6)' };
+
+  const div = document.createElement('div');
+  div.id = 'welcomeGreeting';
+  div.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-80px);z-index:9999;transition:transform .5s cubic-bezier(.22,1,.36,1),opacity .5s;opacity:0;pointer-events:none;width:min(90vw,440px)';
+  div.innerHTML = `
+    <div style="background:${colors[timeSlot]};border-radius:18px;padding:18px 22px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:flex;align-items:center;gap:14px">
+      <div style="font-size:32px;flex-shrink:0">${icons[timeSlot]}</div>
+      <div>
+        <div style="color:white;font-size:15px;font-weight:700;line-height:1.4">${msg}</div>
+      </div>
+      <div style="margin-right:auto;flex-shrink:0;cursor:pointer;color:rgba(255,255,255,.7);font-size:18px;padding:4px" onclick="this.closest('#welcomeGreeting').style.opacity='0';setTimeout(()=>this.closest('#welcomeGreeting')?.remove(),400)">✕</div>
+    </div>`;
+  document.body.appendChild(div);
+  requestAnimationFrame(()=>{
+    div.style.transform='translateX(-50%) translateY(0)';
+    div.style.opacity='1';
+    div.style.pointerEvents='auto';
+  });
+  setTimeout(()=>{
+    div.style.opacity='0';
+    div.style.transform='translateX(-50%) translateY(-30px)';
+    setTimeout(()=>div.remove(), 500);
+  }, 5000);
+}
+
 function logout() {
   token=null; currentUser=null;
   localStorage.removeItem('ms_token'); localStorage.removeItem('ms_user');
