@@ -11011,7 +11011,10 @@ async function accTransactions(type) {
             <td style="padding:9px 12px"><span style="font-size:11px;background:#fef9c3;color:#92400e;padding:2px 8px;border-radius:6px">${escH(t.expense_category||'—')}</span></td>
             <td style="padding:9px 12px;font-weight:700;color:#d97706">${money(t.amount)}</td>
             <td style="padding:9px 12px;color:#94a3b8;font-size:12px">${escH(t.notes||'')}</td>
-            <td style="padding:9px 12px"><button onclick="deleteAccTx(${t.id})" style="background:#fee2e2;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#dc2626">🗑</button></td>
+            <td style="padding:9px 12px;white-space:nowrap">
+              <button onclick="showEditTransaction(${t.id},'expense')" style="background:#eff6ff;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#1a2472;margin-left:4px">✏️</button>
+              <button onclick="deleteAccTx(${t.id})" style="background:#fee2e2;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#dc2626">🗑</button>
+            </td>
           </tr>`;
           return `<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
             <td style="padding:9px 12px;white-space:nowrap">${t.date||'—'}</td>
@@ -11023,7 +11026,10 @@ async function accTransactions(type) {
             <td style="padding:9px 12px">${money(t.total_amount)}</td>
             <td style="padding:9px 12px;color:#dc2626">${money(t.withholding_amount)}</td>
             <td style="padding:9px 12px;font-weight:700;color:${type==='sale'?'#15803d':'#dc2626'}">${money(t.net_amount)}</td>
-            <td style="padding:9px 12px"><button onclick="deleteAccTx(${t.id})" style="background:#fee2e2;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#dc2626">🗑</button></td>
+            <td style="padding:9px 12px;white-space:nowrap">
+              <button onclick="showEditTransaction(${t.id},'${type}')" style="background:#eff6ff;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#1a2472;margin-left:4px">✏️</button>
+              <button onclick="deleteAccTx(${t.id})" style="background:#fee2e2;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#dc2626">🗑</button>
+            </td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -11162,6 +11168,119 @@ async function deleteAccTx(txId) {
     toast('تم الحذف');
     accRender();
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Edit Transaction Modal ─────────────────────────────────────────────────────
+async function showEditTransaction(txId, type) {
+  let t;
+  try { t = await api('GET', `/api/accounting/${_accClientId}/transactions/${txId}`); }
+  catch(e) { toast(e.message,'error'); return; }
+  const typeInfo = ACC_TX_TYPES[type];
+  const isExpense = type === 'expense';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '1200';
+  overlay.innerHTML = `<div class="modal" style="max-width:580px">
+    <div style="padding:16px 22px;background:linear-gradient(135deg,#1a2472,#152060);border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-size:14px;font-weight:700">✏️ تعديل ${typeInfo.label}</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white;font-size:16px">✕</button>
+    </div>
+    <div style="padding:20px 22px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">التاريخ *</label>
+          <input id="etxDate" type="date" class="input" value="${t.date||''}"/></div>
+        ${isExpense ? `
+          <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">نوع المصروف</label>
+            <input id="etxCategory" class="input" value="${escH(t.expense_category||'')}"/></div>
+        ` : `
+          <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">رقم المستند</label>
+            <input id="etxDocNum" class="input" value="${escH(t.doc_number||'')}"/></div>
+        `}
+      </div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">${isExpense ? 'الجهة / الوصف' : 'اسم الشركة *'}</label>
+        <input id="etxPartner" class="input" value="${escH(t.partner_name||'')}"/></div>
+      ${!isExpense ? `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">رقم التسجيل الضريبي</label>
+        <input id="etxTaxId" class="input" value="${escH(t.partner_tax_id||'')}"/></div>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">القيمة (قبل الضريبة) *</label>
+          <input id="etxAmount" type="number" class="input" value="${t.amount||0}" oninput="calcEditTxTotals('${type}')"/></div>
+        ${!isExpense ? `<div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">نسبة ض ق م %</label>
+          <input id="etxVatRate" type="number" class="input" value="${Math.round((t.vat_rate||0.14)*100)}" oninput="calcEditTxTotals('${type}')"/></div>` : '<div></div>'}
+      </div>
+      ${!isExpense ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">ض ق م</label>
+          <input id="etxVatAmt" type="number" class="input" value="${t.vat_amount||0}"/></div>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">خصم وإضافة</label>
+          <input id="etxWhtAmt" type="number" class="input" value="${t.withholding_amount||0}" oninput="calcEditTxTotals('${type}')"/></div>
+      </div>
+      <div style="background:#f0fdf4;border-radius:8px;padding:12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">الإجمالي (شامل ض ق م)</div>
+          <div id="etxTotal" style="font-size:16px;font-weight:800;color:#1e293b">${money(t.total_amount||0)}</div></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">الإجمالي بعد الخصم</div>
+          <div id="etxNet" style="font-size:16px;font-weight:800;color:#15803d">${money(t.net_amount||0)}</div></div>
+      </div>` : ''}
+      <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">ملاحظات</label>
+        <input id="etxNotes" class="input" value="${escH(t.notes||'')}"/></div>
+      <div id="etxResult" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+        <button class="btn btn-primary" onclick="saveEditTransaction(${txId},'${type}')">💾 حفظ التعديل</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+}
+
+function calcEditTxTotals(type) {
+  if(type === 'expense') return;
+  const amt = parseFloat(document.getElementById('etxAmount')?.value || 0);
+  const vatRate = parseFloat(document.getElementById('etxVatRate')?.value || 14) / 100;
+  const vatAmt = amt * vatRate;
+  const wht = parseFloat(document.getElementById('etxWhtAmt')?.value || 0);
+  const total = amt + vatAmt;
+  const net = total - wht;
+  if(document.getElementById('etxVatAmt')) document.getElementById('etxVatAmt').value = vatAmt.toFixed(4);
+  if(document.getElementById('etxTotal')) document.getElementById('etxTotal').textContent = money(total);
+  if(document.getElementById('etxNet')) document.getElementById('etxNet').textContent = money(net);
+}
+
+async function saveEditTransaction(txId, type) {
+  const resultDiv = document.getElementById('etxResult');
+  const isExpense = type === 'expense';
+  const amt = parseFloat(document.getElementById('etxAmount')?.value || 0);
+  if(!amt) { resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px">⚠️ أدخل القيمة</div>`; return; }
+
+  const vatRate = isExpense ? 0 : (parseFloat(document.getElementById('etxVatRate')?.value || 14) / 100);
+  const vatAmt  = isExpense ? 0 : parseFloat(document.getElementById('etxVatAmt')?.value || amt * vatRate);
+  const whtAmt  = isExpense ? 0 : parseFloat(document.getElementById('etxWhtAmt')?.value || 0);
+  const total   = amt + vatAmt;
+  const net     = total - whtAmt;
+
+  const payload = {
+    transaction_type: type,
+    date: document.getElementById('etxDate')?.value,
+    partner_name: document.getElementById('etxPartner')?.value?.trim() || null,
+    partner_tax_id: document.getElementById('etxTaxId')?.value?.trim() || null,
+    doc_number: document.getElementById('etxDocNum')?.value?.trim() || null,
+    expense_category: document.getElementById('etxCategory')?.value?.trim() || null,
+    amount: amt,
+    vat_rate: vatRate,
+    vat_amount: vatAmt,
+    withholding_rate: 0,
+    withholding_amount: whtAmt,
+    total_amount: isExpense ? amt : total,
+    net_amount: isExpense ? amt : net,
+    notes: document.getElementById('etxNotes')?.value?.trim() || null,
+  };
+
+  try {
+    const r = await api('PUT', `/api/accounting/${_accClientId}/transactions/${txId}`, payload);
+    resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message)}</div>`;
+    setTimeout(() => { document.querySelector('.modal-overlay:last-child')?.remove(); accRender(); }, 1200);
+  } catch(e) {
+    resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`;
+  }
 }
 
 // ── Journal Entries ────────────────────────────────────────────────────────────
@@ -11487,36 +11606,109 @@ async function accIncomeStatement() {
 // ── Balance Sheet ─────────────────────────────────────────────────────────────
 async function accBalanceSheet() {
   const d = await api('GET', `/api/accounting/${_accClientId}/reports/balance-sheet?year=${_accYear}`);
-  const section = (title, items, total, colorClass) => `
-    <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.5px;padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e8edf3">${title}</div>
-    ${items.map(i=>`<tr style="border-bottom:1px solid #f1f5f9">
-      <td style="padding:8px 16px;padding-right:28px;font-size:13px;color:#374151">${escH(i.name)}</td>
+
+  // Helper: group asset items into current/fixed
+  const isCurrentAsset = (code) => {
+    if(!code) return true;
+    const n = parseInt(code);
+    return (n >= 1100 && n < 1300); // cash, receivables, VAT debit = current
+  };
+  const currentAssets = (d.assets.items||[]).filter(i => isCurrentAsset(i.code));
+  const fixedAssets   = (d.assets.items||[]).filter(i => !isCurrentAsset(i.code));
+
+  const isCurrentLiab = (code) => {
+    if(!code) return true;
+    const n = parseInt(code);
+    return (n >= 2100 && n < 2300);
+  };
+  const currentLiabs  = (d.liabilities.items||[]).filter(i => isCurrentLiab(i.code));
+  const longLiabs     = (d.liabilities.items||[]).filter(i => !isCurrentLiab(i.code));
+
+  const totalCurrAssets = currentAssets.reduce((s,i)=>s+Math.abs(i.balance),0);
+  const totalFixedAssets= fixedAssets.reduce((s,i)=>s+Math.abs(i.balance),0);
+  const totalCurrLiabs  = currentLiabs.reduce((s,i)=>s+Math.abs(i.balance),0);
+  const totalLongLiabs  = longLiabs.reduce((s,i)=>s+Math.abs(i.balance),0);
+
+  const rows = (items) => items.length === 0 ? '' : items.map(i=>`
+    <tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:8px 16px 8px 28px;font-size:13px;color:#374151">${escH(i.code?`${i.code} — ${i.name}`:i.name)}</td>
       <td style="padding:8px 16px;text-align:left;font-size:13px;font-weight:600;color:#1e293b">${money(Math.abs(i.balance))}</td>
-    </tr>`).join('')}
-    <tr style="background:#f8fafc;font-weight:700">
-      <td style="padding:10px 16px;font-size:13px;font-weight:700;color:#374151">إجمالي ${title}</td>
-      <td style="padding:10px 16px;text-align:left;font-size:14px;font-weight:800;color:${colorClass}">${money(total)}</td>
-    </tr>`;
+    </tr>`).join('');
+
+  const subHeader = (title, bg='#f8fafc', color='#64748b') =>
+    `<tr><td colspan="2" style="padding:9px 16px;font-size:12px;font-weight:800;color:${color};background:${bg};border-bottom:1px solid #e8edf3;border-top:1px solid #e8edf3;text-transform:uppercase;letter-spacing:.5px">${title}</td></tr>`;
+
+  const subtotal = (label, amount, color='#374151') =>
+    `<tr style="background:#f0f4ff"><td style="padding:9px 16px;font-size:13px;font-weight:700;color:${color}">${label}</td>
+     <td style="padding:9px 16px;text-align:left;font-size:13px;font-weight:800;color:${color}">${money(amount)}</td></tr>`;
+
+  const totalRow = (label, amount, color='#1a2472') =>
+    `<tr style="background:#eef1fb"><td style="padding:11px 16px;font-size:14px;font-weight:800;color:${color}">${label}</td>
+     <td style="padding:11px 16px;text-align:left;font-size:14px;font-weight:900;color:${color}">${money(amount)}</td></tr>`;
+
+  const noData = d.assets.total === 0 && d.liabilities.total === 0 && d.net_profit === 0;
 
   return `
-  <div style="max-width:600px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <div style="max-width:640px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">🏛️ الميزانية العمومية — ${_accYear}</h3>
+      ${noData ? `<div style="font-size:12px;color:#94a3b8">لا توجد بيانات — أضف معاملات أو ثبِّت دليل الحسابات</div>` : ''}
     </div>
     <div style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
-      <div style="background:#1a2472;padding:12px 16px;color:white;font-size:13px;font-weight:700">الميزانية العمومية في 31/12/${_accYear}</div>
+      <div style="background:#1a2472;padding:12px 16px;color:white;font-size:13px;font-weight:700">
+        قائمة المركز المالي في 31/12/${_accYear}
+      </div>
       <table style="width:100%;border-collapse:collapse">
-        ${section('الأصول', d.assets.items, d.assets.total, '#1a2472')}
-        ${section('الخصوم', d.liabilities.items, d.liabilities.total, '#dc2626')}
-        ${section('حقوق الملكية', d.equity.items, d.equity.total, '#7c3aed')}
-        <tr style="background:#eef1fb">
-          <td style="padding:12px 16px;font-size:14px;font-weight:800;color:#1a2472">صافي الربح (الخسارة) — الفترة</td>
-          <td style="padding:12px 16px;text-align:left;font-size:14px;font-weight:800;color:${d.net_profit>=0?'#15803d':'#dc2626'}">${money(d.net_profit)}</td>
+        <!-- ═══ الأصول ═══ -->
+        ${subHeader('أولاً: الأصول', '#1e293b', '#f8fafc')}
+
+        ${subHeader('أ — الأصول المتداولة', '#f0f4ff', '#1a2472')}
+        ${rows(currentAssets)}
+        ${subtotal('إجمالي الأصول المتداولة', totalCurrAssets, '#1a2472')}
+
+        ${subHeader('ب — الأصول الثابتة والطويلة الأجل', '#f0f4ff', '#1a2472')}
+        ${rows(fixedAssets)}
+        ${fixedAssets.length === 0 ? `<tr><td colspan="2" style="padding:8px 28px;font-size:12px;color:#94a3b8;font-style:italic">—</td></tr>` : ''}
+        ${subtotal('إجمالي الأصول الثابتة', totalFixedAssets, '#1a2472')}
+
+        ${totalRow('إجمالي الأصول', d.assets.total)}
+
+        <!-- ═══ الخصوم ═══ -->
+        ${subHeader('ثانياً: الخصوم', '#1e293b', '#f8fafc')}
+
+        ${subHeader('أ — الخصوم المتداولة', '#fff5f5', '#dc2626')}
+        ${rows(currentLiabs)}
+        ${currentLiabs.length === 0 ? `<tr><td colspan="2" style="padding:8px 28px;font-size:12px;color:#94a3b8;font-style:italic">—</td></tr>` : ''}
+        ${subtotal('إجمالي الخصوم المتداولة', totalCurrLiabs, '#dc2626')}
+
+        ${subHeader('ب — الخصوم طويلة الأجل', '#fff5f5', '#dc2626')}
+        ${rows(longLiabs)}
+        ${longLiabs.length === 0 ? `<tr><td colspan="2" style="padding:8px 28px;font-size:12px;color:#94a3b8;font-style:italic">—</td></tr>` : ''}
+        ${subtotal('إجمالي الخصوم طويلة الأجل', totalLongLiabs, '#dc2626')}
+
+        ${totalRow('إجمالي الخصوم', d.liabilities.total, '#dc2626')}
+
+        <!-- ═══ حقوق الملكية ═══ -->
+        ${subHeader('ثالثاً: حقوق الملكية', '#1e293b', '#f8fafc')}
+        ${rows(d.equity.items||[])}
+        <tr style="border-bottom:1px solid #f1f5f9">
+          <td style="padding:8px 28px;font-size:13px;color:#374151">صافي الربح (الخسارة) — ${_accYear}</td>
+          <td style="padding:8px 16px;text-align:left;font-size:13px;font-weight:700;color:${d.net_profit>=0?'#15803d':'#dc2626'}">${money(d.net_profit)}</td>
         </tr>
+        ${totalRow('إجمالي حقوق الملكية', d.equity.total, '#7c3aed')}
+
+        <!-- ═══ الإجمالي ═══ -->
         <tr style="background:#1a2472">
-          <td style="padding:12px 16px;font-size:14px;font-weight:800;color:white">إجمالي الخصوم وحقوق الملكية</td>
-          <td style="padding:12px 16px;text-align:left;font-size:16px;font-weight:800;color:#fbbf24">${money(d.total_liabilities_equity)}</td>
+          <td style="padding:13px 16px;font-size:14px;font-weight:800;color:white">إجمالي الخصوم وحقوق الملكية</td>
+          <td style="padding:13px 16px;text-align:left;font-size:16px;font-weight:900;color:#fbbf24">${money(d.total_liabilities_equity)}</td>
         </tr>
+        ${Math.abs(d.assets.total - d.total_liabilities_equity) > 1 ? `<tr style="background:#fef2f2">
+          <td colspan="2" style="padding:8px 16px;font-size:12px;color:#dc2626;text-align:center">
+            ⚠️ الميزانية غير متوازنة — فارق: ${money(Math.abs(d.assets.total - d.total_liabilities_equity))}
+          </td>
+        </tr>` : `<tr style="background:#f0fdf4">
+          <td colspan="2" style="padding:8px 16px;font-size:12px;color:#15803d;text-align:center">✅ الميزانية متوازنة</td>
+        </tr>`}
       </table>
     </div>
   </div>`;

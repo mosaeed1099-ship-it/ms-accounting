@@ -105,6 +105,7 @@ def compute_withholding(
 def build_withholding_return(db, client_id: int, year: int, month: int, built_by: int):
     """Aggregate all withholding entries for a period into a WithholdingReturn."""
     from app.models.tax_center import WithholdingReturn, WithholdingEntry
+    from app.models.accounting import AccTransaction
     from datetime import datetime
 
     entries = db.query(WithholdingEntry).filter(
@@ -112,6 +113,42 @@ def build_withholding_return(db, client_id: int, year: int, month: int, built_by
         WithholdingEntry.period_year == year,
         WithholdingEntry.period_month == month,
     ).all()
+
+    # Also sync accounting transactions with withholding into WHT entries (auto-import)
+    acc_txs = db.query(AccTransaction).filter(
+        AccTransaction.client_id == client_id,
+        AccTransaction.year == year,
+        AccTransaction.month == month,
+        AccTransaction.withholding_amount > 0,
+    ).all()
+    existing_doc_numbers = {e.invoice_number for e in entries if e.invoice_number}
+    for tx in acc_txs:
+        if tx.doc_number and tx.doc_number in existing_doc_numbers:
+            continue  # already imported
+        # Check if already imported by reference (avoid duplicates on rebuild)
+        ref_key = f"ACC-{tx.id}"
+        if any(e.invoice_number == ref_key for e in entries):
+            continue
+        new_entry = WithholdingEntry(
+            client_id=client_id,
+            period_year=year,
+            period_month=month,
+            transaction_date=tx.date,
+            transaction_type=tx.transaction_type,
+            invoice_number=ref_key,
+            description=f"من قسم الحسابات — {tx.partner_name or ''} — {tx.doc_number or ''}",
+            payee_name=tx.partner_name or "غير محدد",
+            payee_tin=tx.partner_tax_id or None,
+            payee_type="company",
+            gross_amount=tx.amount,
+            withholding_rate=float(tx.withholding_rate or 0),
+            withholding_amount=tx.withholding_amount,
+            net_amount=tx.net_amount,
+            created_by=built_by,
+        )
+        db.add(new_entry)
+        db.flush()
+        entries.append(new_entry)
 
     # Aggregate by payee_type
     totals = {

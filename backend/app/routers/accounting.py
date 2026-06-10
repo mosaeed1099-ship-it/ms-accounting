@@ -582,6 +582,30 @@ async def list_transactions(
     return {"total": total, "totals": totals, "page": page, "items": [tx_dict(i) for i in items]}
 
 
+@router.get("/{client_id}/transactions/{tx_id}")
+async def get_transaction(
+    client_id: int, tx_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tx = db.query(AccTransaction).filter(AccTransaction.id == tx_id, AccTransaction.client_id == client_id).first()
+    if not tx:
+        raise HTTPException(404, detail="المعاملة غير موجودة")
+    return {
+        "id": tx.id, "transaction_type": tx.transaction_type,
+        "date": str(tx.date) if tx.date else None, "month": tx.month, "year": tx.year,
+        "partner_name": tx.partner_name, "partner_tax_id": tx.partner_tax_id,
+        "doc_number": tx.doc_number,
+        "amount": float(tx.amount or 0), "vat_rate": float(tx.vat_rate or 0),
+        "vat_amount": float(tx.vat_amount or 0),
+        "withholding_rate": float(tx.withholding_rate or 0),
+        "withholding_amount": float(tx.withholding_amount or 0),
+        "total_amount": float(tx.total_amount or 0), "net_amount": float(tx.net_amount or 0),
+        "expense_category": tx.expense_category, "notes": tx.notes,
+        "journal_entry_id": tx.journal_entry_id,
+    }
+
+
 @router.post("/{client_id}/transactions")
 async def create_transaction(
     client_id: int,
@@ -696,7 +720,9 @@ async def trial_balance(
 
     rows = []
     total_d = total_c = 0
+    seen_ids = set()
     for a in accounts:
+        seen_ids.add(a.id)
         b = balances.get(a.id, {"debit": 0, "credit": 0})
         d = b["debit"] + (a.opening_balance if a.opening_type == "debit" else 0)
         c = b["credit"] + (a.opening_balance if a.opening_type == "credit" else 0)
@@ -710,6 +736,25 @@ async def trial_balance(
             "debit": round(d, 4), "credit": round(c, 4),
             "balance": round(d - c, 4),
         })
+    # Include journal lines whose account_id is NULL or not in CoA (e.g. before CoA is installed)
+    for aid, b in balances.items():
+        if aid in seen_ids:
+            continue
+        d = b["debit"]
+        c = b["credit"]
+        if d == 0 and c == 0:
+            continue
+        total_d += d
+        total_c += c
+        rows.append({
+            "account_id": aid,
+            "code": b.get("account_code", ""),
+            "name": b.get("account_name", "حساب غير مصنف"),
+            "account_type": "unknown",
+            "debit": round(d, 4), "credit": round(c, 4),
+            "balance": round(d - c, 4),
+        })
+    rows.sort(key=lambda r: r.get("code") or "")
     return {
         "rows": rows,
         "total_debit": round(total_d, 4),
@@ -794,14 +839,29 @@ async def balance_sheet(
     accounts = db.query(AccAccount).filter(AccAccount.client_id == client_id).all()
     acc_map = {a.id: a for a in accounts}
 
+    # Infer account_type from account_code when CoA not installed
+    def _infer_type(code: str) -> str:
+        if not code:
+            return "asset"
+        c = code[:1]
+        if c == "1":   return "asset"
+        if c == "2":   return "liability"
+        if c == "3":   return "equity"
+        if c == "4":   return "revenue"
+        if c in ("5","6","7"): return "expense"
+        return "asset"
+
     groups = {"asset": [], "liability": [], "equity": [], "revenue": [], "expense": []}
     for aid, b in balances.items():
         acc = acc_map.get(aid)
-        if not acc:
-            continue
+        code = acc.code if acc else b.get("account_code", "")
+        name = acc.name if acc else b.get("account_name", "حساب غير مصنف")
+        atype = acc.account_type if acc else _infer_type(code)
+        if atype not in groups:
+            atype = "asset"
         net = b["debit"] - b["credit"]
-        groups[acc.account_type].append({
-            "code": acc.code, "name": acc.name,
+        groups[atype].append({
+            "code": code, "name": name,
             "debit": b["debit"], "credit": b["credit"], "balance": net,
         })
 
