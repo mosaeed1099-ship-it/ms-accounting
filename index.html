@@ -3452,82 +3452,168 @@ function renderEmployeeTasks() {
   const main = document.getElementById('main');
   const emp  = _taskEmpFilter;
   const priorityColor = PRIORITY_COLOR;
-  const priorityLabel = {urgent:'🔴 عاجل', high:'🟠 عالي', medium:'🟡 متوسط', low:'🟢 منخفض'}; // kanban uses emoji prefix
   const catLabel = CAT_LABEL;
+  const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const DAYS_AR   = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 
-  const pending = tasksData.filter(t => t.status !== 'done' && t.status !== 'cancelled');
-  const done    = tasksData.filter(t => t.status === 'done');
+  const pending  = tasksData.filter(t => t.status !== 'done' && t.status !== 'cancelled');
+  const done     = tasksData.filter(t => t.status === 'done');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayPending = pending.filter(t => t.due_date === todayStr);
+  const overduePending = pending.filter(t => t.due_date && t.due_date < todayStr);
 
-  const taskCard = (t, showDone = false) => {
-    const overdue = t.due_date && daysUntil(t.due_date) < 0 && t.status !== 'done';
+  // avatar color
+  const avatarColors = ['#1a2472','#7c3aed','#0891b2','#15803d','#c2410c'];
+  const ac = avatarColors[(emp.name.charCodeAt(0)||0) % avatarColors.length];
+
+  // ── Task card ──
+  const taskCard = (t, isDone=false) => {
+    const overdue = !isDone && t.due_date && t.due_date < todayStr;
+    const assignedBy = t.created_by_name ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">📤 ${escH(t.created_by_name)}</span>` : '';
     return `
-    <div style="background:white;border-radius:14px;padding:16px 18px;border:1.5px solid ${overdue?'#fecaca':'#e8edf3'};box-shadow:0 1px 6px rgba(0,0,0,.04);display:flex;gap:14px;align-items:flex-start">
+    <div style="background:white;border-radius:13px;padding:14px 16px;border:1.5px solid ${overdue?'#fecaca':isDone?'#e8edf3':'#e8edf3'};box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;gap:12px;align-items:flex-start">
       <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-          <span style="font-size:14px;font-weight:700;color:${showDone?'#94a3b8':'#1e293b'};${showDone?'text-decoration:line-through':''}">${escH(t.title)}</span>
-          <span style="font-size:11px;font-weight:700;color:${priorityColor[t.priority]||'#64748b'};background:${priorityColor[t.priority]||'#64748b'}18;padding:2px 9px;border-radius:8px;white-space:nowrap">${priorityLabel[t.priority]||''}</span>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+          <span style="font-size:14px;font-weight:700;color:${isDone?'#94a3b8':'#1e293b'};${isDone?'text-decoration:line-through':''}">${escH(t.title)}</span>
+          <span style="font-size:11px;font-weight:700;color:${priorityColor[t.priority]||'#64748b'};background:${priorityColor[t.priority]||'#64748b'}18;padding:2px 8px;border-radius:6px;white-space:nowrap">${{urgent:'🔴 عاجل',high:'🟠 عالي',medium:'🟡 متوسط',low:'🟢 منخفض'}[t.priority]||''}</span>
         </div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#64748b">
-          ${t.client_name ? `<span>👤 ${escH(t.client_name)}</span>` : ''}
-          ${t.category    ? `<span>📂 ${catLabel[t.category]||t.category}</span>` : ''}
-          ${t.due_date    ? `<span style="color:${overdue?'#dc2626':'#64748b'};font-weight:${overdue?'700':'400'}">${overdue?'⚠️ متأخر: ':'📅 '}${dateAr(t.due_date)}</span>` : ''}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#64748b;margin-bottom:4px">
+          ${t.client_name?`<span>👤 ${escH(t.client_name)}</span>`:''}
+          ${t.category?`<span>📂 ${catLabel[t.category]||t.category}</span>`:''}
+          ${t.due_date?`<span style="color:${overdue?'#dc2626':'#64748b'};font-weight:${overdue?'700':'400'}">${overdue?'⚠️ متأخر: ':'📅 '}${dateAr(t.due_date)}</span>`:''}
+          ${t.department?`<span>🏢 ${escH(t.department)}</span>`:''}
         </div>
-        ${(t.description||t.notes) ? `<div style="font-size:11px;color:#94a3b8;margin-top:5px">${escH(t.description||t.notes)}</div>` : ''}
-        ${t.department ? `<div style="font-size:11px;color:#6366f1;margin-top:3px">🏢 ${escH(t.department)}</div>` : ''}
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${assignedBy}
+          ${(t.description||t.notes)?`<span style="font-size:11px;color:#94a3b8">${escH((t.description||t.notes).slice(0,60))}${(t.description||t.notes).length>60?'…':''}</span>`:''}
+        </div>
       </div>
-      ${!showDone ? `
-      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-        <button onclick="quickDoneTask(${t.id})"
-          style="padding:7px 14px;background:#15803d;color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✅ خلصت</button>
-        <button onclick="showTaskModal(${t.id})"
-          style="padding:5px 10px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">تعديل</button>
-      </div>` : `
-      <div style="flex-shrink:0">
-        <span style="background:#f0fdf4;color:#15803d;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700">✓ مكتمل</span>
-      </div>`}
+      ${!isDone?`
+      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+        <button onclick="quickDoneTask(${t.id})" style="padding:6px 12px;background:#15803d;color:white;border:none;border-radius:9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ خلصت</button>
+        <button onclick="showTaskModal(${t.id})" style="padding:4px 10px;background:#f1f5f9;color:#475569;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer">تعديل</button>
+      </div>`:`<span style="background:#f0fdf4;color:#15803d;padding:3px 9px;border-radius:7px;font-size:11px;font-weight:700;flex-shrink:0;align-self:flex-start">✓</span>`}
     </div>`;
   };
 
+  // ── Group done tasks by month then day ──
+  const groupByMonthDay = (tasks) => {
+    const months = {};
+    tasks.forEach(t => {
+      const d = new Date(t.completed_at || t.updated_at || t.created_at);
+      const mKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const mLabel = `${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`;
+      const dKey = d.toISOString().split('T')[0];
+      const dLabel = `${DAYS_AR[d.getDay()]} ${d.getDate()} ${MONTHS_AR[d.getMonth()]}`;
+      if(!months[mKey]) months[mKey]={label:mLabel, days:{}};
+      if(!months[mKey].days[dKey]) months[mKey].days[dKey]={label:dLabel, tasks:[]};
+      months[mKey].days[dKey].tasks.push(t);
+    });
+    return Object.entries(months).sort((a,b)=>b[0].localeCompare(a[0]));
+  };
+
+  const doneGrouped = groupByMonthDay(done);
+
+  // ── Current tab state ──
+  if (!window._empTab) window._empTab = 'pending';
+  const tab = window._empTab;
+
+  const tabBtn = (id, icon, label, count, color='#475569', bg='white') =>
+    `<button onclick="window._empTab='${id}';renderEmployeeTasks()"
+      style="padding:9px 18px;border:1.5px solid ${tab===id?color:'#e2e8f0'};border-radius:11px;background:${tab===id?color+'12':bg};color:${tab===id?color:'#64748b'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px">
+      ${icon} ${label} <span style="background:${tab===id?color:'#e2e8f0'};color:${tab===id?'white':'#475569'};padding:1px 8px;border-radius:10px;font-size:11px">${count}</span>
+    </button>`;
+
   main.innerHTML = `
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px">
-    <div style="display:flex;align-items:center;gap:12px">
-      <button onclick="_taskEmpFilter=null;loadTasks()"
-        style="background:#f1f5f9;border:none;border-radius:10px;padding:8px 14px;cursor:pointer;font-size:13px;color:#475569">← رجوع</button>
-      <div>
-        <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0">👷 مهام ${escH(emp.name)}</h2>
-        <p style="font-size:12px;color:#64748b;margin:2px 0 0">${pending.length} معلقة · ${done.length} مكتملة</p>
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#1a2472,#2563eb);border-radius:18px;padding:20px 24px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <button onclick="_taskEmpFilter=null;window._empTab='pending';loadTasks()"
+      style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.3);border-radius:10px;padding:7px 14px;cursor:pointer;font-size:13px;color:white;font-family:inherit">← رجوع</button>
+    <div style="width:54px;height:54px;border-radius:50%;background:${ac};display:flex;align-items:center;justify-content:center;color:white;font-size:22px;font-weight:800;border:3px solid rgba(255,255,255,.3);flex-shrink:0">${escH(emp.name[0])}</div>
+    <div style="flex:1">
+      <h2 style="font-size:19px;font-weight:800;color:white;margin:0">${escH(emp.name)}</h2>
+      <p style="font-size:12px;color:rgba(255,255,255,.7);margin:3px 0 0">
+        ${pending.length} مهمة معلقة · ${done.length} مكتملة
+        ${overduePending.length>0?`· <span style="color:#fca5a5;font-weight:700">⚠️ ${overduePending.length} متأخرة</span>`:''}
+      </p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="background:rgba(255,255,255,.12);border-radius:12px;padding:10px 16px;text-align:center;min-width:64px">
+        <div style="font-size:22px;font-weight:800;color:white">${pending.length}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.7)">⏳ معلقة</div>
+      </div>
+      <div style="background:rgba(255,255,255,.12);border-radius:12px;padding:10px 16px;text-align:center;min-width:64px">
+        <div style="font-size:22px;font-weight:800;color:#86efac">${done.length}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.7)">✅ مكتملة</div>
+      </div>
+      <div style="background:rgba(255,255,255,.12);border-radius:12px;padding:10px 16px;text-align:center;min-width:64px">
+        <div style="font-size:22px;font-weight:800;color:#fde68a">${todayPending.length}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.7)">📅 اليوم</div>
       </div>
     </div>
-    <button onclick="showTaskModal()" class="btn btn-primary" style="font-size:13px">➕ مهمة جديدة</button>
+    <button onclick="showTaskModal()" class="btn btn-primary" style="background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.4);font-size:13px">➕ مهمة جديدة</button>
   </div>
 
-  <!-- ⏳ المعلقة -->
-  <div style="margin-bottom:24px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <span style="font-size:15px;font-weight:800;color:#92400e">⏳ الشغل المفروض يعمله</span>
-      <span style="background:#fef9c3;color:#92400e;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;border:1px solid #fde68a">${pending.length}</span>
-    </div>
-    ${pending.length === 0 ? `
-    <div style="text-align:center;padding:40px;background:white;border-radius:14px;border:1.5px dashed #e2e8f0;color:#94a3b8">
-      <div style="font-size:32px;margin-bottom:8px">🎉</div>
-      <div style="font-size:14px;font-weight:600">مفيش شغل معلق!</div>
-    </div>` : `
-    <div style="display:flex;flex-direction:column;gap:10px">
-      ${pending.map(t => taskCard(t, false)).join('')}
-    </div>`}
+  <!-- Tabs -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+    ${tabBtn('pending','⏳','الشغل المعلق',pending.length,'#d97706')}
+    ${tabBtn('today','📅','اليوم',todayPending.length,'#1a2472')}
+    ${tabBtn('done','✅','الشغل اللي خلص',done.length,'#15803d')}
   </div>
 
-  <!-- ✅ المكتملة -->
-  ${done.length > 0 ? `
-  <div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <span style="font-size:15px;font-weight:800;color:#15803d">✅ الشغل اللي خلص</span>
-      <span style="background:#f0fdf4;color:#15803d;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;border:1px solid #bbf7d0">${done.length}</span>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      ${done.map(t => taskCard(t, true)).join('')}
-    </div>
-  </div>` : ''}`;
+  <!-- Content -->
+  <div id="empTabContent"></div>`;
+
+  // ── Render tab content ──
+  const el = document.getElementById('empTabContent');
+
+  if (tab === 'pending') {
+    if (pending.length === 0) {
+      el.innerHTML = `<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:12px">🎉</div><div style="font-size:16px;font-weight:600">مفيش شغل معلق!</div></div>`;
+    } else {
+      // Group by: overdue / today / upcoming
+      const groups = [
+        {label:'⚠️ متأخرة', color:'#dc2626', bg:'#fef2f2', border:'#fecaca', tasks: pending.filter(t=>t.due_date&&t.due_date<todayStr)},
+        {label:'📅 اليوم', color:'#1a2472', bg:'#eff6ff', border:'#bfdbfe', tasks: pending.filter(t=>t.due_date===todayStr)},
+        {label:'🗓️ قادمة', color:'#475569', bg:'#f8fafc', border:'#e2e8f0', tasks: pending.filter(t=>!t.due_date||(t.due_date>todayStr))},
+      ];
+      el.innerHTML = groups.filter(g=>g.tasks.length>0).map(g=>`
+        <div style="margin-bottom:20px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 14px;background:${g.bg};border:1px solid ${g.border};border-radius:10px">
+            <span style="font-size:14px;font-weight:800;color:${g.color}">${g.label}</span>
+            <span style="background:${g.color};color:white;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700">${g.tasks.length}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">${g.tasks.map(t=>taskCard(t,false)).join('')}</div>
+        </div>`).join('');
+    }
+  }
+
+  else if (tab === 'today') {
+    if (todayPending.length === 0) {
+      el.innerHTML = `<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:12px">☀️</div><div style="font-size:16px;font-weight:600">مفيش مهام لليوم</div></div>`;
+    } else {
+      el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${todayPending.map(t=>taskCard(t,false)).join('')}</div>`;
+    }
+  }
+
+  else if (tab === 'done') {
+    if (done.length === 0) {
+      el.innerHTML = `<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:12px">📋</div><div style="font-size:16px;font-weight:600">مفيش مهام مكتملة لسه</div></div>`;
+    } else {
+      el.innerHTML = doneGrouped.map(([mKey, month])=>`
+        <div style="margin-bottom:24px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 16px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #bbf7d0;border-radius:12px">
+            <span style="font-size:15px;font-weight:800;color:#15803d">📅 ${month.label}</span>
+            <span style="background:#15803d;color:white;padding:2px 10px;border-radius:10px;font-size:12px;font-weight:700">${Object.values(month.days).reduce((s,d)=>s+d.tasks.length,0)} مهمة</span>
+          </div>
+          ${Object.entries(month.days).sort((a,b)=>b[0].localeCompare(a[0])).map(([dKey,day])=>`
+            <div style="margin-bottom:14px;padding-right:12px;border-right:3px solid #bbf7d0">
+              <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:7px;padding-right:4px">📆 ${day.label}</div>
+              <div style="display:flex;flex-direction:column;gap:6px">${day.tasks.map(t=>taskCard(t,true)).join('')}</div>
+            </div>`).join('')}
+        </div>`).join('');
+    }
+  }
 }
 
 async function quickDoneTask(id) {
