@@ -18,7 +18,6 @@ class UserCreate(BaseModel):
     password: str
     phone: Optional[str] = None
     whatsapp_phone: Optional[str] = None
-    telegram_chat_id: Optional[str] = None
     role: UserRole = UserRole.ACCOUNTANT
     specialization: Optional[List[str]] = None
 
@@ -28,7 +27,6 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     whatsapp_phone: Optional[str] = None
-    telegram_chat_id: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     notes: Optional[str] = None
@@ -67,7 +65,6 @@ def user_to_dict(user: User, db: Session = None) -> dict:
         "email": user.email,
         "phone": user.phone,
         "whatsapp_phone": user.whatsapp_phone,
-        "telegram_chat_id": user.telegram_chat_id,
         "role": user.role,
         "is_active": user.is_active,
         "avatar": user.avatar,
@@ -103,7 +100,6 @@ async def create_user(
         email=data.email,
         phone=data.phone,
         whatsapp_phone=data.whatsapp_phone,
-        telegram_chat_id=data.telegram_chat_id,
         role=data.role,
         hashed_password=get_password_hash(data.password),
         specialization=specs,

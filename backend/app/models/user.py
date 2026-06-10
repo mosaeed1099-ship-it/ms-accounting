@@ -20,7 +20,6 @@ class User(Base):
     email = Column(String(150), unique=True, index=True, nullable=False)
     phone = Column(String(20))
     whatsapp_phone = Column(String(20))       # رقم واتساب (للإشعارات التلقائية)
-    telegram_chat_id = Column(String(50))     # Telegram Chat ID (للإشعارات التلقائية)
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.ACCOUNTANT)
     is_active = Column(Boolean, default=True)
