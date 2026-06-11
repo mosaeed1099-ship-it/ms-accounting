@@ -4660,7 +4660,8 @@ async function _tcRenderVat(el) {
   el.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="font-size:15px;font-weight:700;color:#1e293b">🧾 إقرارات ض.ق.م. — ${escH(_tcClientName)}</div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="tcVatExcelModal()" style="font-size:12px;background:#f0fdf4;border-color:#86efac;color:#15803d">📊 رفع ملف Excel فواتير</button>
       <button class="btn btn-secondary" onclick="tcVatBuildManualModal()" style="font-size:12px">✏️ إدخال يدوي</button>
       <button class="btn btn-primary" onclick="tcVatBuild()">⚡ بناء إقرار ${TC_MONTH_AR[_tcMonth]} ${_tcYear}</button>
     </div>
@@ -4953,6 +4954,34 @@ async function _renderVatWorkflow(id) {
       </div>
     </div>
 
+    <!-- Editable Adjustments: رصيد دائن + إجمالي مشتريات -->
+    ${(ret.status === 'draft' || ret.status === 'reviewed') ? `
+    <div style="background:#f8fafc;border-radius:14px;padding:16px;margin-bottom:20px;border:1.5px solid #e2e8f0">
+      <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:12px">✏️ تعديلات يدوية على الإقرار</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:12px;font-weight:700;color:#1a2472;display:block;margin-bottom:4px">💳 رصيد دائن من فترة سابقة (ج.م)</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="vatCreditInput" type="number" min="0" step="0.01" class="input" style="flex:1;font-size:13px"
+              placeholder="0.00" value="${ret.previous_period_credit||0}"
+              oninput="document.getElementById('vatCreditSaveBtn').style.background='#1a2472';document.getElementById('vatCreditSaveBtn').disabled=false"/>
+            <button id="vatCreditSaveBtn" onclick="window.vatSaveCredit(${id})" class="btn btn-primary" style="font-size:12px;padding:6px 10px;white-space:nowrap">💾 حفظ</button>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px">لو الشركة عندها رصيد دائن من الشهر اللي فات</div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:700;color:#1a2472;display:block;margin-bottom:4px">🛒 إجمالي المشتريات الخاضعة (ج.م)</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="vatPurchInput" type="number" min="0" step="0.01" class="input" style="flex:1;font-size:13px"
+              placeholder="0.00" value="${ret.in_std_taxable||0}"
+              oninput="document.getElementById('vatPurchSaveBtn').style.background='#1a2472';document.getElementById('vatPurchSaveBtn').disabled=false"/>
+            <button id="vatPurchSaveBtn" onclick="window.vatSavePurch(${id})" class="btn btn-primary" style="font-size:12px;padding:6px 10px;white-space:nowrap">💾 حفظ</button>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px">سيتم إعادة حساب ض.ق.م. تلقائياً (14%)</div>
+        </div>
+      </div>
+    </div>` : ''}
+
     <!-- Net VAT Due -->
     <div style="background:${(ret.net_vat_due||0)>0?'#fef2f2':'#f0fdf4'};border-radius:16px;padding:20px;text-align:center;margin-bottom:20px;border:2px solid ${(ret.net_vat_due||0)>0?'#fca5a5':'#86efac'}">
       <div style="font-size:12px;color:#64748b;margin-bottom:6px">صافي الضريبة المستحقة</div>
@@ -5202,6 +5231,171 @@ window.tcVatMarkPaid = async function(id) {
 
 // legacy alias
 window.tcVatView = window.tcVatWorkflow;
+
+window.vatSaveCredit = async function(id) {
+  const val = parseFloat(document.getElementById('vatCreditInput')?.value || 0);
+  try {
+    await api('PUT', `/api/tax-center/vat/${id}`, {previous_period_credit: val});
+    toast('✅ تم حفظ الرصيد الدائن');
+    await _renderVatWorkflow(id);
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+window.vatSavePurch = async function(id) {
+  const val = parseFloat(document.getElementById('vatPurchInput')?.value || 0);
+  try {
+    await api('PUT', `/api/tax-center/vat/${id}`, {in_std_taxable: val});
+    toast('✅ تم حفظ إجمالي المشتريات — الضريبة أُعيد حسابها');
+    await _renderVatWorkflow(id);
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// ── VAT EXCEL UPLOAD ─────────────────────────────────────────────────────────
+window.tcVatExcelModal = function() {
+  const curYear = _tcYear || new Date().getFullYear();
+  const curMonth = _tcMonth || (new Date().getMonth() + 1);
+  const monthOpts = Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===curMonth?'selected':''}>${TC_MONTH_AR[i+1]}</option>`).join('');
+  const yearOpts = [curYear-1, curYear, curYear+1].map(y=>`<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`).join('');
+
+  const html = `
+  <div class="modal-backdrop" id="vatExcelModal">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <h3>📊 رفع ملف Excel مجمع — فواتير المبيعات والمشتريات</h3>
+        <button onclick="document.getElementById('vatExcelModal').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+        <div style="background:#f0fdf4;border-radius:10px;padding:12px;font-size:13px;color:#15803d;border:1px solid #86efac">
+          💡 ارفع ملف Excel يحتوي على كافة فواتير المبيعات والمشتريات — الملف سيتم حفظه وتنظيمه تلقائياً حسب الشهر.
+        </div>
+        <!-- الشهر والسنة -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="label" style="font-weight:700">📅 الشهر</label>
+            <select id="vatExcelMonth" class="input">${monthOpts}</select>
+          </div>
+          <div>
+            <label class="label" style="font-weight:700">📅 السنة</label>
+            <select id="vatExcelYear" class="input">${yearOpts}</select>
+          </div>
+        </div>
+        <!-- نوع الملف -->
+        <div>
+          <label class="label" style="font-weight:700">📂 نوع الملف</label>
+          <select id="vatExcelType" class="input">
+            <option value="all">📊 مجمع (مبيعات + مشتريات)</option>
+            <option value="sales">📤 فواتير مبيعات فقط</option>
+            <option value="purchases">📥 فواتير مشتريات فقط</option>
+          </select>
+        </div>
+        <!-- رفع الملف -->
+        <div>
+          <label class="label" style="font-weight:700">📎 اختر ملف Excel (.xlsx / .xls)</label>
+          <div style="border:2px dashed #86efac;border-radius:10px;padding:16px;text-align:center;background:#f0fdf4;cursor:pointer;transition:all .2s"
+               onclick="document.getElementById('vatExcelFileInput').click()"
+               ondragover="event.preventDefault();this.style.borderColor='#15803d'"
+               ondragleave="this.style.borderColor='#86efac'"
+               ondrop="event.preventDefault();this.style.borderColor='#86efac';window._vatExcelHandleDrop(event)">
+            <input id="vatExcelFileInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._vatExcelHandleSelect(this)"/>
+            <div id="vatExcelPreview">
+              <div style="font-size:28px;margin-bottom:6px">📊</div>
+              <div style="font-weight:600;color:#374151;font-size:13px">اسحب ملف Excel هنا أو اضغط للاختيار</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px">.xlsx, .xls, .csv</div>
+            </div>
+          </div>
+        </div>
+        <!-- قائمة الملفات المرفوعة لهذا العميل -->
+        <div id="vatExcelExistingArea"></div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="document.getElementById('vatExcelModal').remove()" class="btn btn-secondary">إغلاق</button>
+        <button id="vatExcelUploadBtn" class="btn btn-primary" style="background:#94a3b8;cursor:not-allowed" disabled onclick="window.tcVatExcelUpload()">📎 اختر ملف أولاً</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  window._vatExcelFile = null;
+
+  window._vatExcelHandleSelect = function(inp) {
+    const f = inp.files[0]; if (!f) return;
+    window._vatExcelFile = f;
+    window._vatExcelUpdatePreview(f.name, f.size);
+  };
+  window._vatExcelHandleDrop = function(e) {
+    const f = e.dataTransfer.files[0]; if (!f) return;
+    window._vatExcelFile = f;
+    window._vatExcelUpdatePreview(f.name, f.size);
+  };
+  window._vatExcelUpdatePreview = function(name, size) {
+    const kb = (size/1024).toFixed(1);
+    document.getElementById('vatExcelPreview').innerHTML = `
+      <div style="font-size:28px;margin-bottom:6px">✅</div>
+      <div style="font-weight:700;color:#15803d;font-size:13px">تم اختيار الملف:</div>
+      <div style="font-size:12px;color:#1e293b;font-weight:600;margin-top:4px;word-break:break-all">${escH(name)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">${kb} KB — اضغط لتغيير الملف</div>`;
+    const btn = document.getElementById('vatExcelUploadBtn');
+    if (btn) { btn.disabled=false; btn.style.background='#15803d'; btn.style.cursor='pointer'; btn.textContent='📊 رفع الملف'; }
+  };
+
+  // Load existing excel files for this client
+  window._vatExcelLoadExisting();
+};
+
+window._vatExcelLoadExisting = async function() {
+  const area = document.getElementById('vatExcelExistingArea');
+  if (!area || !_tcClientId) return;
+  try {
+    const res = await api('GET', `/api/documents?client_id=${_tcClientId}&category=TAX&page_size=50`);
+    const excelFiles = (res.items||[]).filter(d => d.name?.includes('فواتير') || d.tags?.includes('vat_invoices') || ['.xlsx','.xls','.csv'].some(e => d.name?.endsWith(e)));
+    if (!excelFiles.length) return;
+    area.innerHTML = `
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">📁 ملفات Excel المرفوعة سابقاً</div>
+        <div style="max-height:160px;overflow-y:auto;border-radius:8px;border:1px solid #e2e8f0">
+          ${excelFiles.map(d=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">
+            <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+              <span style="font-size:16px">📊</span>
+              <div style="min-width:0">
+                <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(d.name)}</div>
+                <div style="color:#64748b;font-size:11px">${d.year?TC_MONTH_AR[d.month]+' '+d.year:''} — ${d.uploaded_by||''} — ${d.created_at?.slice(0,10)||''}</div>
+              </div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>`;
+  } catch(e) {}
+};
+
+window.tcVatExcelUpload = async function() {
+  if (!window._vatExcelFile) { toast('اختر ملف أولاً', 'error'); return; }
+  const month = parseInt(document.getElementById('vatExcelMonth')?.value);
+  const year  = parseInt(document.getElementById('vatExcelYear')?.value);
+  const type  = document.getElementById('vatExcelType')?.value || 'all';
+  const typeLabel = type==='sales'?'مبيعات':type==='purchases'?'مشتريات':'مبيعات ومشتريات';
+  const btn = document.getElementById('vatExcelUploadBtn');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ جاري الرفع...'; }
+  try {
+    const fd = new FormData();
+    fd.append('file', window._vatExcelFile);
+    if (_tcClientId) fd.append('client_id', _tcClientId);
+    fd.append('category', 'TAX');
+    fd.append('description', `فواتير ${typeLabel} — ${TC_MONTH_AR[month]} ${year} — ${escH(_tcClientName||'')}`);
+    fd.append('tags', `vat_invoices,${type},${year},${month}`);
+    fd.append('year', year);
+    fd.append('month', month);
+    const token = localStorage.getItem('token');
+    const res = await fetch(API_BASE + '/api/documents/upload', {
+      method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
+    });
+    if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'فشل الرفع'); }
+    toast(`✅ تم رفع ملف فواتير ${TC_MONTH_AR[month]} ${year} بنجاح`);
+    document.getElementById('vatExcelModal')?.remove();
+  } catch(e) {
+    toast(e.message, 'error');
+    if (btn) { btn.disabled=false; btn.style.background='#15803d'; btn.textContent='📊 رفع الملف'; }
+  }
+};
 
 // ── WITHHOLDING ─────────────────────────────────────────────────────────────
 async function _tcRenderWht(el) {

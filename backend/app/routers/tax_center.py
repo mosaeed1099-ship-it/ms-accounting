@@ -124,6 +124,8 @@ class VATUpdateRequest(BaseModel):
     manual_notes:           Optional[str] = None
     in_partial_recovery_pct: Optional[float] = None
     refund_requested:       Optional[bool] = None
+    in_std_taxable:         Optional[float] = None   # إجمالي المشتريات الخاضعة
+    out_std_taxable:        Optional[float] = None   # إجمالي المبيعات الخاضعة
 
 
 class VATSubmitRequest(BaseModel):
@@ -309,6 +311,12 @@ def update_vat_return(
         ret.in_partial_recovery_pct = req.in_partial_recovery_pct
     if req.refund_requested is not None:
         ret.refund_requested = req.refund_requested
+    if req.in_std_taxable is not None:
+        ret.in_std_taxable = req.in_std_taxable
+        ret.in_std_vat = round(req.in_std_taxable * 0.14, 2)
+    if req.out_std_taxable is not None:
+        ret.out_std_taxable = req.out_std_taxable
+        ret.out_std_vat = round(req.out_std_taxable * 0.14, 2)
 
     recompute_totals(ret)
     late_days, penalty = compute_penalty(float(ret.net_vat_due or 0), ret.due_date)
