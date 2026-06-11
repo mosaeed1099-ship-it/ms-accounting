@@ -4429,8 +4429,9 @@ let _taxTab = 'dashboard';  // legacy compat
 let _tcTab = 'dashboard';
 let _tcClientId = null;
 let _tcClientName = '';
-let _tcYear = new Date().getFullYear();
-let _tcMonth = new Date().getMonth() + 1;
+// Default to previous month — we always file for last month
+let _tcYear  = new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear();
+let _tcMonth = new Date().getMonth() === 0 ? 12 : new Date().getMonth(); // getMonth() is 0-based → -1 gives prev month
 let _tcAllClients = [];       // all clients cached
 let _tcOblMap = {};           // client_id → Set of obligation_types
 
