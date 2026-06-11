@@ -1470,6 +1470,8 @@ function renderApp() {
   // Start connection monitor (keeps checking every 30s + handles offline/online events)
   _startConnMonitor();
 
+  const _urlPage = new URLSearchParams(location.search).get('goto');
+  if (_urlPage) currentPage = _urlPage;
   navigate(currentPage);
 
   // ── Start real-time sync engine ──
