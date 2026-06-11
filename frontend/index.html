@@ -5742,6 +5742,7 @@ function toWAPhone(raw) {
 const LEAD_STATUS_COLORS={interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
 const LEAD_STATUS_LABEL={interested:'مهتم',not_answered:'لم يرد',call_later:'كلمني لاحقاً',quotation_sent:'عرض مرسل',under_establishment:'قيد التأسيس',lost:'خسارة'};
 const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',call_later:'#fefce8',lost:'#fef2f2'};
+const LEAD_ROW_BG_ALT={interested:'#dcfce7',not_answered:'#e2e8f0',call_later:'#fef9c3',lost:'#fee2e2'};
 
 const LEAD_DEFAULT_DELIVERABLES = [
   'عقد تأسيس',
@@ -5847,25 +5848,25 @@ function renderLeads(stats) {
     <button class="btn btn-primary" onclick="addLeadRow()">+ إضافة صف</button>
   </div>
   <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-    <table id="leadsGrid" style="width:100%;border-collapse:collapse;min-width:1050px">
+    <table id="leadsGrid" style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:1100px">
       <thead>
-        <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
-          <th style="padding:8px 8px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;width:68px">الكود</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:130px">اسم العميل *</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:105px">رقم الهاتف</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:140px">البريد الإلكتروني</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:120px">نشاط الشركة</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:145px">الكيان القانوني</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:100px">الأتعاب (ج.م.)</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:82px">رأس المال</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:95px">المقر</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:right;white-space:nowrap;min-width:115px">الحالة</th>
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#64748b;text-align:center;white-space:nowrap;width:96px">إجراءات</th>
+        <tr style="background:#1e3a5f;border-bottom:2px solid #1a2472">
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:72px">الكود</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:130px">اسم العميل *</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:108px">رقم الهاتف</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:148px">البريد الإلكتروني</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:125px">نشاط الشركة</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:140px">الكيان القانوني</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:100px">الأتعاب (ج.م.)</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:95px">رأس المال</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:85px">المقر</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:110px">الحالة</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:96px">إجراءات</th>
           <th style="padding:8px 4px;width:28px"></th>
         </tr>
       </thead>
       <tbody id="leadsGridBody">
-        ${leadsData.map(l=>_buildLeadRow(l)).join('')}
+        ${leadsData.map((l,i)=>_buildLeadRow(l,i)).join('')}
         ${leadsData.length===0?`<tr><td colspan="12" style="text-align:center;padding:55px;color:#94a3b8"><div style="font-size:38px;margin-bottom:10px">🎯</div><div style="font-size:15px;font-weight:600;color:#475569;margin-bottom:6px">لا يوجد عملاء في هذه الفترة</div><div style="font-size:13px;color:#94a3b8">${leadsDateFilter!=='all'?`الفلتر الحالي: <b>${LEADS_DATE_LABELS[leadsDateFilter]||'مخصص'}</b> — جرّب <span onclick="setLeadsDateFilter('all')" style="color:#1a2472;cursor:pointer;text-decoration:underline">عرض جميع البيانات</span>`:'اضغط "+ إضافة صف" لإضافة عميل جديد'}</div></td></tr>`:''}
       </tbody>
     </table>
@@ -5983,31 +5984,32 @@ function _initLeadsKeyboard() {
 }
 
 function _cellInput(field,val,extra=''){
-  return `<input autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;transition:border-color .15s,background .15s" data-field="${field}" value="${escH(val||'')}" ${extra} onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)"/>`;
+  return `<input autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-weight:600;font-family:inherit;background:transparent;outline:none;text-align:center;transition:border-color .15s,background .15s" data-field="${field}" value="${escH(val||'')}" ${extra} onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)"/>`;
 }
 function _cellSelect(field,optsHtml,extraStyle=''){
-  return `<select style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:4px 5px;font-size:12px;font-family:inherit;background:transparent;outline:none;cursor:pointer;text-align:center;${extraStyle}" data-field="${field}" onchange="saveLeadCell(this)">${optsHtml}</select>`;
+  return `<select style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:4px 5px;font-size:12px;font-weight:600;font-family:inherit;background:transparent;outline:none;cursor:pointer;text-align:center;${extraStyle}" data-field="${field}" onchange="saveLeadCell(this)">${optsHtml}</select>`;
 }
 
-function _buildLeadRow(l){
+function _buildLeadRow(l,idx=0){
   const sc=LEAD_STATUS_COLORS[l.status]||'#94a3b8';
   const statOpts=Object.entries(LEAD_STATUS_LABEL).map(([v,lbl])=>`<option value="${v}" ${l.status===v?'selected':''}>${lbl}</option>`).join('');
-  const rowBg = LEAD_ROW_BG[l.status] || '';
+  const isEven = idx%2===0;
+  const rowBg = isEven ? (LEAD_ROW_BG[l.status]||'#ffffff') : (LEAD_ROW_BG_ALT[l.status]||'#eef2ff');
   const isNew = !l.id;
   const expandId = `lead-expand-${l.id||'new'}`;
   const legalVal = l.quote_legal_entity || (COMPANY_TYPE_FULL[l.company_type||'']||'');
   const totalFeesVal = l.quote_total_fees!=null ? l.quote_total_fees : '';
 
   const fmtNum = v => (v!=null&&v!==''&&!isNaN(Number(v))) ? Number(v).toLocaleString('en-US') : '';
-  const mainRow = `<tr data-id="${l.id||'new'}" style="border-bottom:${isNew?'2px solid #e0e7ff':'1px solid #f1f5f9'};background:${rowBg}" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
+  const mainRow = `<tr data-id="${l.id||'new'}" style="border-bottom:${isNew?'2px solid #e0e7ff':'1px solid #d1d9e8'};background:${rowBg};border-right:3px solid ${sc}" onmouseover="this.style.filter='brightness(0.95)'" onmouseout="this.style.filter=''">
     <td style="padding:3px 8px;white-space:nowrap;text-align:center"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 5px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
     <td style="padding:2px 5px;text-align:center">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
     <td style="padding:2px 5px;text-align:center">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr;text-align:center"')}</td>
-    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;direction:ltr;text-align:center;transition:border-color .15s,background .15s" data-field="email" type="text" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-weight:600;font-family:inherit;background:transparent;outline:none;direction:ltr;text-align:center;transition:border-color .15s,background .15s" data-field="email" type="text" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
     <td style="padding:2px 5px;text-align:center">${_cellInput('company_activities',l.company_activities,'placeholder="تجارة، خدمات..."')}</td>
-    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="ش.م.م / فردي..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
-    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;direction:ltr" data-field="quote_total_fees" type="text" inputmode="numeric" value="${escH(fmtNum(totalFeesVal))}" placeholder="0" onfocus="this.value=this.value.replace(/,/g,'');this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="const n=parseFloat(this.value.replace(/,/g,''));this.value=isNaN(n)?'':n.toLocaleString('en-US');this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
-    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;direction:ltr" data-field="estimated_capital" type="text" inputmode="numeric" value="${escH(fmtNum(l.estimated_capital!=null?l.estimated_capital:''))}" placeholder="0" onfocus="this.value=this.value.replace(/,/g,'');this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="const n=parseFloat(this.value.replace(/,/g,''));this.value=isNaN(n)?'':n.toLocaleString('en-US');this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)" /></td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-weight:600;font-family:inherit;background:transparent;outline:none;text-align:center;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="ش.م.م / فردي..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-weight:600;font-family:inherit;background:transparent;outline:none;text-align:center;direction:ltr" data-field="quote_total_fees" type="text" inputmode="numeric" value="${escH(fmtNum(totalFeesVal))}" placeholder="0" onfocus="this.value=this.value.replace(/,/g,'');this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="const n=parseFloat(this.value.replace(/,/g,''));this.value=isNaN(n)?'':n.toLocaleString('en-US');this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-weight:600;font-family:inherit;background:transparent;outline:none;text-align:center;direction:ltr" data-field="estimated_capital" type="text" inputmode="numeric" value="${escH(fmtNum(l.estimated_capital!=null?l.estimated_capital:''))}" placeholder="0" onfocus="this.value=this.value.replace(/,/g,'');this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="const n=parseFloat(this.value.replace(/,/g,''));this.value=isNaN(n)?'':n.toLocaleString('en-US');this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)" /></td>
     <td style="padding:2px 5px;text-align:center">${_cellInput('quote_location',l.quote_location||'','placeholder="القاهرة..."')}</td>
     <td style="padding:2px 5px;text-align:center">${_cellSelect('status',statOpts,`background:${sc}18;color:${sc};font-weight:700;border-color:${sc}44`)}</td>
     <td style="padding:2px 5px;text-align:center;white-space:nowrap">
