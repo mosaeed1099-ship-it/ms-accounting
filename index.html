@@ -5983,10 +5983,10 @@ function _initLeadsKeyboard() {
 }
 
 function _cellInput(field,val,extra=''){
-  return `<input autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="${field}" value="${escH(val||'')}" ${extra} onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)"/>`;
+  return `<input autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;transition:border-color .15s,background .15s" data-field="${field}" value="${escH(val||'')}" ${extra} onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)"/>`;
 }
 function _cellSelect(field,optsHtml,extraStyle=''){
-  return `<select style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:4px 5px;font-size:12px;font-family:inherit;background:transparent;outline:none;cursor:pointer;${extraStyle}" data-field="${field}" onchange="saveLeadCell(this)">${optsHtml}</select>`;
+  return `<select style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:4px 5px;font-size:12px;font-family:inherit;background:transparent;outline:none;cursor:pointer;text-align:center;${extraStyle}" data-field="${field}" onchange="saveLeadCell(this)">${optsHtml}</select>`;
 }
 
 function _buildLeadRow(l){
@@ -5998,17 +5998,18 @@ function _buildLeadRow(l){
   const legalVal = l.quote_legal_entity || (COMPANY_TYPE_FULL[l.company_type||'']||'');
   const totalFeesVal = l.quote_total_fees!=null ? l.quote_total_fees : '';
 
+  const fmtNum = v => (v!=null&&v!==''&&!isNaN(Number(v))) ? Number(v).toLocaleString('en-US') : '';
   const mainRow = `<tr data-id="${l.id||'new'}" style="border-bottom:${isNew?'2px solid #e0e7ff':'1px solid #f1f5f9'};background:${rowBg}" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
-    <td style="padding:3px 8px;white-space:nowrap"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 5px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
-    <td style="padding:2px 5px">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
-    <td style="padding:2px 5px">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr"')}</td>
-    <td style="padding:2px 5px"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;direction:ltr;transition:border-color .15s,background .15s" data-field="email" type="text" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
-    <td style="padding:2px 5px">${_cellInput('company_activities',l.company_activities,'placeholder="تجارة، خدمات..."')}</td>
-    <td style="padding:2px 5px"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="ش.م.م / فردي..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
-    <td style="padding:2px 5px"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:left;direction:ltr" data-field="quote_total_fees" type="number" value="${escH(String(totalFeesVal))}" placeholder="0" onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
-    <td style="padding:2px 5px">${_cellInput('estimated_capital',l.estimated_capital!=null?l.estimated_capital:'','type="number" placeholder="0" style="direction:ltr"')}</td>
-    <td style="padding:2px 5px">${_cellInput('quote_location',l.quote_location||'','placeholder="القاهرة..."')}</td>
-    <td style="padding:2px 5px">${_cellSelect('status',statOpts,`background:${sc}18;color:${sc};font-weight:700;border-color:${sc}44`)}</td>
+    <td style="padding:3px 8px;white-space:nowrap;text-align:center"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 5px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
+    <td style="padding:2px 5px;text-align:center">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
+    <td style="padding:2px 5px;text-align:center">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr;text-align:center"')}</td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;direction:ltr;text-align:center;transition:border-color .15s,background .15s" data-field="email" type="text" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:2px 5px;text-align:center">${_cellInput('company_activities',l.company_activities,'placeholder="تجارة، خدمات..."')}</td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;transition:border-color .15s,background .15s" data-field="quote_legal_entity" value="${escH(legalVal)}" placeholder="ش.م.م / فردي..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;direction:ltr" data-field="quote_total_fees" type="text" inputmode="numeric" value="${escH(fmtNum(totalFeesVal))}" placeholder="0" onfocus="this.value=this.value.replace(/,/g,'');this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="const n=parseFloat(this.value.replace(/,/g,''));this.value=isNaN(n)?'':n.toLocaleString('en-US');this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
+    <td style="padding:2px 5px;text-align:center"><input autocomplete="off" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;background:transparent;outline:none;text-align:center;direction:ltr" data-field="estimated_capital" type="text" inputmode="numeric" value="${escH(fmtNum(l.estimated_capital!=null?l.estimated_capital:''))}" placeholder="0" onfocus="this.value=this.value.replace(/,/g,'');this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="const n=parseFloat(this.value.replace(/,/g,''));this.value=isNaN(n)?'':n.toLocaleString('en-US');this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this)" /></td>
+    <td style="padding:2px 5px;text-align:center">${_cellInput('quote_location',l.quote_location||'','placeholder="القاهرة..."')}</td>
+    <td style="padding:2px 5px;text-align:center">${_cellSelect('status',statOpts,`background:${sc}18;color:${sc};font-weight:700;border-color:${sc}44`)}</td>
     <td style="padding:2px 5px;text-align:center;white-space:nowrap">
       ${l.id ? `<div style="display:flex;align-items:center;justify-content:center;gap:3px;flex-wrap:nowrap">
         <button onclick="toggleLeadExpand(${l.id})" id="expand-btn-${l.id}"
@@ -6326,8 +6327,10 @@ async function saveLeadCell(el) {
   const rowId=row.dataset.id;
   const field=el.dataset.field;
   let value;
+  const _numFields=['quote_total_fees','estimated_capital'];
   if(el.type==='checkbox') value=el.checked;
   else if(el.type==='number') value=el.value!==''?parseFloat(el.value):null;
+  else if(_numFields.includes(field)){const raw=el.value.replace(/,/g,'');value=raw!==''&&!isNaN(Number(raw))?parseFloat(raw):null;}
   else value=el.value||null;
 
   if(rowId==='new' || rowId.startsWith('new-')){
@@ -6340,6 +6343,7 @@ async function saveLeadCell(el) {
       const f=inp.dataset.field;
       if(inp.type==='checkbox') body[f]=inp.checked;
       else if(inp.type==='number') body[f]=inp.value!==''?parseFloat(inp.value):null;
+      else if(_numFields.includes(f)){const r=inp.value.replace(/,/g,'');body[f]=r!==''&&!isNaN(Number(r))?parseFloat(r):null;}
       else body[f]=inp.value||null;
     });
     try {
