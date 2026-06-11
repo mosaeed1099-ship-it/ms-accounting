@@ -12,7 +12,7 @@ from datetime import date, datetime
 from app.database import get_db
 from app.core.deps import get_current_user
 from app.models.collection import (
-    CollectionContract, CollectionPayment, MonthlyDue,
+    CollectionContract, CollectionPayment, CollectionExpense, MonthlyDue,
     CollectionType, PaymentStatus, PaymentMethod
 )
 from app.models.client import Client
@@ -27,7 +27,8 @@ ARABIC_MONTHS = ["يناير","فبراير","مارس","أبريل","مايو",
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
 class ContractCreate(BaseModel):
-    client_id: int
+    client_id: Optional[int] = None
+    client_name_free: Optional[str] = None     # اسم حر — بديل عن client_id
     collection_type: CollectionType
     title: str
     agreed_amount: float
@@ -38,6 +39,14 @@ class ContractCreate(BaseModel):
     assigned_to: Optional[int] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class ExpenseCreate(BaseModel):
+    description: str
+    category: Optional[str] = None
+    amount: float
+    expense_date: Optional[date] = None
     notes: Optional[str] = None
 
 
@@ -69,10 +78,14 @@ class PaymentCreate(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def contract_to_dict(c: CollectionContract) -> dict:
+    total_expenses = sum(e.amount for e in c.expenses) if c.expenses else 0
+    net_profit = (c.total_paid or 0) - total_expenses
+    profit_pct = round(net_profit / c.total_paid * 100, 1) if c.total_paid else 0
     return {
         "id": c.id,
         "client_id": c.client_id,
-        "client_name": c.client.name if c.client else None,
+        "client_name": c.client.name if c.client else (c.client_name_free or None),
+        "client_name_free": c.client_name_free,
         "collection_type": c.collection_type,
         "title": c.title,
         "agreed_amount": c.agreed_amount,
@@ -82,6 +95,9 @@ def contract_to_dict(c: CollectionContract) -> dict:
         "recurring_day": c.recurring_day,
         "total_paid": c.total_paid,
         "total_remaining": c.total_remaining,
+        "total_expenses": total_expenses,
+        "net_profit": net_profit,
+        "profit_pct": profit_pct,
         "status": c.status,
         "assigned_to": c.assigned_to,
         "assigned_name": c.assigned_user.name if c.assigned_user else None,
@@ -106,6 +122,17 @@ def contract_to_dict(c: CollectionContract) -> dict:
                 "created_at": p.created_at,
             }
             for p in c.payments
+        ],
+        "expenses": [
+            {
+                "id": e.id,
+                "description": e.description,
+                "category": e.category,
+                "amount": e.amount,
+                "expense_date": e.expense_date,
+                "notes": e.notes,
+            }
+            for e in c.expenses
         ],
     }
 
@@ -218,12 +245,18 @@ def create_contract(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    client = db.query(Client).filter(Client.id == data.client_id).first()
-    if not client:
-        raise HTTPException(404, "العميل غير موجود")
+    if not data.client_id and not data.client_name_free:
+        raise HTTPException(400, "يجب تحديد العميل أو كتابة اسمه")
+
+    client = None
+    if data.client_id:
+        client = db.query(Client).filter(Client.id == data.client_id).first()
+        if not client:
+            raise HTTPException(404, "العميل غير موجود")
 
     contract = CollectionContract(
         client_id=data.client_id,
+        client_name_free=data.client_name_free,
         collection_type=data.collection_type,
         title=data.title,
         agreed_amount=data.agreed_amount,
@@ -305,7 +338,7 @@ def add_payment(
     pm_val = data.payment_method.value if hasattr(data.payment_method, 'value') else str(data.payment_method)
     payment = CollectionPayment(
         contract_id=data.contract_id,
-        client_id=contract.client_id,
+        client_id=contract.client_id or None,
         amount=data.amount,
         payment_date=data.payment_date,
         payment_method=pm_val,
@@ -341,12 +374,13 @@ def add_payment(
     try:
         from app.routers.office_finance import auto_capture_revenue
         from app.models.client import Client
-        client = db.query(Client).filter(Client.id == contract.client_id).first()
+        client = db.query(Client).filter(Client.id == contract.client_id).first() if contract.client_id else None
+        client_display = client.name if client else (contract.client_name_free or str(contract.client_id or ''))
         auto_capture_revenue(
             db, amount=data.amount, category="accounting",
             tx_date=data.payment_date,
-            description=f"تحصيل محاسبة — {client.name if client else contract.client_id}",
-            client_name=client.name if client else None,
+            description=f"تحصيل محاسبة — {client_display}",
+            client_name=client_display,
             source_type="collection", source_id=payment.id,
             created_by=current_user.id,
         )
@@ -371,6 +405,51 @@ def delete_payment(
     update_contract_totals(contract, db)
     db.commit()
     return {"message": "تم حذف الدفعة"}
+
+
+# ── Expenses ─────────────────────────────────────────────────────────────────
+
+@router.post("/{contract_id}/expenses")
+def add_expense(
+    contract_id: int,
+    data: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    contract = db.query(CollectionContract).filter(CollectionContract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(404, "العقد غير موجود")
+    expense = CollectionExpense(
+        contract_id=contract_id,
+        description=data.description,
+        category=data.category,
+        amount=data.amount,
+        expense_date=data.expense_date,
+        notes=data.notes,
+        created_by=current_user.id,
+    )
+    db.add(expense)
+    db.commit()
+    db.refresh(contract)
+    return contract_to_dict(contract)
+
+
+@router.delete("/{contract_id}/expenses/{expense_id}")
+def delete_expense(
+    contract_id: int,
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    expense = db.query(CollectionExpense).filter(
+        CollectionExpense.id == expense_id,
+        CollectionExpense.contract_id == contract_id,
+    ).first()
+    if not expense:
+        raise HTTPException(404, "المصروف غير موجود")
+    db.delete(expense)
+    db.commit()
+    return {"message": "تم حذف المصروف"}
 
 
 # ── Monthly Dues ──────────────────────────────────────────────────────────────

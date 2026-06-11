@@ -34,7 +34,8 @@ class CollectionContract(Base):
     __tablename__ = "collection_contracts"
 
     id = Column(Integer, primary_key=True, index=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    client_name_free = Column(String(200))    # اسم حر للعميل (بدون ارتباط بالنظام)
     collection_type = Column(Enum(CollectionType), nullable=False)
 
     # بيانات الاتفاق
@@ -69,8 +70,27 @@ class CollectionContract(Base):
     client = relationship("Client", back_populates="collections")
     payments = relationship("CollectionPayment", back_populates="contract",
                             cascade="all, delete-orphan", order_by="CollectionPayment.payment_date")
+    expenses = relationship("CollectionExpense", back_populates="contract",
+                            cascade="all, delete-orphan", order_by="CollectionExpense.expense_date")
     assigned_user = relationship("User", foreign_keys=[assigned_to])
     creator = relationship("User", foreign_keys=[created_by])
+
+
+class CollectionExpense(Base):
+    """مصروف خاص بخدمة / عقد تحصيل"""
+    __tablename__ = "collection_expenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(Integer, ForeignKey("collection_contracts.id"), nullable=False)
+    description = Column(String(300), nullable=False)     # وصف المصروف
+    category = Column(String(100))                        # انتقالات / رسوم / متفرقات
+    amount = Column(Float, nullable=False)
+    expense_date = Column(Date)
+    notes = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    contract = relationship("CollectionContract", back_populates="expenses")
 
 
 class CollectionPayment(Base):
@@ -79,7 +99,7 @@ class CollectionPayment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     contract_id = Column(Integer, ForeignKey("collection_contracts.id"), nullable=False)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
 
     amount = Column(Float, nullable=False)
     payment_date = Column(Date, nullable=False)
@@ -104,7 +124,7 @@ class MonthlyDue(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     contract_id = Column(Integer, ForeignKey("collection_contracts.id"), nullable=False)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
 
     period_month = Column(Integer, nullable=False)
     period_year = Column(Integer, nullable=False)

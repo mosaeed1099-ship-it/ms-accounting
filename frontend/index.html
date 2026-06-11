@@ -9203,60 +9203,88 @@ async function showCollectionModal(type='establishment') {
   try{clients=await getClients();}catch(e){}
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
-  overlay.innerHTML=`<div class="modal" style="max-width:560px">
+  overlay.innerHTML=`<div class="modal" style="max-width:580px">
     <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${type==='monthly_fee'?'🔄 عقد أتعاب شهرية':'🏢 عقد تحصيل تأسيس'}</h2>
+      <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${type==='monthly_fee'?'🔄 أتعاب شهرية':'🏢 تحصيل تأسيس'} — خدمة جديدة</h2>
       <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
     </div>
-    <div style="padding:20px 24px">
-      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل *</label>
-        <select id="colClient" class="input">
+    <div style="padding:20px 24px;display:flex;flex-direction:column;gap:13px">
+
+      <!-- اسم العميل — حر أو من القائمة -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+          <label style="font-size:12px;font-weight:600;color:#374151">اسم العميل *</label>
+          <label style="font-size:11px;color:#1a2472;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="colUseDropdown" onchange="window._colToggleClient(this.checked)" style="accent-color:#1a2472"/>
+            اختر من قائمة العملاء
+          </label>
+        </div>
+        <input id="colClientFree" class="input" placeholder="اكتب اسم العميل بحرية..." style=""/>
+        <select id="colClientDrop" class="input" style="display:none;margin-top:6px">
           <option value="">— اختر العميل —</option>
           ${clients.map(c=>`<option value="${c.id}">${escH(c.name)}</option>`).join('')}
-        </select></div>
-      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">وصف العقد / الخدمة *</label>
-        <input id="colTitle" class="input" placeholder="${type==='monthly_fee'?'أتعاب محاسبة شهرية - 2026':'تأسيس شركة ذات مسئولية محدودة'}"/></div>
-      <div class="form-row" style="margin-bottom:14px">
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">إجمالي المبلغ المتفق عليه (ج.م.) *</label>
-          <input id="colAgreed" class="input" type="number" placeholder="${type==='monthly_fee'?'24000':'15000'}"/></div>
-        ${type==='monthly_fee'?`<div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">قيمة الشهر الواحد (ج.م.)</label>
-          <input id="colMonthly" class="input" type="number" placeholder="2000"/></div>`:'<div></div>'}
+        </select>
       </div>
-      ${type==='monthly_fee'?`<div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
+
+      <!-- وصف الخدمة -->
+      <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">وصف الخدمة *</label>
+        <input id="colTitle" class="input" placeholder="${type==='monthly_fee'?'أتعاب محاسبة شهرية — 2026':'تأسيس شركة ذات مسئولية محدودة'}"/></div>
+
+      <!-- المبالغ -->
+      <div class="form-row">
+        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">إجمالي المبلغ المتفق عليه (ج.م.) *</label>
+          <input id="colAgreed" class="input" type="number" min="0" placeholder="${type==='monthly_fee'?'24000':'15000'}"/></div>
+        ${type==='monthly_fee'?`<div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">قيمة الشهر الواحد (ج.م.)</label>
+          <input id="colMonthly" class="input" type="number" min="0" placeholder="2000"/></div>`:'<div></div>'}
+      </div>
+
+      ${type==='monthly_fee'?`<div style="display:flex;align-items:center;gap:10px">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="colRecurring" checked style="width:15px;height:15px;accent-color:#1a2472"> توليد استحقاقات شهرية تلقائياً
         </label>
       </div>`:''}
-      <div class="form-row" style="margin-bottom:14px">
+
+      <!-- التواريخ -->
+      <div class="form-row">
         <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ البداية</label>
           <input id="colStart" class="input" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
         <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">تاريخ الانتهاء</label>
           <input id="colEnd" class="input" type="date"/></div>
       </div>
+
       <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">ملاحظات</label>
         <textarea id="colNotes" class="input" rows="2" placeholder="ملاحظات..."></textarea></div>
     </div>
     <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
-      <button id="saveColBtn" class="btn btn-primary">💾 إنشاء العقد</button>
+      <button id="saveColBtn" class="btn btn-primary">💾 إنشاء الخدمة</button>
     </div>
   </div>`;
   document.body.append(overlay);
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+
+  window._colToggleClient = (useDropdown) => {
+    document.getElementById('colClientFree').style.display = useDropdown ? 'none' : '';
+    document.getElementById('colClientDrop').style.display = useDropdown ? '' : 'none';
+  };
+
   document.getElementById('saveColBtn').onclick=async()=>{
     const btn=document.getElementById('saveColBtn');
-    const clientId=parseInt($('#colClient',overlay).value);
+    const useDropdown = document.getElementById('colUseDropdown').checked;
+    const clientId = useDropdown ? parseInt($('#colClientDrop',overlay).value)||null : null;
+    const clientNameFree = !useDropdown ? $('#colClientFree',overlay).value.trim() : null;
     const title=$('#colTitle',overlay).value.trim();
     const agreed=parseFloat($('#colAgreed',overlay).value);
-    if(!clientId){toast('اختر العميل','error');return;}
-    if(!title){toast('وصف العقد مطلوب','error');return;}
+    if(!clientId && !clientNameFree){toast('اسم العميل مطلوب','error');return;}
+    if(!title){toast('وصف الخدمة مطلوب','error');return;}
     if(!agreed||agreed<=0){toast('المبلغ المتفق عليه مطلوب','error');return;}
     btn.disabled=true; btn.textContent='جاري الحفظ...';
     try {
       const monthly=type==='monthly_fee'?parseFloat($('#colMonthly',overlay)?.value)||0:0;
       const recurring=type==='monthly_fee'&&(document.getElementById('colRecurring')?.checked||false);
       await api('POST','/api/collections',{
-        client_id:clientId,
+        client_id: clientId||null,
+        client_name_free: clientNameFree||null,
         collection_type:type,
         title,
         agreed_amount:agreed,
@@ -9266,9 +9294,9 @@ async function showCollectionModal(type='establishment') {
         end_date:$('#colEnd',overlay).value||null,
         notes:$('#colNotes',overlay).value||null,
       });
-      toast('تم إنشاء عقد التحصيل بنجاح');
+      toast('تم إنشاء الخدمة بنجاح');
       overlay.remove(); loadCollections(true);
-    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💾 إنشاء العقد';}
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💾 إنشاء الخدمة';}
   };
 }
 
@@ -9416,49 +9444,195 @@ async function showCollectionDetail(contractId) {
   try {
     const c=await api('GET',`/api/collections/${contractId}`);
     if(!c) return;
-    const statusLabel={unpaid:'غير مدفوع',partial:'جزئي',paid:'مدفوع',overdue:'متأخر'};
-    const methodLabel={cash:'نقدي',bank_transfer:'تحويل بنكي',check:'شيك',instapay:'InstaPay',vodafone_cash:'Vodafone Cash'};
-    const overlay=document.createElement('div');
-    overlay.className='modal-overlay';
-    overlay.innerHTML=`<div class="modal" style="max-width:580px">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">${escH(c.title)}</h2>
-          <div style="font-size:12px;color:#64748b;margin-top:2px">${escH(c.client_name||'')} · ${statusLabel[c.status]||c.status}</div>
-        </div>
-        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
-      </div>
-      <div style="padding:16px 24px">
-        <!-- Totals -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-          <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:10px"><div style="font-size:16px;font-weight:800;color:#1a2472">${money(c.agreed_amount)}</div><div style="font-size:11px;color:#94a3b8">المتفق عليه</div></div>
-          <div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px"><div style="font-size:16px;font-weight:800;color:#16a34a">${money(c.total_paid)}</div><div style="font-size:11px;color:#94a3b8">المحصّل</div></div>
-          <div style="text-align:center;padding:12px;background:${c.total_remaining>0?'#fff5f5':'#f0fdf4'};border-radius:10px"><div style="font-size:16px;font-weight:800;color:${c.total_remaining>0?'#dc2626':'#16a34a'}">${money(c.total_remaining)}</div><div style="font-size:11px;color:#94a3b8">المتبقي</div></div>
-        </div>
-        <!-- Payments list -->
-        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">سجل الدفعات (${c.payments?.length||0})</div>
-        <div style="max-height:240px;overflow-y:auto">
-          ${!c.payments?.length
-            ?`<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">لا توجد دفعات مسجلة بعد</div>`
-            :c.payments.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f1f5f9">
-              <div>
-                <div style="font-size:14px;font-weight:700;color:#16a34a">${money(p.amount)}</div>
-                <div style="font-size:11px;color:#94a3b8">${dateAr(p.payment_date)} · ${methodLabel[p.payment_method]||p.payment_method||'—'} ${p.reference?'· '+p.reference:''}</div>
-                ${p.period_month?`<div style="font-size:10px;color:#5b8ec4">عن شهر: ${['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][p.period_month-1]} ${p.period_year}</div>`:''}
-              </div>
-              <div style="font-size:11px;color:#94a3b8">${escH(p.collector_name||'')}</div>
-            </div>`).join('')}
-        </div>
-      </div>
-      <div style="padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;gap:10px">
-        ${c.total_remaining>0?`<button class="btn btn-success" onclick="this.closest('.modal-overlay').remove();showCollectionPaymentModal(${c.id},${c.total_remaining},'${escH(c.title)}',${c.collection_type==='monthly_fee'})">💵 تسجيل دفعة</button>`:''}
-        <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
-      </div>
-    </div>`;
-    document.body.append(overlay);
-    overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+    _renderCollectionDetail(c);
   } catch(e){toast(e.message,'error');}
 }
+
+function _renderCollectionDetail(c) {
+  // Remove existing detail overlay for this contract if any
+  document.querySelectorAll('.col-detail-overlay').forEach(o=>o.remove());
+
+  const statusLabel={unpaid:'غير مدفوع',partial:'جزئي',paid:'مدفوع',overdue:'متأخر'};
+  const statusColor={unpaid:'#dc2626',partial:'#d97706',paid:'#16a34a',overdue:'#dc2626'};
+  const methodLabel={cash:'نقدي',bank_transfer:'تحويل بنكي',check:'شيك',instapay:'InstaPay',vodafone_cash:'Vodafone Cash'};
+  const MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+  const totalExpenses = c.total_expenses || 0;
+  const netProfit = c.net_profit || (c.total_paid - totalExpenses);
+  const profitPct = c.profit_pct || (c.total_paid ? Math.round(netProfit/c.total_paid*10)/10 : 0);
+
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay col-detail-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column">
+    <div style="padding:18px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">${escH(c.title)}</h2>
+        <div style="font-size:12px;color:#64748b;margin-top:3px">
+          👤 ${escH(c.client_name||'')}
+          &nbsp;·&nbsp;<span style="color:${statusColor[c.status]||'#64748b'};font-weight:600">${statusLabel[c.status]||c.status}</span>
+        </div>
+      </div>
+      <button onclick="this.closest('.col-detail-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+
+    <div style="overflow-y:auto;flex:1;padding:16px 24px;display:flex;flex-direction:column;gap:16px">
+
+      <!-- KPI row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        <div style="text-align:center;padding:10px 6px;background:#f8fafc;border-radius:10px">
+          <div style="font-size:14px;font-weight:800;color:#1a2472">${money(c.agreed_amount)}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">المتفق عليه</div>
+        </div>
+        <div style="text-align:center;padding:10px 6px;background:#f0fdf4;border-radius:10px">
+          <div style="font-size:14px;font-weight:800;color:#16a34a">${money(c.total_paid)}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">المحصّل</div>
+        </div>
+        <div style="text-align:center;padding:10px 6px;background:${c.total_remaining>0?'#fff5f5':'#f0fdf4'};border-radius:10px">
+          <div style="font-size:14px;font-weight:800;color:${c.total_remaining>0?'#dc2626':'#16a34a'}">${money(c.total_remaining)}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">المتبقي</div>
+        </div>
+        <div style="text-align:center;padding:10px 6px;background:#fff7ed;border-radius:10px">
+          <div style="font-size:14px;font-weight:800;color:#d97706">${money(totalExpenses)}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">المصروفات</div>
+        </div>
+      </div>
+
+      <!-- P&L bar -->
+      <div style="background:${netProfit>=0?'#f0fdf4':'#fff5f5'};border:1px solid ${netProfit>=0?'#bbf7d0':'#fecaca'};border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;gap:20px;flex-wrap:wrap">
+          <div><span style="font-size:11px;color:#64748b">إجمالي الإيراد: </span><strong style="color:#16a34a">${money(c.total_paid)}</strong></div>
+          <div><span style="font-size:11px;color:#64748b">إجمالي المصروفات: </span><strong style="color:#dc2626">${money(totalExpenses)}</strong></div>
+          <div><span style="font-size:11px;color:#64748b">صافي الربح: </span><strong style="color:${netProfit>=0?'#16a34a':'#dc2626'}">${money(netProfit)}</strong></div>
+        </div>
+        <div style="font-size:15px;font-weight:800;color:${netProfit>=0?'#16a34a':'#dc2626'}">%${profitPct}</div>
+      </div>
+
+      <!-- Payments -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:700;color:#374151">💵 الدفعات (${c.payments?.length||0})</div>
+          ${c.total_remaining>0?`<button class="btn btn-success btn-sm" id="addPayColBtn">+ دفعة جديدة</button>`:''}
+        </div>
+        <div style="border:1px solid #f1f5f9;border-radius:8px;overflow:hidden">
+          ${!c.payments?.length
+            ?`<div style="text-align:center;padding:16px;color:#94a3b8;font-size:13px">لا توجد دفعات بعد</div>`
+            :c.payments.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #f8fafc">
+                <div>
+                  <span style="font-size:13px;font-weight:700;color:#16a34a">${money(p.amount)}</span>
+                  <span style="font-size:11px;color:#94a3b8;margin-right:8px">${dateAr(p.payment_date)} · ${methodLabel[p.payment_method]||p.payment_method||'—'}${p.reference?' · '+p.reference:''}</span>
+                  ${p.period_month?`<span style="font-size:10px;color:#5b8ec4"> (${MONTHS[p.period_month-1]} ${p.period_year})</span>`:''}
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="font-size:11px;color:#94a3b8">${escH(p.collector_name||'')}</span>
+                  <button class="btn btn-sm" style="padding:2px 6px;font-size:11px;color:#dc2626;background:#fff5f5;border:1px solid #fecaca" onclick="window._colDelPayment(${p.id},${contractId})">🗑</button>
+                </div>
+              </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Expenses -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:700;color:#374151">📋 المصروفات (${c.expenses?.length||0})</div>
+          <button class="btn btn-secondary btn-sm" id="addExpBtn">+ مصروف</button>
+        </div>
+        <div id="expensesList" style="border:1px solid #f1f5f9;border-radius:8px;overflow:hidden">
+          ${!c.expenses?.length
+            ?`<div style="text-align:center;padding:16px;color:#94a3b8;font-size:13px">لا توجد مصروفات مسجلة</div>`
+            :c.expenses.map(e=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #f8fafc">
+                <div>
+                  <span style="font-size:13px;font-weight:600;color:#1e293b">${escH(e.description)}</span>
+                  ${e.category?`<span style="font-size:10px;color:#64748b;margin-right:6px;background:#f1f5f9;padding:1px 6px;border-radius:4px">${escH(e.category)}</span>`:''}
+                  ${e.expense_date?`<span style="font-size:10px;color:#94a3b8;margin-right:4px">${dateAr(e.expense_date)}</span>`:''}
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="font-size:13px;font-weight:700;color:#d97706">${money(e.amount)}</span>
+                  <button class="btn btn-sm" style="padding:2px 6px;font-size:11px;color:#dc2626;background:#fff5f5;border:1px solid #fecaca" onclick="window._colDelExpense(${e.id},${contractId})">🗑</button>
+                </div>
+              </div>`).join('')}
+        </div>
+        <!-- Add expense inline form -->
+        <div id="addExpForm" style="display:none;margin-top:8px;background:#f8fafc;border-radius:8px;padding:12px;display:none">
+          <div class="form-row" style="margin-bottom:8px">
+            <input id="expDesc" class="input" placeholder="وصف المصروف *" style="font-size:12px"/>
+            <select id="expCat" class="input" style="font-size:12px">
+              <option value="">— نوع المصروف —</option>
+              <option value="انتقالات">انتقالات</option>
+              <option value="رسوم حكومية">رسوم حكومية</option>
+              <option value="أتعاب خارجية">أتعاب خارجية</option>
+              <option value="متفرقات">متفرقات</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <input id="expAmount" class="input" type="number" min="0" placeholder="المبلغ *" style="font-size:12px"/>
+            <input id="expDate" class="input" type="date" value="${new Date().toISOString().split('T')[0]}" style="font-size:12px"/>
+            <button class="btn btn-primary btn-sm" id="saveExpBtn" style="white-space:nowrap">💾 حفظ</button>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('addExpForm').style.display='none'">إلغاء</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="padding:14px 24px;border-top:1px solid #f1f5f9;display:flex;gap:8px;flex-shrink:0">
+      ${c.total_remaining>0?`<button class="btn btn-success" id="addPayColBtnFoot">💵 تسجيل دفعة</button>`:''}
+      <button class="btn btn-secondary" onclick="this.closest('.col-detail-overlay').remove()">إغلاق</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+
+  // Pay buttons
+  const payHandler = () => { overlay.remove(); showCollectionPaymentModal(c.id,c.total_remaining,c.title,c.collection_type==='monthly_fee'); };
+  overlay.querySelector('#addPayColBtn')?.addEventListener('click', payHandler);
+  overlay.querySelector('#addPayColBtnFoot')?.addEventListener('click', payHandler);
+
+  // Add expense toggle
+  overlay.querySelector('#addExpBtn')?.addEventListener('click', ()=>{
+    const f=document.getElementById('addExpForm');
+    f.style.display = f.style.display==='none'?'block':'none';
+  });
+
+  // Save expense
+  overlay.querySelector('#saveExpBtn')?.addEventListener('click', async()=>{
+    const desc=document.getElementById('expDesc').value.trim();
+    const amt=parseFloat(document.getElementById('expAmount').value);
+    if(!desc){toast('وصف المصروف مطلوب','error');return;}
+    if(!amt||amt<=0){toast('المبلغ مطلوب','error');return;}
+    try {
+      await api('POST',`/api/collections/${c.id}/expenses`,{
+        description:desc,
+        category:document.getElementById('expCat').value||null,
+        amount:amt,
+        expense_date:document.getElementById('expDate').value||null,
+      });
+      toast('تم إضافة المصروف');
+      overlay.remove();
+      const updated = await api('GET',`/api/collections/${c.id}`);
+      _renderCollectionDetail(updated);
+    } catch(ex){toast(ex.message,'error');}
+  });
+}
+
+window._colDelPayment = async(payId, contractId)=>{
+  if(!confirm('حذف هذه الدفعة؟')) return;
+  try {
+    await api('DELETE',`/api/collections/payments/${payId}`);
+    toast('تم حذف الدفعة');
+    const updated = await api('GET',`/api/collections/${contractId}`);
+    _renderCollectionDetail(updated);
+  } catch(e){toast(e.message,'error');}
+};
+
+window._colDelExpense = async(expId, contractId)=>{
+  if(!confirm('حذف هذا المصروف؟')) return;
+  try {
+    await api('DELETE',`/api/collections/${contractId}/expenses/${expId}`);
+    toast('تم حذف المصروف');
+    const updated = await api('GET',`/api/collections/${contractId}`);
+    _renderCollectionDetail(updated);
+  } catch(e){toast(e.message,'error');}
+};
 
 // ── DATA IMPORT ────────────────────────────────────
 let importPreviewData = null;

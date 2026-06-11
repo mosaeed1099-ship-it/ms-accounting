@@ -203,6 +203,9 @@ def _run_migrations_pg():
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS activity_start_date DATE",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS activity_end_date DATE",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferred_lang VARCHAR(5) DEFAULT 'ar'",
+        # ── Collections — free-text client name ──────────────────────────────
+        "ALTER TABLE collection_contracts ADD COLUMN IF NOT EXISTS client_name_free VARCHAR(200)",
+        "ALTER TABLE collection_payments ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
