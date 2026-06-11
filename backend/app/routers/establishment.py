@@ -13,6 +13,7 @@ from app.core.deps import get_current_user
 from app.models.establishment import CompanyEstablishment, EstablishmentStatus
 from app.models.lead import LeadActivity
 from app.models.user import User
+from app.models.client import Client
 
 router = APIRouter(prefix="/api/establishment", tags=["establishment"])
 
@@ -147,6 +148,47 @@ def update_stage(
     db.commit()
     db.refresh(est)
     return est_to_dict(est)
+
+
+@router.post("/{est_id}/convert-to-client")
+def convert_to_client(
+    est_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """تحويل ملف التأسيس المكتمل إلى عميل في عملاء المكتب"""
+    est = db.query(CompanyEstablishment).filter(CompanyEstablishment.id == est_id).first()
+    if not est:
+        raise HTTPException(404, "ملف التأسيس غير موجود")
+    if est.client_id:
+        # Already linked — return existing client info
+        existing = db.query(Client).filter(Client.id == est.client_id).first()
+        return {"message": "الشركة مرتبطة بعميل مسبقاً", "client_id": est.client_id,
+                "client_name": existing.name if existing else None, "already_exists": True}
+
+    # Create new client
+    client = Client(
+        name=est.company_name,
+        activity=est.activity,
+        governorate=est.governorate,
+        status="active",
+        created_by=current_user.id,
+    )
+    db.add(client)
+    db.flush()
+
+    # Link back to establishment
+    est.client_id = client.id
+    est.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(client)
+
+    return {
+        "message": f"تم إنشاء العميل '{client.name}' بنجاح وربطه بملف التأسيس",
+        "client_id": client.id,
+        "client_name": client.name,
+        "already_exists": False,
+    }
 
 
 @router.put("/{est_id}")

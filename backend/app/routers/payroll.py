@@ -17,15 +17,19 @@ router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class EmployeeIn(BaseModel):
+    client_id: Optional[int] = None
     name: str
     national_id: Optional[str] = None
     job_title: Optional[str] = None
     department: Optional[str] = None
     hire_date: Optional[date] = None
+    insurance_start_date: Optional[date] = None
     base_salary: float = 0
+    variable_pay: Optional[float] = 0      # متغيرات / بونص
+    allowances: Optional[float] = 0        # بدلات معفاة
     insurance_number: Optional[str] = None
     insurance_share: float = 11.0
-    company_insurance: float = 18.0
+    company_insurance: float = 18.75
     bank_name: Optional[str] = None
     bank_account: Optional[str] = None
     phone: Optional[str] = None
@@ -50,16 +54,59 @@ class PayrollRunIn(BaseModel):
 
 # ── Employees ─────────────────────────────────────────────────────────────────
 
+def _calc_employee_tax(emp) -> dict:
+    """حساب ضريبة وتأمينات موظف واحد"""
+    base = emp.base_salary or 0
+    variable = getattr(emp, 'variable_pay', 0) or 0
+    allow = getattr(emp, 'allowances', 0) or 0
+    gross = base + variable
+    ins_base = min(max(base, 2500), 9400)
+    ins_emp  = round(ins_base * (emp.insurance_share or 11) / 100, 2)
+    ins_comp = round(ins_base * (emp.company_insurance or 18.75) / 100, 2)
+    # Monthly taxable
+    taxable_monthly = max(0, gross - allow - ins_emp - 1666.67)
+    # Annual progressive tax
+    annual_taxable = taxable_monthly * 12
+    exempt = 20000
+    t = max(0, annual_taxable - exempt)
+    brackets = [(40000,0),(15000,10),(20000,15),(20000,20),(100000,22.5),(205000,25)]
+    tax = 0.0
+    for size, rate in brackets:
+        if t <= 0: break
+        portion = min(t, size)
+        tax += round(portion * rate / 100, 2)
+        t -= portion
+    if t > 0: tax += round(t * 27.5 / 100, 2)
+    monthly_tax = round(tax / 12, 2)
+    net = round(gross - ins_emp - monthly_tax, 2)
+    return {
+        "gross": gross, "variable": variable, "allowances": allow,
+        "ins_emp": ins_emp, "ins_comp": ins_comp,
+        "monthly_tax": monthly_tax, "net": net,
+    }
+
+
 @router.get("/employees")
 def list_employees(
     status: Optional[str] = None,
+    client_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     q = db.query(Employee)
     if status:
         q = q.filter(Employee.status == status)
-    return q.order_by(Employee.name).all()
+    if client_id is not None:
+        q = q.filter(Employee.client_id == client_id)
+    else:
+        q = q.filter(Employee.client_id == None)
+    emps = q.order_by(Employee.name).all()
+    result = []
+    for e in emps:
+        d = {c.name: getattr(e, c.name) for c in e.__table__.columns}
+        d.update(_calc_employee_tax(e))
+        result.append(d)
+    return result
 
 
 @router.post("/employees")

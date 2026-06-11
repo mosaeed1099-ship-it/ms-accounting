@@ -206,6 +206,11 @@ def _run_migrations_pg():
         # ── Collections — free-text client name ──────────────────────────────
         "ALTER TABLE collection_contracts ADD COLUMN IF NOT EXISTS client_name_free VARCHAR(200)",
         "ALTER TABLE collection_payments ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
+        # ── Payroll — client employees for tax center ─────────────────────────
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)",
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS variable_pay FLOAT DEFAULT 0",
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS allowances FLOAT DEFAULT 0",
+        "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS insurance_start_date DATE",
     ]
     with engine.connect() as conn:
         for sql in migrations:

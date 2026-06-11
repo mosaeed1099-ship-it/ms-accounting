@@ -11,8 +11,10 @@ class Employee(Base):
     __tablename__ = "hr_employees"
 
     id               = Column(Integer, primary_key=True, index=True)
+    client_id        = Column(Integer, ForeignKey("clients.id"), nullable=True)  # موظف عميل (للضريبة)
     name             = Column(String(200), nullable=False)
-    national_id      = Column(String(30), unique=True, nullable=True)
+    national_id      = Column(String(30), nullable=True)
+    insurance_start_date = Column(Date)   # تاريخ الاشتراك في التأمين
     job_title        = Column(String(150))
     department       = Column(String(100))
     hire_date        = Column(Date)
