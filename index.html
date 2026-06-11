@@ -1128,7 +1128,7 @@ const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
   {label:'CRM & المبيعات', items:['clients','leads','establishment']},
   {label:'المالية', items:['invoices','tax','obligations']},
-  {label:'التشغيل', items:['tasks','formation_obligations','documents']},
+  {label:'التشغيل', items:['tasks','documents']},
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
   {label:'المكتب المالي', items:['owner']},
@@ -2181,15 +2181,17 @@ async function loadDashboard(silent=false) {
       </div>
       <div class="dash-formation-pipeline" style="display:grid;grid-template-columns:repeat(10,1fr);gap:8px;margin-bottom:14px">
         ${[
-          {k:'name_reservation',l:'حجز الاسم',i:'📝',c:'#6366f1',g:'linear-gradient(135deg,#4338ca,#6366f1)'},
-          {k:'name_approved',l:'قبول الاسم',i:'✅',c:'#8b5cf6',g:'linear-gradient(135deg,#6d28d9,#8b5cf6)'},
-          {k:'docs_received',l:'استلام الوثائق',i:'📂',c:'#0ea5e9',g:'linear-gradient(135deg,#0369a1,#0ea5e9)'},
-          {k:'contract_draft',l:'إعداد العقد',i:'📄',c:'#0284c7',g:'linear-gradient(135deg,#075985,#0284c7)'},
-          {k:'docs_signed',l:'التوقيع',i:'✍️',c:'#d97706',g:'linear-gradient(135deg,#92400e,#d97706)'},
-          {k:'file_submitted',l:'التقديم',i:'📤',c:'#b45309',g:'linear-gradient(135deg,#78350f,#b45309)'},
-          {k:'under_review',l:'المراجعة',i:'🔍',c:'#dc2626',g:'linear-gradient(135deg,#991b1b,#dc2626)'},
-          {k:'commercial_register',l:'السجل',i:'🏛️',c:'#16a34a',g:'linear-gradient(135deg,#14532d,#16a34a)'},
-          {k:'tax_card',l:'البطاقة الضريبية',i:'🪪',c:'#059669',g:'linear-gradient(135deg,#065f46,#059669)'},
+          {k:'name_reservation',l:'حجز اسم',i:'📝',c:'#6366f1',g:'linear-gradient(135deg,#4338ca,#6366f1)'},
+          {k:'name_approved',l:'إقرار قبول',i:'✅',c:'#8b5cf6',g:'linear-gradient(135deg,#6d28d9,#8b5cf6)'},
+          {k:'under_review',l:'تحت المراجعة',i:'🔍',c:'#0ea5e9',g:'linear-gradient(135deg,#0369a1,#0ea5e9)'},
+          {k:'fees_payment',l:'دفع الرسوم والتوقيع',i:'💳',c:'#0284c7',g:'linear-gradient(135deg,#075985,#0284c7)'},
+          {k:'follow_up',l:'في المتابعة',i:'📞',c:'#d97706',g:'linear-gradient(135deg,#92400e,#d97706)'},
+          {k:'lawyers_syndicate',l:'نقابة المحامين',i:'⚖️',c:'#b45309',g:'linear-gradient(135deg,#78350f,#b45309)'},
+          {k:'real_estate',l:'الشهر العقاري',i:'🏢',c:'#dc2626',g:'linear-gradient(135deg,#991b1b,#dc2626)'},
+          {k:'chamber_commerce',l:'الغرفة التجارية',i:'🏛️',c:'#7c3aed',g:'linear-gradient(135deg,#5b21b6,#7c3aed)'},
+          {k:'commercial_register',l:'السجل التجاري',i:'📋',c:'#16a34a',g:'linear-gradient(135deg,#14532d,#16a34a)'},
+          {k:'docs_received',l:'استلام المستندات',i:'📂',c:'#0369a1',g:'linear-gradient(135deg,#1e3a8a,#0369a1)'},
+          {k:'tax_card',l:'الضرائب',i:'🪪',c:'#059669',g:'linear-gradient(135deg,#065f46,#059669)'},
           {k:'completed',l:'مكتمل',i:'🎉',c:'#166534',g:'linear-gradient(135deg,#14532d,#15803d)'},
         ].map(s=>{
           const cnt = fStageData[s.k]?.count||0;
@@ -2211,9 +2213,10 @@ async function loadDashboard(silent=false) {
       <div style="display:flex;gap:2px;height:5px;border-radius:99px;overflow:hidden">
         ${[
           {k:'name_reservation',c:'#6366f1'},{k:'name_approved',c:'#8b5cf6'},
-          {k:'docs_received',c:'#0ea5e9'},{k:'contract_draft',c:'#0284c7'},
-          {k:'docs_signed',c:'#d97706'},{k:'file_submitted',c:'#b45309'},
-          {k:'under_review',c:'#dc2626'},{k:'commercial_register',c:'#16a34a'},
+          {k:'under_review',c:'#0ea5e9'},{k:'fees_payment',c:'#0284c7'},
+          {k:'follow_up',c:'#d97706'},{k:'lawyers_syndicate',c:'#b45309'},
+          {k:'real_estate',c:'#dc2626'},{k:'chamber_commerce',c:'#7c3aed'},
+          {k:'commercial_register',c:'#16a34a'},{k:'docs_received',c:'#0369a1'},
           {k:'tax_card',c:'#059669'},{k:'completed',c:'#166534'}
         ].map(s=>{
           const pct=fTotal>0?Math.round((fStageData[s.k]?.count||0)/fTotal*100):0;
@@ -5372,9 +5375,9 @@ function toWAPhone(raw) {
   // أي حالة أخرى → احذف الأصفار الأولى وأضف 20
   return '20' + d.replace(/^0+/, '');
 }
-const LEAD_STATUS_COLORS={new:'#4478b0',interested:'#15803d',not_answered:'#6b7280',wrong_number:'#dc2626',call_later:'#d97706',meeting:'#f59e0b',quotation_sent:'#f97316',paid:'#10b981',under_establishment:'#06b6d4',tax_registered:'#14b8a6',accounting_client:'#22c55e',inactive:'#94a3b8',lost:'#ef4444'};
-const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',not_answered:'لم يرد',wrong_number:'رقم خطأ',call_later:'كلمني لاحقاً',meeting:'اجتماع',quotation_sent:'عرض مرسل',paid:'دفع',under_establishment:'قيد التأسيس',tax_registered:'مسجل ضريبياً',accounting_client:'عميل محاسبة',inactive:'غير نشط',lost:'خسارة'};
-const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',wrong_number:'#fef2f2',call_later:'#fefce8'};
+const LEAD_STATUS_COLORS={interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
+const LEAD_STATUS_LABEL={interested:'مهتم',not_answered:'لم يرد',call_later:'كلمني لاحقاً',quotation_sent:'عرض مرسل',under_establishment:'قيد التأسيس',lost:'خسارة'};
+const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',call_later:'#fefce8',lost:'#fef2f2'};
 
 const LEAD_DEFAULT_DELIVERABLES = [
   'عقد تأسيس',
@@ -6742,16 +6745,18 @@ let estData=[]; // kept for collections compat
 // ═══════════════════════════════════════════════════════════════════
 
 const FORMATION_STAGES = [
-  {key:'name_reservation',  label:'حجز الاسم',       icon:'📝', color:'#6366f1'},
-  {key:'name_approved',     label:'قبول الاسم',      icon:'✅', color:'#8b5cf6'},
-  {key:'docs_received',     label:'استلام المستندات',icon:'📂', color:'#0ea5e9'},
-  {key:'contract_draft',    label:'إعداد العقد',     icon:'📄', color:'#0284c7'},
-  {key:'docs_signed',       label:'توقيع المستندات', icon:'✍️', color:'#0369a1'},
-  {key:'file_submitted',    label:'تقديم الملف',     icon:'📤', color:'#d97706'},
-  {key:'under_review',      label:'مراجعة الجهات',  icon:'🔍', color:'#b45309'},
-  {key:'commercial_register',label:'السجل التجاري', icon:'🏛️', color:'#16a34a'},
-  {key:'tax_card',          label:'البطاقة الضريبية',icon:'🪪', color:'#15803d'},
-  {key:'completed',         label:'مكتمل',           icon:'🎉', color:'#166534'},
+  {key:'name_reservation',  label:'حجز اسم',              icon:'📝', color:'#6366f1'},
+  {key:'name_approved',     label:'إقرار قبول',           icon:'✅', color:'#8b5cf6'},
+  {key:'under_review',      label:'تحت المراجعة',         icon:'🔍', color:'#0ea5e9'},
+  {key:'fees_payment',      label:'دفع الرسوم والتوقيع',  icon:'💳', color:'#0284c7'},
+  {key:'follow_up',         label:'في المتابعة',          icon:'📞', color:'#d97706'},
+  {key:'lawyers_syndicate', label:'نقابة المحامين',       icon:'⚖️', color:'#b45309'},
+  {key:'real_estate',       label:'الشهر العقاري',        icon:'🏢', color:'#dc2626'},
+  {key:'chamber_commerce',  label:'الغرفة التجارية',      icon:'🏛️', color:'#7c3aed'},
+  {key:'commercial_register',label:'السجل التجاري',       icon:'📋', color:'#16a34a'},
+  {key:'docs_received',     label:'استلام المستندات',     icon:'📂', color:'#0369a1'},
+  {key:'tax_card',          label:'الضرائب',              icon:'🪪', color:'#15803d'},
+  {key:'completed',         label:'مكتمل',                icon:'🎉', color:'#166534'},
 ];
 const FORMATION_STAGE_KEYS = FORMATION_STAGES.map(s=>s.key);
 
