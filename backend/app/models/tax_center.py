@@ -133,6 +133,7 @@ class VATReturn(Base):
     reviewed_at     = Column(DateTime)
     approved_by     = Column(Integer, ForeignKey("users.id"), nullable=True)
     approved_at     = Column(DateTime)
+    submitted_by    = Column(Integer, ForeignKey("users.id"), nullable=True)
     submitted_at    = Column(DateTime)
     submission_ref  = Column(String(100))
     paid_at         = Column(DateTime)

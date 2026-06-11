@@ -54,7 +54,13 @@ def _log(db, client_id, user_id, entity_type, entity_id, action, old=None, new=N
     ))
 
 
-def _vat_dict(r: VATReturn) -> dict:
+def _user_name(db, user_id):
+    if not user_id: return None
+    from app.models.user import User as _User
+    u = db.query(_User).get(user_id)
+    return u.name if u else str(user_id)
+
+def _vat_dict(r: VATReturn, db=None) -> dict:
     return {
         "id": r.id, "client_id": r.client_id,
         "period_year": r.period_year, "period_month": r.period_month,
@@ -85,7 +91,13 @@ def _vat_dict(r: VATReturn) -> dict:
         "submitted_at": str(r.submitted_at) if r.submitted_at else None,
         "paid_at": str(r.paid_at) if r.paid_at else None,
         "built_at": str(r.built_at) if r.built_at else None,
+        "reviewed_at": str(r.reviewed_at) if r.reviewed_at else None,
+        "approved_at": str(r.approved_at) if r.approved_at else None,
         "is_amendment": r.is_amendment,
+        # Workflow actor names (only when db passed)
+        "built_by_name":    _user_name(db, r.built_by)    if db else None,
+        "reviewed_by_name": _user_name(db, r.reviewed_by) if db else None,
+        "approved_by_name": _user_name(db, r.approved_by) if db else None,
     }
 
 
@@ -170,7 +182,7 @@ def list_vat_returns(
     total = q.count()
     items = q.order_by(VATReturn.period_year.desc(), VATReturn.period_month.desc()) \
              .offset((page - 1) * page_size).limit(page_size).all()
-    return {"items": [_vat_dict(r) for r in items], "total": total}
+    return {"items": [_vat_dict(r, db) for r in items], "total": total}
 
 
 @router.get("/vat/{client_id}/{year}/{month}")
@@ -184,7 +196,37 @@ def get_vat_return(
     ).first()
     if not ret:
         raise HTTPException(404, "لا يوجد إقرار لهذه الفترة")
-    return _vat_dict(ret)
+    return _vat_dict(ret, db)
+
+
+@router.get("/vat/{vat_id}/detail")
+def get_vat_return_detail(
+    vat_id: int,
+    db: Session = Depends(get_db),
+    cu: User = Depends(get_current_user),
+):
+    """Returns full return data + audit trail for workflow review page."""
+    ret = db.get(VATReturn, vat_id)
+    if not ret: raise HTTPException(404)
+    d = _vat_dict(ret, db)
+    # Audit trail for this return
+    logs = db.query(TaxAuditLog).filter(
+        TaxAuditLog.entity_type == "vat_return",
+        TaxAuditLog.entity_id == vat_id,
+    ).order_by(TaxAuditLog.created_at.asc()).all()
+    d["audit_trail"] = [
+        {
+            "id": l.id,
+            "action": l.action,
+            "actor": _user_name(db, l.user_id),
+            "notes": l.notes,
+            "old_values": l.old_values,
+            "new_values": l.new_values,
+            "created_at": str(l.created_at),
+        }
+        for l in logs
+    ]
+    return d
 
 
 @router.get("/vat/{vat_id}/lines")
@@ -335,6 +377,7 @@ def submit_vat_return(
     late, penalty = compute_penalty(float(ret.net_vat_due or 0), ret.due_date)
     ret.late_days      = late
     ret.penalty_amount = penalty
+    ret.submitted_by   = cu.id
     _log(db, ret.client_id, cu.id, "vat_return", ret.id, "submitted",
          new_values={"submission_ref": req.submission_ref})
     db.commit()
