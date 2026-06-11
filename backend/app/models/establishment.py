@@ -10,15 +10,17 @@ from app.database import Base
 
 # ── مراحل التأسيس الـ 10 ──────────────────────────────
 FORMATION_STAGES = [
-    ("name_reservation",  "حجز الاسم التجاري",        "📝"),
-    ("name_approved",     "تم قبول الاسم التجاري",    "✅"),
-    ("docs_received",     "استلام المستندات",          "📂"),
-    ("contract_draft",    "إعداد عقد التأسيس",        "📄"),
-    ("docs_signed",       "توقيع المستندات",           "✍️"),
-    ("file_submitted",    "تقديم الملف",               "📤"),
-    ("under_review",      "مراجعة الجهات المختصة",    "🔍"),
-    ("commercial_register","إصدار السجل التجاري",      "🏛️"),
-    ("tax_card",          "إصدار البطاقة الضريبية",   "🪪"),
+    ("name_reservation",  "حجز اسم",                  "📝"),
+    ("name_approved",     "إقرار قبول",               "✅"),
+    ("under_review",      "تحت المراجعة",             "🔍"),
+    ("fees_payment",      "دفع الرسوم والتوقيع",      "💳"),
+    ("follow_up",         "في المتابعة",              "📞"),
+    ("lawyers_syndicate", "نقابة المحامين",           "⚖️"),
+    ("real_estate",       "الشهر العقاري",            "🏢"),
+    ("chamber_commerce",  "الغرفة التجارية",          "🏛️"),
+    ("commercial_register","السجل التجاري",           "📋"),
+    ("docs_received",     "استلام المستندات",         "📂"),
+    ("tax_card",          "الضرائب",                  "🪪"),
     ("completed",         "مكتمل",                    "🎉"),
 ]
 FORMATION_STAGE_KEYS = [s[0] for s in FORMATION_STAGES]

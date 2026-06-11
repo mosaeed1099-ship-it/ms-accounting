@@ -8,15 +8,11 @@ from app.database import Base
 
 
 class LeadStatus:
-    NEW = "new"
     INTERESTED = "interested"
-    MEETING = "meeting"
+    NOT_ANSWERED = "not_answered"
+    CALL_LATER = "call_later"
     QUOTATION_SENT = "quotation_sent"
-    PAID = "paid"
     UNDER_ESTABLISHMENT = "under_establishment"
-    TAX_REGISTERED = "tax_registered"
-    ACCOUNTING_CLIENT = "accounting_client"
-    INACTIVE = "inactive"
     LOST = "lost"
 
 
