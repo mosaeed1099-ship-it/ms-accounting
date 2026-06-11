@@ -5608,44 +5608,31 @@ function _tcRenderPortals(el) {
     <div style="display:grid;gap:12px" id="portalsGrid"></div>
   </div>`;
 
-  // build cards after innerHTML (user-gesture-safe onclick)
+  // build cards — plain <a> links, no JS tricks
   const grid = el.querySelector('#portalsGrid');
   portals.forEach(p => {
     const card = document.createElement('div');
-    card.style.cssText = 'background:white;border-radius:12px;padding:16px 18px;border:1.5px solid #e8edf3;display:flex;align-items:center;gap:14px;cursor:pointer;transition:all .15s';
+    card.style.cssText = 'background:white;border-radius:12px;padding:16px 18px;border:1.5px solid #e8edf3;transition:all .15s';
     card.innerHTML = `
-      <div style="width:48px;height:48px;background:${p.bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">${p.icon}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;color:#1e293b">${p.title}</div>
-        <div style="font-size:10px;color:#94a3b8;font-family:monospace">${p.sub}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:2px">${p.desc}</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:48px;height:48px;background:${p.bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">${p.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;color:#1e293b">${p.title}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px">${p.desc}</div>
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-        <span class="_portalOpen" style="font-size:12px;background:${p.color};color:white;padding:7px 14px;border-radius:8px;font-weight:600;white-space:nowrap;text-align:center">${p.btn} ↗</span>
-        <span class="_portalCopy" style="font-size:11px;background:#f1f5f9;color:#64748b;padding:4px 10px;border-radius:6px;font-weight:500;white-space:nowrap;text-align:center">📋 نسخ الرابط</span>
+      <div style="margin-top:12px;background:#f8fafc;border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e2e8f0">
+        <a href="${p.url}" target="_blank" rel="noopener noreferrer"
+           style="font-size:13px;font-family:monospace;color:${p.color};font-weight:600;word-break:break-all;text-decoration:underline">
+          ${p.url}
+        </a>
+        <a href="${p.url}" target="_blank" rel="noopener noreferrer"
+           style="flex-shrink:0;background:${p.color};color:white;padding:7px 16px;border-radius:8px;font-weight:600;font-size:13px;text-decoration:none;white-space:nowrap">
+          فتح ↗
+        </a>
       </div>`;
     card.addEventListener('mouseover', () => { card.style.borderColor = p.color; card.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)'; });
     card.addEventListener('mouseout',  () => { card.style.borderColor = '#e8edf3'; card.style.boxShadow = 'none'; });
-    // open button
-    card.querySelector('._portalOpen').addEventListener('click', e => {
-      e.stopPropagation();
-      const a = document.createElement('a');
-      a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    });
-    // copy button
-    card.querySelector('._portalCopy').addEventListener('click', e => {
-      e.stopPropagation();
-      navigator.clipboard.writeText(p.url).then(() => toast('✅ تم نسخ الرابط — ' + p.sub)).catch(() => {
-        prompt('انسخ الرابط:', p.url);
-      });
-    });
-    // card click = open
-    card.addEventListener('click', () => {
-      const a = document.createElement('a');
-      a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    });
     grid.appendChild(card);
   });
 }
