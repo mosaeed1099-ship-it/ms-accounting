@@ -260,6 +260,12 @@
     /* ─── FAB ─── */
     .fab-wrap{position:fixed;bottom:80px;left:20px;z-index:170;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
     @media(max-width:768px){.fab-wrap{bottom:74px}}
+    /* ─── Mobile table column hiding ─── */
+    @media(max-width:768px){
+      .col-mob-hide{display:none!important}
+      .mob-actions-wrap{gap:3px!important}
+      .mob-actions-wrap .btn-sm{padding:4px 6px!important;font-size:13px!important;min-width:28px}
+    }
     .fab-main{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#1a2472,#2563eb);color:white;border:none;font-size:26px;cursor:pointer;box-shadow:0 4px 18px rgba(26,36,114,.4);display:flex;align-items:center;justify-content:center;transition:all .2s;font-family:inherit}
     .fab-main:hover{transform:scale(1.08);box-shadow:0 6px 24px rgba(26,36,114,.5)}
     .fab-main.open{transform:rotate(45deg);background:linear-gradient(135deg,#dc2626,#f87171)}
@@ -2512,13 +2518,13 @@ function _clientsTableRows() {
       ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${escH(c.name_en)}</div>`:''}
     </td>
     <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
-    <td style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
-    <td style="color:#374151;font-size:12px">${c.activity||'—'}</td>
-    <td style="font-weight:600;color:#1e293b">${c.contract_value?money(c.contract_value):'—'}</td>
-    <td>${balText}</td>
+    <td class="col-mob-hide" style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
+    <td class="col-mob-hide" style="color:#374151;font-size:12px">${c.activity||'—'}</td>
+    <td class="col-mob-hide" style="font-weight:600;color:#1e293b">${c.contract_value?money(c.contract_value):'—'}</td>
+    <td class="col-mob-hide">${balText}</td>
     <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
     <td onclick="event.stopPropagation()">
-      <div style="display:flex;gap:6px">
+      <div class="mob-actions-wrap" style="display:flex;gap:6px">
         <button class="btn btn-secondary btn-sm" onclick="showClientModal(${c.id})" title="تعديل">✏️</button>
         <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')" title="فاتورة جديدة">📄</button>
         <button class="btn btn-secondary btn-sm" title="رفع ملف" onclick="showUploadModal(${c.id})">📎</button>
@@ -2559,7 +2565,7 @@ function renderClients() {
   <div class="card" style="overflow:hidden">
     <table>
       <thead><tr>
-        <th>الكود</th><th>الاسم</th><th>النوع</th><th>الهاتف</th><th>النشاط</th><th>قيمة العقد</th><th>الرصيد</th><th>الحالة</th><th>إجراءات</th>
+        <th>الكود</th><th>الاسم</th><th>النوع</th><th class="col-mob-hide">الهاتف</th><th class="col-mob-hide">النشاط</th><th class="col-mob-hide">قيمة العقد</th><th class="col-mob-hide">الرصيد</th><th>الحالة</th><th>إجراءات</th>
       </tr></thead>
       <tbody id="clientsTbody">${_clientsTableRows()}</tbody>
     </table>
