@@ -4655,6 +4655,21 @@ async function _tcRenderVat(el) {
   await _tcVatLoadList();
 }
 
+// ── VAT Status config ────────────────────────────────────
+const VAT_STATUS = {
+  draft:     {label:'مسودة',     icon:'📝', color:'#6b7280', bg:'#f3f4f6', step:0},
+  reviewed:  {label:'قيد المراجعة', icon:'👀', color:'#d97706', bg:'#fefce8', step:1},
+  approved:  {label:'معتمد',    icon:'✅', color:'#15803d', bg:'#f0fdf4', step:2},
+  submitted: {label:'مُرسَل',   icon:'📤', color:'#1d4ed8', bg:'#dbeafe', step:3},
+  paid:      {label:'مسدد',     icon:'💚', color:'#065f46', bg:'#dcfce7', step:4},
+  amended:   {label:'معدَّل',   icon:'🔄', color:'#7c3aed', bg:'#f5f3ff', step:5},
+};
+
+function _vatStatusBadge(status) {
+  const s = VAT_STATUS[status] || {label:status, icon:'❓', color:'#64748b', bg:'#f1f5f9'};
+  return `<span style="display:inline-flex;align-items:center;gap:4px;background:${s.bg};color:${s.color};border:1.5px solid ${s.color}33;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">${s.icon} ${s.label}</span>`;
+}
+
 async function _tcVatLoadList() {
   const el = document.getElementById('tcVatArea');
   if (!el) return;
@@ -4666,7 +4681,7 @@ async function _tcVatLoadList() {
     el.innerHTML = `
     <div class="card" style="overflow:hidden">
       <table>
-        <thead><tr><th>الفترة</th><th>مبيعات خاضعة</th><th>ض.م. (Output)</th><th>ض.م. (Input)</th><th>صافي مستحق</th><th>الاستحقاق</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+        <thead><tr><th>الفترة</th><th>إجمالي المبيعات</th><th>ضريبة المخرجات</th><th>ضريبة المدخلات</th><th>صافي مستحق</th><th>تاريخ الاستحقاق</th><th>الحالة</th><th>إجراءات</th></tr></thead>
         <tbody>
           ${!rows.length ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد إقرارات — اضغط "بناء إقرار" لإنشاء إقرار الشهر الحالي</td></tr>` :
             rows.map(r => `<tr>
@@ -4675,12 +4690,9 @@ async function _tcVatLoadList() {
               <td style="color:#15803d;font-weight:600">${money(r.total_output_vat||0)}</td>
               <td style="color:#1a2472;font-weight:600">${money(r.total_input_vat||0)}</td>
               <td style="font-weight:800;color:${(r.net_vat_due||0)>0?'#dc2626':'#15803d'}">${money(r.net_vat_due||0)}</td>
-              <td style="color:${daysUntil(r.due_date)<=3?'#dc2626':'#374151'}">${dateAr(r.due_date)}</td>
-              <td><span class="badge ${r.status==='paid'||r.status==='submitted'?'badge-green':r.status==='approved'?'badge-blue':r.status==='reviewed'?'badge-purple':'badge-yellow'}" style="font-size:10px">${r.status||'draft'}</span></td>
-              <td><div style="display:flex;gap:5px">
-                <button class="btn btn-secondary btn-sm" onclick="tcVatView(${r.id})">📋 عرض</button>
-                ${r.status==='draft'||r.status==='reviewed'?`<button class="btn btn-success btn-sm" onclick="tcVatApprove(${r.id})">✅ اعتماد</button>`:''}
-              </div></td>
+              <td style="color:${daysUntil(r.due_date)<=3?'#dc2626':'#374151'};font-size:12px">${dateAr(r.due_date)}</td>
+              <td>${_vatStatusBadge(r.status)}</td>
+              <td><button class="btn btn-primary btn-sm" onclick="tcVatWorkflow(${r.id})">📋 مراجعة</button></td>
             </tr>`).join('')}
         </tbody>
       </table>
@@ -4707,83 +4719,297 @@ window.tcVatBuild = async function() {
   }
 };
 
-window.tcVatView = async function(id) {
+// ══════════════════════════════════════════════════════════════
+// 📋 VAT WORKFLOW — صفحة مراجعة الإقرار الاحترافية
+// ══════════════════════════════════════════════════════════════
+window.tcVatWorkflow = async function(id) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" style="max-width:860px;max-height:95vh;overflow-y:auto;padding:0">
+    <div style="padding:16px 20px;border-bottom:1px solid #e8edf3;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:white;z-index:10">
+      <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0">🧾 مراجعة إقرار ض.ق.م.</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b">✕</button>
+    </div>
+    <div id="vatWfBody" style="padding:20px"><div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div></div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  await _renderVatWorkflow(id);
+};
+
+async function _renderVatWorkflow(id) {
+  const el = document.getElementById('vatWfBody');
+  if (!el) return;
   try {
     const [ret, lines] = await Promise.all([
-      Promise.resolve(window._tcVatReturnsMap?.[id] || null).then(async r => {
-        if (r) return r;
-        // fallback: fetch list again and look up
-        const list = await api('GET', `/api/tax-center/vat/${_tcClientId}?year=${_tcYear}`);
-        const items = list?.items || list || [];
-        items.forEach(x => { if (!window._tcVatReturnsMap) window._tcVatReturnsMap = {}; window._tcVatReturnsMap[x.id] = x; });
-        return window._tcVatReturnsMap?.[id] || null;
-      }),
-      api('GET', `/api/tax-center/vat/${id}/lines`),
+      api('GET', `/api/tax-center/vat/${id}/detail`),
+      api('GET', `/api/tax-center/vat/${id}/lines`).catch(()=>[]),
     ]);
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    const lineRows = (lines||[]).slice(0,50).map(l => `<tr style="border-top:1px solid #f1f5f9">
-      <td style="padding:5px 8px;font-size:11px;color:#64748b">${l.line_type||''}</td>
-      <td style="padding:5px 8px;font-size:12px">${escH(l.counterparty_name||'')}</td>
-      <td style="padding:5px 8px;font-size:11px;font-family:monospace">${escH(l.counterparty_tin||'')}</td>
-      <td style="padding:5px 8px;font-size:12px;text-align:left">${money(l.taxable_amount||0)}</td>
-      <td style="padding:5px 8px;font-size:12px;text-align:left;font-weight:700;color:${l.line_type?.startsWith('output')?'#15803d':'#1a2472'}">${money(l.vat_amount||0)}</td>
-    </tr>`).join('');
+    const s = VAT_STATUS[ret.status] || VAT_STATUS.draft;
+    const isAdmin = currentUser?.role === 'admin';
 
-    overlay.innerHTML = `<div class="modal" style="max-width:780px;max-height:90vh;overflow-y:auto">
-      <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:white;z-index:1">
-        <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">🧾 إقرار ض.ق.م. — ${TC_MONTH_AR[ret.period_month]} ${ret.period_year}</h2>
-        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+    // ── Step Indicator ─────────────────────────────────────
+    const steps = [
+      {key:'draft',     icon:'📝', label:'مسودة'},
+      {key:'reviewed',  icon:'👀', label:'مراجعة'},
+      {key:'approved',  icon:'✅', label:'اعتماد'},
+      {key:'submitted', icon:'📤', label:'إرسال'},
+      {key:'paid',      icon:'💚', label:'سداد'},
+    ];
+    const curStep = s.step || 0;
+    const stepHtml = `
+    <div style="display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:24px;flex-wrap:wrap">
+      ${steps.map((st,i) => {
+        const done = i < curStep;
+        const active = i === curStep;
+        const clr = done||active ? '#1a2472' : '#94a3b8';
+        const bg = done ? '#1a2472' : active ? '#eef1fb' : '#f8fafc';
+        const border = active ? '2px solid #1a2472' : done ? '2px solid #1a2472' : '2px solid #e2e8f0';
+        return `<div style="display:flex;align-items:center">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px">
+            <div style="width:36px;height:36px;border-radius:50%;background:${bg};border:${border};display:flex;align-items:center;justify-content:center;font-size:16px">${done?'✓':st.icon}</div>
+            <div style="font-size:11px;font-weight:${active?'700':'500'};color:${clr}">${st.label}</div>
+          </div>
+          ${i<steps.length-1?`<div style="width:30px;height:2px;background:${done?'#1a2472':'#e2e8f0'};margin-bottom:18px"></div>`:''}
+        </div>`;
+      }).join('')}
+    </div>`;
+
+    // ── Numbers Summary ────────────────────────────────────
+    const row = (lbl, val, color='#1e293b') =>
+      `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9">
+         <span style="color:#64748b;font-size:13px">${lbl}</span>
+         <strong style="color:${color};font-size:13px">${val}</strong>
+       </div>`;
+
+    const srcBadge = (n, lbl) => n > 0
+      ? `<span style="background:#eef1fb;color:#1a2472;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600">${lbl}: ${n} مستند</span>`
+      : '';
+
+    const numbersHtml = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <!-- Output -->
+      <div style="background:#f0fdf4;border-radius:14px;padding:16px;border:1.5px solid #86efac">
+        <div style="font-weight:800;color:#15803d;font-size:14px;margin-bottom:12px">📤 ضريبة المخرجات (Output)</div>
+        ${row('إجمالي المبيعات الخاضعة', money(ret.out_std_taxable||0))}
+        ${row('ض.ق.م. على المبيعات', money(ret.out_std_vat||0), '#15803d')}
+        ${ret.out_credit_vat ? row('إشعارات دائنة مبيعات', `(${money(ret.out_credit_vat)})`, '#d97706') : ''}
+        ${ret.out_manual_adjustment ? row('تعديل يدوي', money(ret.out_manual_adjustment||0), '#7c3aed') : ''}
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #86efac;margin-top:4px">
+          <strong style="color:#15803d">إجمالي ضريبة المخرجات</strong>
+          <strong style="color:#15803d;font-size:16px">${money(ret.total_output_vat||0)}</strong>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          ${srcBadge(ret.eta_outgoing_doc_count, 'فواتير ETA')}
+          ${!ret.eta_outgoing_doc_count && ret.out_std_vat > 0 ? srcBadge(lines?.filter(l=>l.line_type?.startsWith('output')).length||0, 'قيود محاسبية') : ''}
+        </div>
       </div>
-      <div style="padding:16px 20px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:13px">
-          <div style="background:#f0fdf4;border-radius:10px;padding:14px">
-            <div style="font-weight:700;color:#15803d;margin-bottom:8px">الضريبة الناتجة (Output)</div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>مبيعات خاضعة</span><strong>${money(ret.out_std_taxable||0)}</strong></div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>ض.ق.م. مبيعات</span><strong style="color:#15803d">${money(ret.out_std_vat||0)}</strong></div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#d97706"><span>إشعارات دائنة</span><strong>(${money(ret.out_credit_vat||0)})</strong></div>
-            <div style="display:flex;justify-content:space-between;border-top:1px solid #86efac;padding-top:6px;margin-top:6px"><span style="font-weight:700">إجمالي الناتجة</span><strong style="color:#15803d;font-size:15px">${money(ret.total_output_vat||0)}</strong></div>
-          </div>
-          <div style="background:#eef1fb;border-radius:10px;padding:14px">
-            <div style="font-weight:700;color:#1a2472;margin-bottom:8px">ضريبة المدخلات (Input)</div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>مشتريات خاضعة</span><strong>${money(ret.in_std_taxable||0)}</strong></div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>ض.ق.م. مشتريات</span><strong style="color:#1a2472">${money(ret.in_std_vat||0)}</strong></div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#d97706"><span>إشعارات دائنة</span><strong>(${money(ret.in_credit_vat||0)})</strong></div>
-            <div style="display:flex;justify-content:space-between;border-top:1px solid #c7d3ef;padding-top:6px;margin-top:6px"><span style="font-weight:700">إجمالي المدخلات</span><strong style="color:#1a2472;font-size:15px">${money(ret.total_input_vat||0)}</strong></div>
-          </div>
+      <!-- Input -->
+      <div style="background:#eef1fb;border-radius:14px;padding:16px;border:1.5px solid #c7d3ef">
+        <div style="font-weight:800;color:#1a2472;font-size:14px;margin-bottom:12px">📥 ضريبة المدخلات (Input)</div>
+        ${row('إجمالي المشتريات الخاضعة', money(ret.in_std_taxable||0))}
+        ${row('ض.ق.م. على المشتريات', money(ret.in_std_vat||0), '#1a2472')}
+        ${ret.in_capital_vat ? row('ض.ق.م. أصول رأسمالية', money(ret.in_capital_vat||0), '#1a2472') : ''}
+        ${ret.in_credit_vat ? row('إشعارات دائنة مشتريات', `(${money(ret.in_credit_vat)})`, '#d97706') : ''}
+        ${ret.in_manual_adjustment ? row('تعديل يدوي', money(ret.in_manual_adjustment||0), '#7c3aed') : ''}
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #c7d3ef;margin-top:4px">
+          <strong style="color:#1a2472">إجمالي ضريبة المدخلات</strong>
+          <strong style="color:#1a2472;font-size:16px">${money(ret.total_input_vat||0)}</strong>
         </div>
-        <div style="background:${(ret.net_vat_due||0)>0?'#fef2f2':'#f0fdf4'};border-radius:12px;padding:16px;text-align:center;margin-bottom:16px">
-          <div style="font-size:12px;color:#64748b;margin-bottom:6px">صافي الضريبة المستحقة</div>
-          <div style="font-size:32px;font-weight:900;color:${(ret.net_vat_due||0)>0?'#dc2626':'#15803d'}">${money(ret.net_vat_due||0)}</div>
-          ${ret.carry_forward_amount>0?`<div style="font-size:12px;color:#15803d;margin-top:4px">رصيد دائن للفترة القادمة: ${money(ret.carry_forward_amount)}</div>`:''}
-          <div style="font-size:12px;color:#64748b;margin-top:4px">تاريخ الاستحقاق: ${dateAr(ret.due_date)} — ${ret.late_days>0?`<span style="color:#dc2626">متأخر ${ret.late_days} يوم</span>`:'في الموعد'}</div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          ${srcBadge(ret.eta_incoming_doc_count, 'فواتير ETA')}
         </div>
-        ${lines?.length ? `<div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">مستندات الإقرار (${lines.length})</div>
-        <div style="overflow-x:auto;max-height:250px;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="background:#f8fafc;position:sticky;top:0"><tr><th style="padding:6px 8px">النوع</th><th style="padding:6px 8px">الطرف المقابل</th><th style="padding:6px 8px">الرقم الضريبي</th><th style="padding:6px 8px;text-align:left">الخاضع</th><th style="padding:6px 8px;text-align:left">الضريبة</th></tr></thead>
-            <tbody>${lineRows}</tbody>
-          </table>
-        </div>` : ''}
-        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
-          <button class="btn btn-secondary" onclick="window.open('https://mytax.eta.gov.eg','_blank')">🌐 فتح mytax</button>
-          ${ret.status==='draft'?`<button class="btn btn-primary" onclick="tcVatApprove(${ret.id});this.closest('.modal-overlay').remove()">✅ مراجعة واعتماد</button>`:''}
-        </div>
+      </div>
+    </div>
+
+    <!-- Net VAT Due -->
+    <div style="background:${(ret.net_vat_due||0)>0?'#fef2f2':'#f0fdf4'};border-radius:16px;padding:20px;text-align:center;margin-bottom:20px;border:2px solid ${(ret.net_vat_due||0)>0?'#fca5a5':'#86efac'}">
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">صافي الضريبة المستحقة</div>
+      <div style="font-size:38px;font-weight:900;color:${(ret.net_vat_due||0)>0?'#dc2626':'#15803d'}">${money(ret.net_vat_due||0)}</div>
+      ${ret.previous_period_credit > 0 ? `<div style="font-size:12px;color:#1a2472;margin-top:4px">رصيد دائن من الفترة السابقة: ${money(ret.previous_period_credit)}</div>` : ''}
+      ${ret.carry_forward_amount > 0 ? `<div style="font-size:12px;color:#15803d;margin-top:4px">رصيد دائن ينتقل للفترة القادمة: ${money(ret.carry_forward_amount)}</div>` : ''}
+      <div style="font-size:12px;color:#64748b;margin-top:6px">
+        تاريخ الاستحقاق: <strong>${dateAr(ret.due_date)}</strong>
+        ${ret.late_days > 0 ? `— <span style="color:#dc2626">⚠️ متأخر ${ret.late_days} يوم · غرامة: ${money(ret.penalty_amount||0)}</span>` : ' — <span style="color:#15803d">✓ في الموعد</span>'}
       </div>
     </div>`;
-    document.body.append(overlay);
-    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+    // ── Source documents table ──────────────────────────────
+    const linesHtml = lines?.length ? `
+    <div style="margin-bottom:20px">
+      <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:10px">📑 مصدر الأرقام — المستندات (${lines.length})</div>
+      <div style="overflow-x:auto;max-height:220px;overflow-y:auto;border-radius:10px;border:1px solid #e8edf3">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead style="background:#f8fafc;position:sticky;top:0">
+            <tr><th style="padding:8px;text-align:right">النوع</th><th style="padding:8px;text-align:right">الطرف</th><th style="padding:8px;text-align:right">الرقم الضريبي</th><th style="padding:8px">الخاضع</th><th style="padding:8px">الضريبة</th><th style="padding:8px">الحالة</th></tr>
+          </thead>
+          <tbody>
+            ${lines.slice(0,100).map(l => {
+              const isOut = l.line_type?.startsWith('output');
+              return `<tr style="border-bottom:1px solid #f1f5f9">
+                <td style="padding:6px 8px;font-size:11px"><span style="background:${isOut?'#f0fdf4':'#eef1fb'};color:${isOut?'#15803d':'#1a2472'};padding:2px 6px;border-radius:8px">${isOut?'📤 مخرجات':'📥 مدخلات'}</span></td>
+                <td style="padding:6px 8px;font-size:12px">${escH(l.counterparty_name||'—')}</td>
+                <td style="padding:6px 8px;font-size:11px;font-family:monospace;color:#64748b">${escH(l.counterparty_tin||'—')}</td>
+                <td style="padding:6px 8px;text-align:right">${money(l.taxable_amount||0)}</td>
+                <td style="padding:6px 8px;text-align:right;font-weight:700;color:${isOut?'#15803d':'#1a2472'}">${money(l.vat_amount||0)}</td>
+                <td style="padding:6px 8px">${l.is_excluded ? '<span style="color:#dc2626;font-size:11px">⛔ مستبعد</span>' : l.is_rejected ? '<span style="color:#d97706;font-size:11px">⚠️ مرفوض</span>' : '<span style="color:#15803d;font-size:11px">✓</span>'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+    // ── Audit Trail ────────────────────────────────────────
+    const auditHtml = ret.audit_trail?.length ? `
+    <div style="margin-bottom:20px">
+      <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:10px">📜 سجل المراجعة (Audit Log)</div>
+      <div style="background:#f8fafc;border-radius:10px;padding:12px;border:1px solid #e8edf3">
+        ${ret.audit_trail.map(log => {
+          const actionMap = {
+            created:'أنشأ الإقرار', status_changed:'غيّر الحالة', approved:'اعتمد الإقرار',
+            submitted:'أرسل الإقرار', paid:'سجّل السداد', rebuilt:'أعاد بناء الإقرار',
+          };
+          const actionLabel = actionMap[log.action] || log.action;
+          return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #e8edf3;last-child:border-0">
+            <div style="width:32px;height:32px;border-radius:50%;background:#eef1fb;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">👤</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700;color:#1e293b">${escH(log.actor||'النظام')} <span style="font-weight:400;color:#64748b">${actionLabel}</span></div>
+              ${log.notes ? `<div style="font-size:12px;color:#64748b;margin-top:2px">${escH(log.notes)}</div>` : ''}
+              <div style="font-size:11px;color:#94a3b8;margin-top:2px">${log.created_at?.slice(0,16)?.replace('T',' ')}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+    // ── Action Buttons ─────────────────────────────────────
+    const st = ret.status;
+    let actionsHtml = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:16px;border-top:2px solid #e8edf3">`;
+
+    if (st === 'draft') {
+      actionsHtml += `
+        <span style="font-size:12px;color:#64748b;font-weight:600">الإقرار في مرحلة المسودة:</span>
+        <button class="btn btn-secondary" onclick="tcVatSaveDraft(${id})" style="gap:6px">📝 حفظ كمسودة</button>
+        <button class="btn btn-primary" onclick="tcVatSendReview(${id})" style="gap:6px">👀 إرسال للمراجعة</button>`;
+    } else if (st === 'reviewed') {
+      actionsHtml += `
+        <span style="font-size:12px;color:#64748b;font-weight:600">الإقرار قيد المراجعة:</span>
+        ${isAdmin ? `<button class="btn btn-success" onclick="tcVatApprove(${id})" style="gap:6px">✅ اعتماد الإقرار</button>` : `<span style="color:#d97706;font-size:12px">⏳ في انتظار اعتماد المدير</span>`}
+        <button class="btn btn-secondary" onclick="tcVatBackDraft(${id})" style="gap:6px;font-size:12px">↩️ إعادة للمسودة</button>`;
+    } else if (st === 'approved') {
+      actionsHtml += `
+        <span style="font-size:12px;color:#15803d;font-weight:600">✅ معتمد — جاهز للإرسال:</span>
+        <button class="btn btn-primary" onclick="tcVatSubmitModal(${id})" style="gap:6px;background:#1a2472">📤 إرسال للبوابة الحكومية</button>
+        <button class="btn btn-secondary" onclick="window.open('https://mytax.eta.gov.eg','_blank')" style="gap:6px">🌐 فتح mytax.eta.gov.eg</button>`;
+    } else if (st === 'submitted') {
+      actionsHtml += `
+        <span style="font-size:12px;color:#1d4ed8;font-weight:600">📤 تم الإرسال — رقم المرجع: ${escH(ret.submission_ref||'—')}</span>
+        <button class="btn btn-success" onclick="tcVatMarkPaid(${id})" style="gap:6px">💚 تسجيل السداد</button>`;
+    } else if (st === 'paid') {
+      actionsHtml += `<span style="font-size:13px;color:#065f46;font-weight:700">💚 تم السداد بتاريخ ${dateAr(ret.paid_at)}</span>`;
+    }
+    actionsHtml += `</div>`;
+
+    el.innerHTML = stepHtml + numbersHtml + linesHtml + auditHtml + actionsHtml;
+
+    // Store id for action functions
+    el._vatId = id;
+
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:20px">❌ ${escH(e.message)}</div>`;
+  }
+}
+
+window.tcVatSaveDraft = async function(id) {
+  toast('📝 الإقرار محفوظ كمسودة');
+  await _tcVatLoadList();
+};
+
+window.tcVatSendReview = async function(id) {
+  try {
+    await api('POST', `/api/tax-center/vat/${id}/review`);
+    toast('👀 تم إرسال الإقرار للمراجعة');
+    await _renderVatWorkflow(id);
+    await _tcVatLoadList();
   } catch(e) { toast(e.message, 'error'); }
 };
 
 window.tcVatApprove = async function(id) {
+  if (!await confirmDlg('تأكيد اعتماد هذا الإقرار؟\nبعد الاعتماد يصبح جاهزاً للإرسال للبوابة الحكومية.')) return;
   try {
-    await api('POST', `/api/tax-center/vat/${id}/review`);
+    // If still draft, review first
+    const ret = await api('GET', `/api/tax-center/vat/${id}/detail`).catch(()=>null);
+    if (ret?.status === 'draft') await api('POST', `/api/tax-center/vat/${id}/review`);
     await api('POST', `/api/tax-center/vat/${id}/approve`);
-    toast('✅ تم اعتماد الإقرار — يمكن الآن التقديم عبر mytax.eta.gov.eg');
+    toast('✅ تم اعتماد الإقرار — جاهز للإرسال للبوابة');
+    await _renderVatWorkflow(id);
     await _tcVatLoadList();
   } catch(e) { toast(e.message, 'error'); }
 };
+
+window.tcVatBackDraft = async function(id) {
+  if (!await confirmDlg('إعادة الإقرار للمسودة؟')) return;
+  try {
+    await api('PUT', `/api/tax-center/vat/${id}`, {status:'draft'});
+    toast('↩️ أُعيد الإقرار للمسودة');
+    await _renderVatWorkflow(id);
+    await _tcVatLoadList();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+window.tcVatSubmitModal = function(id) {
+  const html = `
+  <div class="modal-backdrop" id="vatSubmitModal">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-header"><h3>📤 إرسال الإقرار للبوابة الحكومية</h3>
+        <button onclick="document.getElementById('vatSubmitModal').remove()" class="modal-close">✕</button></div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#fff7ed;border-radius:10px;padding:12px;font-size:13px;color:#92400e;border:1px solid #fed7aa">
+          ⚠️ هذا الإجراء نهائي — يرجى التأكد من مراجعة كل الأرقام قبل الإرسال.
+        </div>
+        <div>
+          <label class="label">رقم المرجع / رقم الإيصال من البوابة</label>
+          <input id="vatSubmitRef" class="input" placeholder="مثال: ETA-2025-001234" />
+        </div>
+        <div>
+          <label class="label">ملاحظات (اختياري)</label>
+          <input id="vatSubmitNotes" class="input" placeholder="أي ملاحظات إضافية"/>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="document.getElementById('vatSubmitModal').remove()" class="btn btn-secondary">إلغاء</button>
+        <button onclick="window.tcVatDoSubmit(${id})" class="btn btn-primary" style="background:#1a2472">📤 تأكيد الإرسال</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.tcVatDoSubmit = async function(id) {
+  const ref = document.getElementById('vatSubmitRef')?.value?.trim();
+  if (!ref) { toast('أدخل رقم المرجع من البوابة', 'error'); return; }
+  try {
+    await api('POST', `/api/tax-center/vat/${id}/submit`, {submission_ref: ref});
+    document.getElementById('vatSubmitModal')?.remove();
+    toast('📤 تم إرسال الإقرار بنجاح — رقم المرجع: ' + ref);
+    await _renderVatWorkflow(id);
+    await _tcVatLoadList();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+window.tcVatMarkPaid = async function(id) {
+  const ref = prompt('رقم إيصال السداد (اختياري):') || 'PAID';
+  try {
+    await api('POST', `/api/tax-center/vat/${id}/pay`, {payment_ref: ref, payment_amount: 0});
+    toast('💚 تم تسجيل السداد');
+    await _renderVatWorkflow(id);
+    await _tcVatLoadList();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// legacy alias
+window.tcVatView = window.tcVatWorkflow;
 
 // ── WITHHOLDING ─────────────────────────────────────────────────────────────
 async function _tcRenderWht(el) {
