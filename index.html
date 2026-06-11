@@ -3387,18 +3387,38 @@ async function loadTasks(silent = false) {
   main.className = 'page';
   if (!silent) main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
-    const [dailyRes, userRes] = await Promise.all([
-      api('GET', `/api/tasks/daily?task_date=${_dailyDate}`),
+    const [allRes, userRes] = await Promise.all([
+      api('GET', '/api/tasks?page_size=500'),
       api('GET', '/api/users').catch(() => []),
     ]);
-    tasksData = dailyRes?.tasks || [];
-    window.tasksData = tasksData;
+    const allTasks = allRes?.items || [];
     tasksUsersData = Array.isArray(userRes) ? userRes : (userRes?.items || []);
+
+    // Compute daily view on frontend
+    const target = _dailyDate;
+    const owned = allTasks.filter(t => {
+      const td = t.task_date || (t.created_at ? t.created_at.slice(0,10) : null);
+      return td === target;
+    });
+    const carried = allTasks.filter(t => {
+      const td = t.task_date || (t.created_at ? t.created_at.slice(0,10) : null);
+      return td && td < target && t.status !== 'done' && t.status !== 'cancelled';
+    });
+    const ownedIds = new Set(owned.map(t => t.id));
+    tasksData = [...owned, ...carried.filter(t => !ownedIds.has(t.id))];
+    // Add carry_over_days to each task
+    tasksData = tasksData.map(t => {
+      const td = t.task_date || (t.created_at ? t.created_at.slice(0,10) : null);
+      const diffMs = new Date(target) - new Date(td || target);
+      const carry_over_days = (td && td < target && t.status !== 'done' && t.status !== 'cancelled') ? Math.round(diffMs/86400000) : 0;
+      return {...t, carry_over_days};
+    });
+    window.tasksData = tasksData;
     window._dailySummary = {
-      total: dailyRes?.total || 0,
-      done: dailyRes?.done || 0,
-      overdue: dailyRes?.overdue || 0,
-      new_today: dailyRes?.new_today || 0,
+      total: tasksData.length,
+      done: tasksData.filter(t=>t.status==='done').length,
+      overdue: tasksData.filter(t=>t.carry_over_days>0&&t.status!=='done').length,
+      new_today: owned.length,
     };
     renderDailyTasks();
   } catch (e) { toast(e.message, 'error'); }
