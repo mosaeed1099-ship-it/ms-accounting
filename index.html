@@ -2469,13 +2469,55 @@ const PRIORITY_LABEL       = {urgent:'عاجل',high:'عالي',medium:'متوس
 const CAT_LABEL            = {tax:'ضرائب',accounting:'محاسبة',payroll:'مرتبات',legal:'قانوني',other:'أخرى'};
 const MONTH_NAMES_AR       = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
-function renderClients() {
-  const main=document.getElementById('main');
-  main.className='page';
+function _clientsTableRows() {
   const typeLabel=CLIENT_TYPE_LABEL;
   const typeBadge=CLIENT_TYPE_BADGE;
   const statusBadge=CLIENT_STATUS_BADGE;
   const statusLabel=CLIENT_STATUS_LABEL;
+  const q = clientSearch.toLowerCase();
+  const filtered = clientsData.filter(c=>{
+    if(clientFilter!=='all' && c.status!==clientFilter) return false;
+    if(q) return (c.name||'').toLowerCase().includes(q)||(c.tax_number||'').includes(q)||(c.code||'').toLowerCase().includes(q);
+    return true;
+  });
+  if(!filtered.length) return emptyStateRow(9,'👥','لا يوجد عملاء','اضغط "+ إضافة عميل" لإنشاء أول عميل');
+  return filtered.map(c=>{
+    const bal = c.balance||0;
+    const balStyle = bal>0?'color:#dc2626;font-weight:700':bal<0?'color:#16a34a;font-weight:700':'color:#94a3b8';
+    const balText = bal===0?'—': (bal>0?`<span style="${balStyle}">▲ ${money(bal)}</span>`:`<span style="${balStyle}">✓ ${money(Math.abs(bal))}</span>`);
+    return `
+  <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
+    <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
+    <td>
+      <div style="font-weight:600;color:#1e293b">${escH(c.name)}</div>
+      ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${escH(c.name_en)}</div>`:''}
+    </td>
+    <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
+    <td style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
+    <td style="color:#374151;font-size:12px">${c.activity||'—'}</td>
+    <td style="font-weight:600;color:#1e293b">${c.contract_value?money(c.contract_value):'—'}</td>
+    <td>${balText}</td>
+    <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
+    <td onclick="event.stopPropagation()">
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" onclick="showClientModal(${c.id})" title="تعديل">✏️</button>
+        <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')" title="فاتورة جديدة">📄</button>
+        <button class="btn btn-secondary btn-sm" title="رفع ملف" onclick="showUploadModal(${c.id})">📎</button>
+        <button class="btn btn-secondary btn-sm" title="إرسال بريد" onclick="showClientEmailModal(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.email||''}')">📧</button>
+      </div>
+    </td>
+  </tr>`;}).join('');
+}
+
+function renderClients() {
+  const main=document.getElementById('main');
+  main.className='page';
+  // If shell already rendered, only update tbody to preserve input focus
+  const existingTbody = main.querySelector('#clientsTbody');
+  if (existingTbody) {
+    existingTbody.innerHTML = _clientsTableRows();
+    return;
+  }
   main.innerHTML=`
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -2500,47 +2542,9 @@ function renderClients() {
       <thead><tr>
         <th>الكود</th><th>الاسم</th><th>النوع</th><th>الهاتف</th><th>النشاط</th><th>قيمة العقد</th><th>الرصيد</th><th>الحالة</th><th>إجراءات</th>
       </tr></thead>
-      <tbody>
-        ${(()=>{
-          // Client-side filter — no round-trip on each keystroke
-          const q = clientSearch.toLowerCase();
-          const filtered = clientsData.filter(c=>{
-            if(clientFilter!=='all' && c.status!==clientFilter) return false;
-            if(q) return (c.name||'').toLowerCase().includes(q)||(c.tax_number||'').includes(q)||(c.code||'').toLowerCase().includes(q);
-            return true;
-          });
-          if(!filtered.length) return emptyStateRow(9,'👥','لا يوجد عملاء','اضغط "+ إضافة عميل" لإنشاء أول عميل');
-          return filtered.map(c=>{
-            const bal = c.balance||0;
-            const balStyle = bal>0?'color:#dc2626;font-weight:700':bal<0?'color:#16a34a;font-weight:700':'color:#94a3b8';
-            const balText = bal===0?'—': (bal>0?`<span style="${balStyle}">▲ ${money(bal)}</span>`:`<span style="${balStyle}">✓ ${money(Math.abs(bal))}</span>`);
-            return `
-          <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
-            <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
-            <td>
-              <div style="font-weight:600;color:#1e293b">${escH(c.name)}</div>
-              ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${escH(c.name_en)}</div>`:''}
-            </td>
-            <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
-            <td style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
-            <td style="color:#374151;font-size:12px">${c.activity||'—'}</td>
-            <td style="font-weight:600;color:#1e293b">${c.contract_value?money(c.contract_value):'—'}</td>
-            <td>${balText}</td>
-            <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
-            <td onclick="event.stopPropagation()">
-              <div style="display:flex;gap:6px">
-                <button class="btn btn-secondary btn-sm" onclick="showClientModal(${c.id})" title="تعديل">✏️</button>
-                <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')" title="فاتورة جديدة">📄</button>
-                <button class="btn btn-secondary btn-sm" title="رفع ملف" onclick="showUploadModal(${c.id})">📎</button>
-                <button class="btn btn-secondary btn-sm" title="إرسال بريد" onclick="showClientEmailModal(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.email||''}')">📧</button>
-              </div>
-            </td>
-          </tr>`;}).join('');
-        })()}
-      </tbody>
+      <tbody id="clientsTbody">${_clientsTableRows()}</tbody>
     </table>
   </div>`;
-  // Client-side: search/filter calls renderClients() directly — no API round-trip
   document.getElementById('clientSearchInput').oninput=e=>{clientSearch=e.target.value;renderClients()};
   document.getElementById('clientFilterSelect').onchange=e=>{clientFilter=e.target.value;renderClients()};
 }
@@ -10736,8 +10740,10 @@ window.toggleSpecLabel= (el)  => { const chk=el.querySelector('input'); if(!chk)
 window._taskClientFilter = '';
 window.filterTasksByClient = (val) => {
   window._taskClientFilter = val.trim().toLowerCase();
-  if(window._taskViewMode === 'kanban') window.renderKanban && window.renderKanban();
-  else window.renderTaskFolders && window.renderTaskFolders();
+  _renderKeepFocus(() => {
+    if(window._taskViewMode === 'kanban') window.renderKanban && window.renderKanban();
+    else window.renderTaskFolders && window.renderTaskFolders();
+  });
 };
 
 // ── رسالة الغد — copy tomorrow's tasks grouped by employee ──
@@ -11070,10 +11076,25 @@ window.setOblTypeFilter=v=>{oblTypeFilter=v;renderObligations();};
 window.setOblStatusFilter=v=>{const kv=v==='overdue'?'overdue_kpi':v;oblStatusFilter=(oblStatusFilter===kv?'':kv);renderObligations();};
 window.clearOblFilters=()=>{oblSearchQ='';oblTypeFilter='';oblStatusFilter='';renderObligations();};
 window.setCollSearch=v=>{collectionsSearch=v;renderCollections(window._collSummaryCache||null);};
-window.setDocSearch=v=>{docSearchQ=v;renderDocuments();};
-window.setDocCatFilter=v=>{docCatFilter=v;renderDocuments();};
-window.setDocClientFilter=v=>{docClientFilter=v;renderDocuments();};
-window.setFeesSearch=v=>{_feesSearchQ=v;renderInvoices(window._feesSummaryCache||null);};
+// ── focus-preserving render wrapper (fixes search input losing focus on re-render)
+function _renderKeepFocus(fn) {
+  const el = document.activeElement;
+  const id = el?.id;
+  const ss = el?.selectionStart;
+  const se = el?.selectionEnd;
+  fn();
+  if (id) {
+    const restored = document.getElementById(id);
+    if (restored) {
+      restored.focus();
+      try { restored.setSelectionRange(ss, se); } catch(e) {}
+    }
+  }
+}
+window.setDocSearch=v=>{docSearchQ=v;_renderKeepFocus(()=>renderDocuments());};
+window.setDocCatFilter=v=>{docCatFilter=v;_renderKeepFocus(()=>renderDocuments());};
+window.setDocClientFilter=v=>{docClientFilter=v;_renderKeepFocus(()=>renderDocuments());};
+window.setFeesSearch=v=>{_feesSearchQ=v;_renderKeepFocus(()=>renderInvoices(window._feesSummaryCache||null));};
 // import
 window.fetchAndPreview=fetchAndPreview;
 window.filterImportRows=filterImportRows;
