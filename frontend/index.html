@@ -357,8 +357,15 @@
     /* منع أي outline زيادة على الـ leads inputs */
     #leadsGrid input { outline: none !important; }
     /* Compact row height */
-    #leadsGrid tbody tr { height: 34px; }
-    #leadsGrid tbody td { vertical-align: middle; }
+    #leadsGrid tbody tr { height: 36px; }
+    #leadsGrid tbody td { vertical-align: middle; border: 1px solid #c8d3e8 !important; }
+    /* Header row — dark navy */
+    #leadsGrid thead tr { background: #1e3a5f !important; }
+    #leadsGrid thead th { color: #e8edf8 !important; border: 1px solid #2d5080 !important; font-size:11.5px !important; font-weight:700 !important; text-align:center !important; padding:9px 6px !important; }
+    /* Bold text in all cells */
+    #leadsGrid tbody td input, #leadsGrid tbody td select { font-weight: 600 !important; }
+    /* Hover effect */
+    #leadsGrid tbody tr:hover { filter: brightness(0.94) !important; }
     /* إخفاء أسهم spinner على number inputs في Safari/Chrome */
     #leadsGrid input[type="number"]::-webkit-inner-spin-button,
     #leadsGrid input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
