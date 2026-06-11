@@ -5858,7 +5858,7 @@ function renderLeads(stats) {
     <table id="leadsGrid" style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:1100px">
       <thead>
         <tr style="background:#1e3a5f;border-bottom:2px solid #1a2472">
-          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:72px">الكود</th>
+          <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:82px">تاريخ التسجيل</th>
           <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:130px">اسم العميل *</th>
           <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:108px">رقم الهاتف</th>
           <th style="padding:8px 6px;font-size:11px;font-weight:700;color:#e2e8f0;text-align:center;white-space:nowrap;width:148px">البريد الإلكتروني</th>
@@ -6009,7 +6009,7 @@ function _buildLeadRow(l,idx=0){
 
   const fmtNum = v => (v!=null&&v!==''&&!isNaN(Number(v))) ? Number(v).toLocaleString('en-US') : '';
   const mainRow = `<tr data-id="${l.id||'new'}" style="border-bottom:${isNew?'2px solid #e0e7ff':'1px solid #d1d9e8'};background:${rowBg};border-right:3px solid ${sc}" onmouseover="this.style.filter='brightness(0.95)'" onmouseout="this.style.filter=''">
-    <td style="padding:3px 8px;white-space:nowrap;text-align:center"><span style="font-family:monospace;font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 5px;border-radius:4px">${escH(l.code||'جديد')}</span></td>
+    <td style="padding:3px 6px;white-space:nowrap;text-align:center"><span style="font-size:11px;font-weight:600;color:#374151">${l.created_at ? new Date(l.created_at).toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'}) : (l.id?'—':'جديد')}</span></td>
     <td style="padding:2px 5px;text-align:center">${_cellInput('name',l.name,'placeholder="الاسم *"')}</td>
     <td style="padding:2px 5px;text-align:center">${_cellInput('phone',l.phone,'placeholder="01x..." style="direction:ltr;text-align:center"')}</td>
     <td style="padding:2px 5px;text-align:center"><input autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12px;font-weight:600;font-family:inherit;background:transparent;outline:none;direction:ltr;text-align:center;transition:border-color .15s,background .15s" data-field="email" type="text" value="${escH(l.email||'')}" placeholder="email@..." onfocus="this.style.borderColor='#4478b0';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent';saveLeadCell(this);_syncLeadInlineToState(this.closest('tr[data-id]'))"/></td>
