@@ -118,7 +118,7 @@
       .mobile-menu-btn{display:flex!important;align-items:center;justify-content:center}
       /* Tables scroll horizontally */
       .card{overflow-x:auto}
-      table{min-width:500px}
+      .table-responsive{overflow-x:auto;-webkit-overflow-scrolling:touch}
       /* Kanban columns stack */
       .kanban-col{min-width:260px}
       /* Stat cards: 2 columns */
@@ -163,6 +163,16 @@
       /* Leads table mobile fix */
       .leads-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
     }
+
+    /* ── Tasks page mobile ── */
+    @media(max-width:768px){
+      .tasks-inner-sidebar{display:none!important}
+      .tasks-day-strip{display:flex!important}
+      #tasksMainTable{min-width:400px}
+    }
+    .tasks-day-strip{display:none;overflow-x:auto;gap:6px;padding:8px 12px;background:#fff;border-bottom:1px solid #e2e8f0;-webkit-overflow-scrolling:touch}
+    .tasks-day-pill{white-space:nowrap;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b}
+    .tasks-day-pill.active{background:#1e3a5f;color:#fff;border-color:#1e3a5f}
 
     @media(max-width:480px){
       .stats-grid{grid-template-columns:1fr!important}
@@ -3410,7 +3420,7 @@ function renderDailyTasks() {
 <div style="display:flex;height:calc(100vh - 60px);overflow:hidden">
 
   <!-- ─── Sidebar ─── -->
-  <div style="width:170px;min-width:150px;background:#1e3a5f;color:#e8edf8;display:flex;flex-direction:column;padding:12px 8px;overflow-y:auto">
+  <div class="tasks-inner-sidebar" style="width:170px;min-width:150px;background:#1e3a5f;color:#e8edf8;display:flex;flex-direction:column;padding:12px 8px;overflow-y:auto">
     <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#93c5fd;margin-bottom:10px;text-transform:uppercase">المهام اليومية</div>
 
     <!-- Stats -->
@@ -3435,7 +3445,13 @@ function renderDailyTasks() {
   </div>
 
   <!-- ─── Main Table ─── -->
-  <div style="flex:1;overflow:auto;background:#f8fafc;padding:16px">
+  <div style="flex:1;overflow:auto;background:#f8fafc;display:flex;flex-direction:column">
+  <!-- Mobile day strip -->
+  <div class="tasks-day-strip">
+    ${days.map(d=>`<div class="tasks-day-pill${d===_dailyDate?' active':''}" onclick="window._switchDay('${d}')">${d===today?'اليوم':_isoToAr(d).split(' ').slice(0,2).join(' ')}</div>`).join('')}
+    <div class="tasks-day-pill" onclick="window._sendDailyWhatsApp()" style="background:#25d366;color:#fff;border-color:#25d366">📱</div>
+  </div>
+  <div style="flex:1;overflow:auto;padding:12px">
 
     <!-- Header -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
@@ -3487,7 +3503,8 @@ function renderDailyTasks() {
       <button onclick="window._showArchive()" style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;text-decoration:underline">📁 الأرشيف والبحث</button>
       <button onclick="window._showDashboard()" style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;text-decoration:underline;margin-right:16px">📊 لوحة الأداء</button>
     </div>
-  </div>
+  </div><!-- end padding div -->
+  </div><!-- end main flex col -->
 </div>`;
 }
 
