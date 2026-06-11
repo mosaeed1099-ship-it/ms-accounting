@@ -5918,34 +5918,171 @@ window.tcCorpSave = async function() {
 
 // ── SALARY TAX ──────────────────────────────────────────────────────────────
 async function _tcRenderSalary(el) {
-  el.innerHTML = `
-  <div style="max-width:700px">
-    <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:16px">👤 حاسبة ضريبة المرتبات — قانون 91/2005 (تعديل 2023)</div>
-    <div class="card" style="padding:20px;margin-bottom:16px">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">الراتب الأساسي (ج.م./شهر) *</label>
-          <input id="salBase" class="input" type="number" placeholder="0" oninput="tcSalCalc()"/></div>
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">متغيرات (بونص/حوافز)</label>
-          <input id="salVar" class="input" type="number" placeholder="0" oninput="tcSalCalc()"/></div>
-        <div><label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">بدلات معفاة</label>
-          <input id="salAllow" class="input" type="number" placeholder="0" oninput="tcSalCalc()"/></div>
-      </div>
-      <button class="btn btn-primary" style="margin-top:12px" onclick="tcSalCalcServer()">🧮 احسب تفصيلياً</button>
-    </div>
-    <div id="salResult" style="display:none"></div>
+  if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
 
-    <div style="background:#eef1fb;border-radius:10px;padding:14px;margin-top:16px;font-size:12px;color:#374151">
-      <div style="font-weight:700;margin-bottom:8px">📋 شرائح ضريبة المرتبات (تعديل يوليو 2023)</div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="background:#1a2472;color:white"><th style="padding:6px;text-align:right">الشريحة السنوية</th><th style="padding:6px">النسبة</th></tr></thead>
-        <tbody>
-          ${[['0 – 40,000','0%'],['40,001 – 55,000','10%'],['55,001 – 75,000','15%'],['75,001 – 95,000','20%'],['95,001 – 195,000','22.5%'],['195,001 – 400,000','25%'],['أكثر من 400,000','27.5%']].map(([r,p],i)=>`<tr style="background:${i%2?'#f8fafc':'white'}"><td style="padding:5px 8px">${r}</td><td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a2472">${p}</td></tr>`).join('')}
+  el.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:30px"><div class="spinner"></div></div>`;
+
+  let emps = [];
+  try { emps = await api('GET', `/api/payroll/employees?client_id=${_tcClientId}`); } catch(e) {}
+
+  // ── حساب الإجماليات ─────────────────────────────
+  const totals = emps.reduce((acc, e) => {
+    acc.gross       += (e.gross       || 0);
+    acc.variable    += (e.variable    || 0);
+    acc.ins_emp     += (e.ins_emp     || 0);
+    acc.ins_comp    += (e.ins_comp    || 0);
+    acc.monthly_tax += (e.monthly_tax || 0);
+    acc.net         += (e.net         || 0);
+    return acc;
+  }, {gross:0, variable:0, ins_emp:0, ins_comp:0, monthly_tax:0, net:0});
+
+  const totalRequired = totals.net + totals.ins_emp + totals.ins_comp + totals.monthly_tax;
+
+  el.innerHTML = `
+  <div>
+    <!-- فورم الإضافة السريعة -->
+    <div class="card" style="padding:16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;color:#1a2472;margin-bottom:12px">➕ إضافة موظف جديد</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:10px">
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">الاسم *</label>
+          <input id="srEmpName" class="input" style="font-size:12px" placeholder="اسم الموظف"/></div>
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">الرقم القومي</label>
+          <input id="srEmpNID" class="input" style="font-size:12px" placeholder="14 رقم"/></div>
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">رقم التأمين</label>
+          <input id="srEmpIns" class="input" style="font-size:12px" placeholder="رقم التأمين"/></div>
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">تاريخ الاشتراك</label>
+          <input id="srEmpInsDate" class="input" type="date" style="font-size:12px"/></div>
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">الراتب الأساسي *</label>
+          <input id="srEmpBase" class="input" type="number" min="0" style="font-size:12px" placeholder="0"/></div>
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">متغيرات / حوافز</label>
+          <input id="srEmpVar" class="input" type="number" min="0" style="font-size:12px" placeholder="0"/></div>
+        <div><label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">بدلات معفاة</label>
+          <input id="srEmpAllow" class="input" type="number" min="0" style="font-size:12px" placeholder="0"/></div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="srSaveEmpBtn">💾 حفظ وإضافة</button>
+    </div>
+
+    <!-- جدول الموظفين -->
+    <div class="card" style="overflow:auto;margin-bottom:16px">
+      <table style="width:100%;border-collapse:collapse;min-width:900px">
+        <thead>
+          <tr style="background:#1a2472;color:white;font-size:11px">
+            <th style="padding:8px 10px;text-align:right">الاسم</th>
+            <th style="padding:8px 10px;text-align:right">الرقم القومي</th>
+            <th style="padding:8px 10px;text-align:right">رقم التأمين</th>
+            <th style="padding:8px 10px;text-align:right">تاريخ الاشتراك</th>
+            <th style="padding:8px 10px;text-align:left">راتب أساسي</th>
+            <th style="padding:8px 10px;text-align:left">متغيرات</th>
+            <th style="padding:8px 10px;text-align:left">بدلات</th>
+            <th style="padding:8px 10px;text-align:left">ضريبة موظف</th>
+            <th style="padding:8px 10px;text-align:left">تأمين موظف</th>
+            <th style="padding:8px 10px;text-align:left">تأمين شركة</th>
+            <th style="padding:8px 10px;text-align:left">صافي الراتب</th>
+            <th style="padding:8px 4px"></th>
+          </tr>
+        </thead>
+        <tbody id="srEmpTableBody">
+          ${!emps.length
+            ? `<tr><td colspan="12" style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">لا يوجد موظفون — أضف أول موظف بالفورم أعلاه</td></tr>`
+            : emps.map((e,i) => `<tr style="background:${i%2?'#f8fafc':'white'};font-size:12px;border-bottom:1px solid #f1f5f9">
+                <td style="padding:8px 10px;font-weight:600">${escH(e.name)}</td>
+                <td style="padding:8px 10px;color:#64748b;direction:ltr">${e.national_id||'—'}</td>
+                <td style="padding:8px 10px;color:#64748b">${e.insurance_number||'—'}</td>
+                <td style="padding:8px 10px;color:#64748b">${e.insurance_start_date?dateAr(e.insurance_start_date):'—'}</td>
+                <td style="padding:8px 10px;font-weight:600;color:#1e293b">${money(e.base_salary)}</td>
+                <td style="padding:8px 10px;color:#7c3aed">${money(e.variable||0)}</td>
+                <td style="padding:8px 10px;color:#64748b">${money(e.allowances||0)}</td>
+                <td style="padding:8px 10px;color:#dc2626;font-weight:600">${money(e.monthly_tax||0)}</td>
+                <td style="padding:8px 10px;color:#7c3aed">${money(e.ins_emp||0)}</td>
+                <td style="padding:8px 10px;color:#5b8ec4">${money(e.ins_comp||0)}</td>
+                <td style="padding:8px 10px;color:#16a34a;font-weight:700">${money(e.net||0)}</td>
+                <td style="padding:4px 6px">
+                  <button onclick="window._srDeleteEmp(${e.id})" style="background:#fee2e2;border:none;color:#dc2626;padding:3px 7px;border-radius:5px;cursor:pointer;font-size:11px">🗑</button>
+                </td>
+              </tr>`).join('')}
         </tbody>
       </table>
-      <div style="margin-top:8px;color:#64748b">الإعفاء الشخصي: 20,000 ج.م./سنة | تأمينات الموظف: 11% | التأمينات الاجتماعية: 18.75%</div>
     </div>
+
+    <!-- إجماليات / ملخص الالتزامات -->
+    <div class="card" style="padding:16px;background:#eef1fb">
+      <div style="font-size:13px;font-weight:700;color:#1a2472;margin-bottom:12px">📊 ملخص الالتزامات الشهرية</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
+        ${[
+          ['إجمالي الرواتب',  totals.gross,       '#1e293b', '#f8fafc'],
+          ['إجمالي المتغيرات', totals.variable,    '#7c3aed', '#faf5ff'],
+          ['ضرائب الموظفين',  totals.monthly_tax, '#dc2626', '#fff5f5'],
+          ['التزامات الموظفين (تأمين)', totals.ins_emp,  '#7c3aed', '#faf5ff'],
+          ['التزامات الشركة (تأمين)',   totals.ins_comp, '#5b8ec4', '#eff6ff'],
+          ['صافي المدفوع للموظفين',     totals.net,      '#16a34a', '#f0fdf4'],
+        ].map(([l,v,c,bg])=>`
+        <div style="background:${bg};border-radius:10px;padding:12px;text-align:center;border:1px solid #e8edf3">
+          <div style="font-size:16px;font-weight:800;color:${c}">${money(v)}</div>
+          <div style="font-size:10px;color:#64748b;margin-top:3px">${l}</div>
+        </div>`).join('')}
+        <div style="background:#fefce8;border-radius:10px;padding:12px;text-align:center;border:2px solid #fde047">
+          <div style="font-size:18px;font-weight:800;color:#d97706">${money(totalRequired)}</div>
+          <div style="font-size:10px;color:#92400e;margin-top:3px;font-weight:600">💰 المبلغ المطلوب الإجمالي</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#64748b">
+        المبلغ المطلوب = صافي المدفوع + تأمينات موظفين + تأمينات شركة + ضرائب دخل
+      </div>
+    </div>
+
+    <!-- شرائح الضريبة مرجع -->
+    <details style="margin-top:12px">
+      <summary style="font-size:12px;font-weight:600;color:#1a2472;cursor:pointer;padding:8px;background:#eef1fb;border-radius:8px">📋 شرائح ضريبة المرتبات (تعديل يوليو 2023)</summary>
+      <div style="background:#eef1fb;border-radius:0 0 8px 8px;padding:10px;font-size:12px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#1a2472;color:white"><th style="padding:6px;text-align:right">الشريحة السنوية</th><th style="padding:6px">النسبة</th></tr></thead>
+          <tbody>${[['0 – 40,000','0%'],['40,001 – 55,000','10%'],['55,001 – 75,000','15%'],['75,001 – 95,000','20%'],['95,001 – 195,000','22.5%'],['195,001 – 400,000','25%'],['أكثر من 400,000','27.5%']].map(([r,p],i)=>`<tr style="background:${i%2?'#f8fafc':'white'}"><td style="padding:5px 8px">${r}</td><td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a2472">${p}</td></tr>`).join('')}</tbody>
+        </table>
+        <div style="margin-top:6px;color:#64748b">الإعفاء الشخصي: 20,000 ج.م./سنة | تأمينات الموظف: 11% | تأمينات الشركة: 18.75%</div>
+      </div>
+    </details>
   </div>`;
+
+  // Save employee handler
+  document.getElementById('srSaveEmpBtn').onclick = async () => {
+    const name = document.getElementById('srEmpName').value.trim();
+    const base = parseFloat(document.getElementById('srEmpBase').value) || 0;
+    if (!name) { toast('اسم الموظف مطلوب', 'error'); return; }
+    if (!base)  { toast('الراتب الأساسي مطلوب', 'error'); return; }
+    const btn = document.getElementById('srSaveEmpBtn');
+    btn.disabled = true; btn.textContent = '⏳ جاري الحفظ...';
+    try {
+      await api('POST', '/api/payroll/employees', {
+        client_id:            _tcClientId,
+        name,
+        national_id:          document.getElementById('srEmpNID').value.trim() || null,
+        insurance_number:     document.getElementById('srEmpIns').value.trim() || null,
+        insurance_start_date: document.getElementById('srEmpInsDate').value || null,
+        base_salary:          base,
+        variable_pay:         parseFloat(document.getElementById('srEmpVar').value)   || 0,
+        allowances:           parseFloat(document.getElementById('srEmpAllow').value) || 0,
+      });
+      toast('تم إضافة الموظف');
+      // Clear fields
+      ['srEmpName','srEmpNID','srEmpIns','srEmpInsDate','srEmpBase','srEmpVar','srEmpAllow']
+        .forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+      // Refresh
+      const tcContent = document.getElementById('taxTabContent');
+      if (tcContent) await _tcRenderSalary(tcContent);
+    } catch(e) { toast(e.message,'error'); }
+    finally { const b=document.getElementById('srSaveEmpBtn'); if(b){b.disabled=false;b.textContent='💾 حفظ وإضافة';} }
+  };
 }
+
+window._srDeleteEmp = async (empId) => {
+  if (!confirm('حذف هذا الموظف من سجل ضريبة المرتبات؟')) return;
+  try {
+    await api('DELETE', `/api/payroll/employees/${empId}`);
+    toast('تم الحذف');
+    const tcContent = document.getElementById('taxTabContent');
+    if (tcContent) await _tcRenderSalary(tcContent);
+  } catch(e) { toast(e.message,'error'); }
+};
 
 window.tcSalCalc = function() {
   const base = parseFloat(document.getElementById('salBase')?.value)||0;
@@ -7977,6 +8114,11 @@ async function showFormationDetail(caseId) {
         <button onclick="_fmAddNote(${c.id})" class="btn btn-secondary">📝 إضافة ملاحظة</button>
         <button onclick="showFormationEditModal(${c.id})" class="btn btn-secondary">✏️ تعديل البيانات</button>
         <button onclick="_fmShowAttachModal(${c.id},'${escH(c.company_name)}','${c.current_stage}',${c.client_id||'null'})" class="btn btn-secondary" style="background:#f0fdf4;border-color:#86efac;color:#15803d">📎 رفع مرفق للمرحلة</button>
+        ${c.is_completed
+          ? c.client_id
+            ? `<span style="font-size:12px;color:#16a34a;font-weight:600;padding:6px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac">✅ مرتبط بعميل</span>`
+            : `<button onclick="window._fmConvertToClient(${c.id})" class="btn btn-success" style="font-weight:700">🚀 تحويل إلى عميل مكتب</button>`
+          : ''}
       </div>
 
       <!-- Stage Attachments -->
@@ -8020,6 +8162,21 @@ async function showFormationDetail(caseId) {
     document.getElementById('fmDetailBody').innerHTML=`<div style="color:red;padding:20px">${e.message}</div>`;
   }
 }
+
+window._fmConvertToClient = async (caseId) => {
+  if (!confirm('تحويل هذه الشركة إلى عميل في "عملاء المكتب"؟')) return;
+  try {
+    const r = await api('POST', `/api/formation/${caseId}/convert-to-client`);
+    if (r.already_exists) {
+      toast('الشركة مرتبطة بعميل مسبقاً', 'info');
+    } else {
+      toast(`✅ تم إنشاء العميل "${r.client_name}" بنجاح`);
+    }
+    // refresh detail
+    document.querySelector('.modal-overlay')?.remove();
+    showFormationDetail(caseId);
+  } catch(e) { toast(e.message, 'error'); }
+};
 
 async function _fmAddNote(caseId) {
   const text = prompt('ملاحظة:');
