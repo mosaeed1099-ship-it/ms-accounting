@@ -244,23 +244,25 @@ def get_stats(
         base = base.filter(Lead.created_at <= dt_to)
 
     total = base.count()
-    new = base.filter(Lead.status == LeadStatus.NEW).count()
-    in_progress = base.filter(
-        Lead.status.in_([LeadStatus.INTERESTED, LeadStatus.MEETING, LeadStatus.QUOTATION_SENT])
-    ).count()
-    converted = base.filter(
-        Lead.status.in_([LeadStatus.PAID, LeadStatus.UNDER_ESTABLISHMENT,
-                          LeadStatus.TAX_REGISTERED, LeadStatus.ACCOUNTING_CLIENT])
-    ).count()
-    lost = base.filter(Lead.status == LeadStatus.LOST).count()
-    quotation = base.filter(Lead.status == LeadStatus.QUOTATION_SENT).count()
-    interested = base.filter(Lead.status == LeadStatus.INTERESTED).count()
-    not_answered = base.filter(Lead.status.in_(['not_answered', 'call_later', 'wrong_number'])).count()
+    interested          = base.filter(Lead.status == LeadStatus.INTERESTED).count()
+    not_answered        = base.filter(Lead.status == LeadStatus.NOT_ANSWERED).count()
+    call_later          = base.filter(Lead.status == LeadStatus.CALL_LATER).count()
+    quotation_sent      = base.filter(Lead.status == LeadStatus.QUOTATION_SENT).count()
+    under_establishment = base.filter(Lead.status == LeadStatus.UNDER_ESTABLISHMENT).count()
+    lost                = base.filter(Lead.status == LeadStatus.LOST).count()
     return {
-        "total": total, "new": new, "in_progress": in_progress,
-        "converted": converted, "lost": lost, "quotation": quotation,
-        "interested": interested, "not_answered": not_answered,
-        "conversion_rate": round(converted / total * 100, 1) if total else 0
+        "total": total,
+        "interested": interested,
+        "not_answered": not_answered,
+        "call_later": call_later,
+        "quotation_sent": quotation_sent,
+        "under_establishment": under_establishment,
+        "lost": lost,
+        # legacy aliases kept for compatibility
+        "new": 0, "in_progress": interested + quotation_sent,
+        "converted": under_establishment,
+        "quotation": quotation_sent,
+        "conversion_rate": round(under_establishment / total * 100, 1) if total else 0
     }
 
 
