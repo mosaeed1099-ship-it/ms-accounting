@@ -2889,7 +2889,7 @@ function showClientModal(id=null) {
             {key:'vat_monthly',       label:'🧾 ق.م.م شهري'},
             {key:'vat_quarterly',     label:'🧾 ق.م.م ربعي'},
             {key:'payroll_monthly',   label:'💼 مرتبات شهري'},
-            {key:'withholding_monthly',label:'✂️ خصم وإضافة شهري'},
+            {key:'withholding_monthly',label:'✂️ أسس توحيد المرتبات شهري'},
             {key:'insurance_monthly', label:'🛡️ تأمينات شهرية'},
             {key:'stamp_quarterly',   label:'🔏 دمغة ربعي'},
             {key:'income_annual',     label:'📊 ضريبة الدخل سنوي'},
@@ -4471,7 +4471,7 @@ function _renderTaxShell() {
   const tabs = [
     {id:'dashboard', icon:'📊', label:'لوحة التحكم'},
     {id:'vat',       icon:'🧾', label:'ض.ق.م.'},
-    {id:'wht',       icon:'✂️',  label:'خصم وإضافة'},
+    {id:'wht',       icon:'✂️',  label:'أسس توحيد المرتبات'},
     {id:'corporate', icon:'🏢', label:'ضريبة الدخل'},
     {id:'salary',    icon:'👤', label:'ضريبة المرتبات'},
     {id:'calendar',  icon:'📅', label:'التقويم الضريبي'},
@@ -5048,7 +5048,13 @@ async function _renderVatWorkflow(id) {
     el._vatId = id;
 
   } catch(e) {
-    el.innerHTML = `<div style="color:#dc2626;padding:20px">❌ ${escH(e.message)}</div>`;
+    const isNotFound = e.message?.includes('404') || e.message?.toLowerCase().includes('not found');
+    el.innerHTML = `<div style="padding:30px;text-align:center">
+      <div style="font-size:36px;margin-bottom:12px">${isNotFound?'🗑️':'❌'}</div>
+      <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:8px">${isNotFound?'الإقرار غير موجود':'خطأ في تحميل الإقرار'}</div>
+      <div style="font-size:13px;color:#64748b;margin-bottom:16px">${isNotFound?'ربما تم حذف هذا الإقرار أو لم يتم بناؤه بعد. اضغط "بناء إقرار" لإنشاء إقرار جديد.':escH(e.message)}</div>
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay')?.remove();tcVatBuild()">⚡ بناء إقرار جديد</button>
+    </div>`;
   }
 }
 
@@ -5092,12 +5098,27 @@ window.tcVatBackDraft = async function(id) {
 window.tcVatSubmitModal = function(id) {
   const html = `
   <div class="modal-backdrop" id="vatSubmitModal">
-    <div class="modal" style="max-width:440px">
+    <div class="modal" style="max-width:460px">
       <div class="modal-header"><h3>📤 إرسال الإقرار للبوابة الحكومية</h3>
         <button onclick="document.getElementById('vatSubmitModal').remove()" class="modal-close">✕</button></div>
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
         <div style="background:#fff7ed;border-radius:10px;padding:12px;font-size:13px;color:#92400e;border:1px solid #fed7aa">
           ⚠️ هذا الإجراء نهائي — يرجى التأكد من مراجعة كل الأرقام قبل الإرسال.
+        </div>
+        <div>
+          <label class="label" style="font-weight:700;color:#1e293b">📎 رفع ملف الإقرار الضريبي (PDF) — مطلوب *</label>
+          <div style="border:2px dashed #c7d3ef;border-radius:10px;padding:16px;text-align:center;background:#f8fafc;cursor:pointer;transition:all .2s"
+               onclick="document.getElementById('vatPdfInput').click()"
+               ondragover="event.preventDefault();this.style.background='#eef2ff';this.style.borderColor='#1a2472'"
+               ondragleave="this.style.background='#f8fafc';this.style.borderColor='#c7d3ef'"
+               ondrop="event.preventDefault();this.style.background='#f8fafc';this.style.borderColor='#c7d3ef';window.vatHandlePdfDrop(event)">
+            <input id="vatPdfInput" type="file" accept=".pdf" style="display:none" onchange="window.vatHandlePdfSelect(this)"/>
+            <div id="vatPdfPreview" style="color:#64748b;font-size:13px">
+              <div style="font-size:28px;margin-bottom:6px">📄</div>
+              <div style="font-weight:600;color:#374151">اسحب ملف PDF هنا أو اضغط للاختيار</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px">مثال: إقرار قيمة مضافة شركة بوكو لينك.pdf</div>
+            </div>
+          </div>
         </div>
         <div>
           <label class="label">رقم المرجع / رقم الإيصال من البوابة</label>
@@ -5110,23 +5131,63 @@ window.tcVatSubmitModal = function(id) {
       </div>
       <div class="modal-footer">
         <button onclick="document.getElementById('vatSubmitModal').remove()" class="btn btn-secondary">إلغاء</button>
-        <button onclick="window.tcVatDoSubmit(${id})" class="btn btn-primary" style="background:#1a2472">📤 تأكيد الإرسال</button>
+        <button id="vatSubmitConfirmBtn" onclick="window.tcVatDoSubmit(${id})" class="btn btn-primary" style="background:#94a3b8;cursor:not-allowed" disabled title="يجب رفع ملف PDF أولاً">📎 ارفع PDF أولاً</button>
       </div>
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+  window._vatPdfFile = null;
+  window.vatHandlePdfSelect = function(inp) {
+    const file = inp.files[0];
+    if (!file) return;
+    window._vatPdfFile = file;
+    window._vatUpdatePdfPreview(file.name);
+  };
+  window.vatHandlePdfDrop = function(e) {
+    const file = e.dataTransfer.files[0];
+    if (!file || !file.name.endsWith('.pdf')) { toast('يرجى اختيار ملف PDF فقط','error'); return; }
+    window._vatPdfFile = file;
+    window._vatUpdatePdfPreview(file.name);
+  };
+  window._vatUpdatePdfPreview = function(name) {
+    document.getElementById('vatPdfPreview').innerHTML = `
+      <div style="font-size:28px;margin-bottom:6px">✅</div>
+      <div style="font-weight:700;color:#15803d;font-size:13px">تم اختيار الملف:</div>
+      <div style="font-size:12px;color:#1e293b;margin-top:4px;word-break:break-all;font-weight:600">${escH(name)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">اضغط مرة أخرى لتغيير الملف</div>`;
+    const btn = document.getElementById('vatSubmitConfirmBtn');
+    if (btn) { btn.disabled=false; btn.style.background='#1a2472'; btn.style.cursor='pointer'; btn.textContent='📤 اكتمل وإرسال'; }
+  };
 };
 
 window.tcVatDoSubmit = async function(id) {
   const ref = document.getElementById('vatSubmitRef')?.value?.trim();
   if (!ref) { toast('أدخل رقم المرجع من البوابة', 'error'); return; }
+  if (!window._vatPdfFile) { toast('يجب رفع ملف PDF أولاً', 'error'); return; }
+  const btn = document.getElementById('vatSubmitConfirmBtn');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ جاري الرفع...'; }
   try {
+    // Upload PDF first
+    const fd = new FormData();
+    fd.append('file', window._vatPdfFile);
+    if (_tcClientId) fd.append('client_id', _tcClientId);
+    fd.append('category', 'TAX');
+    fd.append('description', window._vatPdfFile.name);
+    const token = localStorage.getItem('token');
+    const uploadRes = await fetch(API_BASE + '/api/documents/upload', {
+      method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
+    });
+    if (!uploadRes.ok) { const err=await uploadRes.json(); throw new Error(err.detail||'فشل رفع الملف'); }
+    // Submit VAT return
     await api('POST', `/api/tax-center/vat/${id}/submit`, {submission_ref: ref});
     document.getElementById('vatSubmitModal')?.remove();
-    toast('📤 تم إرسال الإقرار بنجاح — رقم المرجع: ' + ref);
+    toast('📤 تم إرسال الإقرار ورفع PDF بنجاح — رقم المرجع: ' + ref);
     await _renderVatWorkflow(id);
     await _tcVatLoadList();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    toast(e.message, 'error');
+    if (btn) { btn.disabled=false; btn.style.background='#1a2472'; btn.textContent='📤 اكتمل وإرسال'; }
+  }
 };
 
 window.tcVatMarkPaid = async function(id) {
@@ -5148,7 +5209,7 @@ async function _tcRenderWht(el) {
 
   el.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="font-size:15px;font-weight:700;color:#1e293b">✂️ الخصم والإضافة — ${escH(_tcClientName)}</div>
+    <div style="font-size:15px;font-weight:700;color:#1e293b">✂️ أسس توحيد المرتبات — ${escH(_tcClientName)}</div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" onclick="tcWhtAddEntry()">+ قيد جديد</button>
       <button class="btn btn-primary" onclick="tcWhtBuildReturn()">🏗️ بناء الإقرار الشهري</button>
@@ -5222,7 +5283,7 @@ window.tcWhtAddEntry = async function() {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `<div class="modal" style="max-width:500px">
     <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-      <h2 style="font-size:16px;font-weight:700;margin:0">✂️ قيد خصم وإضافة جديد</h2>
+      <h2 style="font-size:16px;font-weight:700;margin:0">✂️ قيد أسس توحيد المرتبات جديد</h2>
       <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
     </div>
     <div style="padding:20px;display:grid;gap:12px">
@@ -7593,7 +7654,7 @@ const OBL_NAME_AR = {
   vat_monthly:              'إقرار القيمة المضافة الشهري',
   vat_quarterly:            'إقرار القيمة المضافة الربعي',
   payroll_monthly:          'نموذج 1 — مرتبات شهري',
-  withholding_monthly:      'خصم وإضافة شهري',
+  withholding_monthly:      'أسس توحيد المرتبات شهري',
   insurance_monthly:        'تأمينات اجتماعية شهرية',
   stamp_quarterly:          'الدمغة النسبية ربعي',
   income_annual:            'إقرار ضريبة الدخل السنوي',
@@ -7708,7 +7769,7 @@ function renderObligations() {
   const OBL_GROUPS = [
     { key:'vat',         label:'ضريبة القيمة المضافة',    icon:'🧾', color:'#0369a1', bg:'#e0f2fe', border:'#7dd3fc',
       types:['vat_monthly','vat_quarterly'] },
-    { key:'withholding', label:'خصم وإضافة',              icon:'✂️', color:'#0f766e', bg:'#f0fdfa', border:'#5eead4',
+    { key:'withholding', label:'أسس توحيد المرتبات',       icon:'✂️', color:'#0f766e', bg:'#f0fdfa', border:'#5eead4',
       types:['withholding_monthly'] },
     { key:'payroll',     label:'المرتبات والنماذج',        icon:'💼', color:'#7c3aed', bg:'#f5f3ff', border:'#c4b5fd',
       types:['payroll_monthly','form_41'] },
@@ -7939,7 +8000,7 @@ async function showObligationModal(preClientId=null) {
           <optgroup label="▸ شهرية">
             <option value="vat_monthly">🧾 إقرار القيمة المضافة الشهري</option>
             <option value="payroll_monthly">💼 نموذج 1 — مرتبات شهري</option>
-            <option value="withholding_monthly">✂️ خصم وإضافة شهري</option>
+            <option value="withholding_monthly">✂️ أسس توحيد المرتبات شهري</option>
             <option value="insurance_monthly">🛡️ تأمينات اجتماعية شهرية</option>
           </optgroup>
           <optgroup label="▸ ربع سنوية">
@@ -14745,6 +14806,9 @@ window.showAddTransaction = showAddTransaction;
 window.saveAccTransaction = saveAccTransaction;
 window.deleteAccTx = deleteAccTx;
 window.calcTxTotals = calcTxTotals;
+window.showEditTransaction = showEditTransaction;
+window.saveEditTransaction = saveEditTransaction;
+window.calcEditTxTotals = calcEditTxTotals;
 window.showAddJournalEntry = showAddJournalEntry;
 window.addJeLine = addJeLine;
 window.calcJeBalance = calcJeBalance;
