@@ -1114,7 +1114,7 @@ function renderLogin() {
 // Flat list (for backward compat — active check, pages map, etc.)
 const navItems = [
   {id:'dashboard'    ,icon:'📊',label:'الرئيسية'},
-  {id:'clients'      ,icon:'👥',label:'العملاء'},
+  {id:'clients'      ,icon:'👥',label:'عملاء المكتب'},
   {id:'leads'        ,icon:'🎯',label:'العملاء المحتملين'},
   {id:'establishment',icon:'🏗️',label:'تأسيس الشركات'},
   {id:'invoices'     ,icon:'💰',label:'الأتعاب والتحصيلات'},
@@ -1830,7 +1830,7 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'العملاء',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية'};
+  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
@@ -2893,7 +2893,7 @@ function showClientModal(id=null) {
             {key:'insurance_monthly', label:'🛡️ تأمينات شهرية'},
             {key:'stamp_quarterly',   label:'🔏 دمغة ربعي'},
             {key:'income_annual',     label:'📊 ضريبة الدخل سنوي'},
-            {key:'corporate_tax',     label:'🏛️ أرباح تجارية سنوي'},
+            {key:'corporate_tax',     label:'🏛️ ضريبة الخصم والتحصيل'},
             {key:'form_41',           label:'📋 نموذج 41 سنوي'},
             {key:'commercial_register_renewal', label:'📜 تجديد السجل سنوي'},
           ].map(o=>{const checked=(c?.tax_obligations||[]).includes(o.key);return`<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;padding:5px 8px;border-radius:7px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
@@ -3090,7 +3090,7 @@ function renderInvoices(summary) {
     <div style="display:flex;gap:8px">
       ${_feesTab==='invoices'
         ? `<button class="btn btn-primary" onclick="showInvoiceModal()">+ فاتورة جديدة</button>`
-        : `<button class="btn btn-primary" onclick="showCollectionModal('${_feesTab}')">+ إضافة عقد</button>`}
+        : `<button class="btn btn-primary" onclick="showCollectionModal('${_feesTab}')">+ إضافة</button>`}
     </div>
   </div>`;
 
@@ -3127,7 +3127,7 @@ function renderInvoices(summary) {
       </tr></thead>
       <tbody id="fees-tbody">
         ${rows.length===0
-          ? `<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">لا توجد عقود — اضغط "+ إضافة عقد"</td></tr>`
+          ? `<tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8">لا توجد عقود — اضغط "+ إضافة"</td></tr>`
           : rows.map((c,idx)=>{
               const lastPay = (c.payments||[]).length ? c.payments[c.payments.length-1] : null;
               const payCount = (c.payments||[]).length;
@@ -3334,8 +3334,14 @@ let tasksData=[];
 
 // ── Tasks globals ──────────────────────────────────────────────────
 let tasksUsersData = [];
-let _taskViewMode  = 'folders'; // 'folders' | 'kanban'
+let _taskViewMode  = 'table'; // 'table' | 'folders' | 'kanban'
 let _taskEmpFilter = null;      // {id, name} | null = all
+let _taskSearch    = '';
+let _taskStatusFilter = '';
+let _taskPrioFilter   = '';
+let _taskEmpFilt2     = '';
+let _taskSortCol      = 'due_date';
+let _taskSortDir      = 'asc';
 
 async function loadTasks(silent=false) {
   const main = document.getElementById('main');
@@ -3354,7 +3360,7 @@ async function loadTasks(silent=false) {
     } else if (_taskViewMode === 'kanban') {
       renderKanban();
     } else {
-      renderTaskFolders();
+      renderTasksTable();
     }
   } catch(e) { toast(e.message, 'error'); }
 }
@@ -3460,6 +3466,141 @@ function renderTaskFolders() {
       <div style="font-size:13px;margin-top:6px">أضف مهام وحدد الموظف المسؤول عنها</div>
     </div>` : ''}
   </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// TASKS — Professional Table View
+// ══════════════════════════════════════════════════════════════
+const TASK_STATUS_LABEL = {pending:'قيد التنفيذ',in_progress:'جارٍ',done:'مكتملة',cancelled:'ملغاة'};
+const TASK_STATUS_COLOR = {pending:'#d97706',in_progress:'#1a2472',done:'#15803d',cancelled:'#94a3b8'};
+const TASK_STATUS_BG    = {pending:'#fefce8',in_progress:'#eef1fb',done:'#f0fdf4',cancelled:'#f8fafc'};
+
+function renderTasksTable() {
+  const main = document.getElementById('main');
+
+  // ─ Apply filters ─
+  let rows = [...tasksData];
+  if (_taskSearch)       rows = rows.filter(t => (t.title+' '+(t.client_name||'')+' '+(t.assigned_to_name||'')+' '+(t.notes||'')).toLowerCase().includes(_taskSearch.toLowerCase()));
+  if (_taskStatusFilter) rows = rows.filter(t => t.status === _taskStatusFilter);
+  if (_taskPrioFilter)   rows = rows.filter(t => t.priority === _taskPrioFilter);
+  if (_taskEmpFilt2)     rows = rows.filter(t => String(t.assigned_to) === _taskEmpFilt2);
+
+  // ─ Sort ─
+  rows.sort((a,b) => {
+    let va = a[_taskSortCol]||'', vb = b[_taskSortCol]||'';
+    if (_taskSortCol==='due_date'||_taskSortCol==='created_at') { va=va||'9999'; vb=vb||'9999'; }
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return _taskSortDir==='asc' ? cmp : -cmp;
+  });
+
+  const thSort = (col, label) => {
+    const active = _taskSortCol===col;
+    const arrow = active ? (_taskSortDir==='asc'?'↑':'↓') : '';
+    return `<th onclick="window._taskTableSort('${col}')" style="padding:9px 8px;background:#1e3a5f;color:#e8edf8;font-size:11.5px;font-weight:700;text-align:center;cursor:pointer;white-space:nowrap;user-select:none">${label} ${arrow}</th>`;
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+  const rowHtml = rows.map((t,i) => {
+    const isOverdue = t.due_date && t.due_date < today && t.status!=='done' && t.status!=='cancelled';
+    const bg = i%2===0?'#ffffff':'#f8fafc';
+    const pc = PRIORITY_COLOR[t.priority]||'#94a3b8';
+    const pl = PRIORITY_LABEL[t.priority]||t.priority||'—';
+    const sc = TASK_STATUS_COLOR[t.status]||'#94a3b8';
+    const sb = TASK_STATUS_BG[t.status]||'#f8fafc';
+    const sl = TASK_STATUS_LABEL[t.status]||t.status||'—';
+    return `<tr style="background:${isOverdue?'#fff5f5':bg};border-bottom:1px solid #e8edf3" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
+      <td style="padding:8px;text-align:center;font-size:12px;font-weight:700;color:#1e293b;max-width:200px">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px" title="${escH(t.title)}">${escH(t.title)}</div>
+        ${t.notes?`<div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${escH(t.notes)}</div>`:''}
+      </td>
+      <td style="padding:8px;text-align:center;font-size:12px;color:#374151">${escH(t.client_name||'—')}</td>
+      <td style="padding:8px;text-align:center;font-size:12px;color:#374151">${escH(t.assigned_to_name||'—')}</td>
+      <td style="padding:8px;text-align:center"><span style="background:${pc}18;color:${pc};font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap">${pl}</span></td>
+      <td style="padding:8px;text-align:center;font-size:12px;font-weight:${isOverdue?'700':'500'};color:${isOverdue?'#dc2626':'#374151'}">${t.due_date?t.due_date.slice(0,10)+(isOverdue?' ⚠️':''):'—'}</td>
+      <td style="padding:8px;text-align:center"><span style="background:${sb};color:${sc};font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap">${sl}</span></td>
+      <td style="padding:8px;text-align:center;font-size:11px;color:#64748b">${t.created_at?t.created_at.slice(0,10):'—'}</td>
+      <td style="padding:8px;text-align:center">
+        <div style="display:flex;gap:4px;justify-content:center">
+          ${t.status!=='done'?`<button onclick="window.quickDoneTask(${t.id})" style="background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#15803d" title="إنهاء">✅</button>`:''}
+          <button onclick="editTask(${t.id})" style="background:#eef1fb;border:1px solid #c7d3ef;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#1a2472" title="تعديل">✏️</button>
+          <button onclick="deleteTask(${t.id})" style="background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#dc2626" title="حذف">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" style="text-align:center;padding:50px;color:#94a3b8"><div style="font-size:36px;margin-bottom:10px">✅</div><div style="font-size:15px;font-weight:600">لا توجد مهام</div></td></tr>`;
+
+  // Stats
+  const total = tasksData.length;
+  const pending = tasksData.filter(t=>t.status==='pending'||t.status==='in_progress').length;
+  const overdue = tasksData.filter(t=>t.due_date&&t.due_date<today&&t.status!=='done'&&t.status!=='cancelled').length;
+  const done    = tasksData.filter(t=>t.status==='done').length;
+
+  const empOpts = [...new Map(tasksData.filter(t=>t.assigned_to).map(t=>[t.assigned_to,t.assigned_to_name])).entries()]
+    .map(([id,name])=>`<option value="${id}" ${String(_taskEmpFilt2)===String(id)?'selected':''}>${escH(name||'#'+id)}</option>`).join('');
+
+  main.className = 'page';
+  main.innerHTML = `
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+    <div class="stat-card"><div style="font-size:20px;font-weight:800;color:#1a2472">${total}</div><div style="font-size:11px;color:#64748b">الإجمالي</div></div>
+    <div class="stat-card"><div style="font-size:20px;font-weight:800;color:#d97706">${pending}</div><div style="font-size:11px;color:#64748b">قيد التنفيذ</div></div>
+    <div class="stat-card"><div style="font-size:20px;font-weight:800;color:#dc2626">${overdue}</div><div style="font-size:11px;color:#64748b">⚠️ متأخرة</div></div>
+    <div class="stat-card"><div style="font-size:20px;font-weight:800;color:#15803d">${done}</div><div style="font-size:11px;color:#64748b">✅ مكتملة</div></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <input id="taskSearchInp" class="input" style="width:220px" placeholder="🔍 بحث بالمهمة أو العميل أو الموظف..." value="${escH(_taskSearch)}" oninput="_taskSearch=this.value;renderTasksTable()"/>
+    <select id="taskStatusSel" class="input" style="width:140px" onchange="_taskStatusFilter=this.value;renderTasksTable()">
+      <option value="">كل الحالات</option>
+      ${Object.entries(TASK_STATUS_LABEL).map(([v,l])=>`<option value="${v}" ${_taskStatusFilter===v?'selected':''}>${l}</option>`).join('')}
+    </select>
+    <select id="taskPrioSel" class="input" style="width:130px" onchange="_taskPrioFilter=this.value;renderTasksTable()">
+      <option value="">كل الأولويات</option>
+      ${Object.entries(PRIORITY_LABEL).map(([v,l])=>`<option value="${v}" ${_taskPrioFilter===v?'selected':''}>${l}</option>`).join('')}
+    </select>
+    <select id="taskEmpSel" class="input" style="width:150px" onchange="_taskEmpFilt2=this.value;renderTasksTable()">
+      <option value="">كل الموظفين</option>
+      ${empOpts}
+    </select>
+    <span style="font-size:12px;color:#94a3b8;flex:1">${rows.length} مهمة${rows.length!==total?' (من '+total+')':''}</span>
+    <button onclick="_taskViewMode='folders';renderTaskFolders()" style="padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:white;color:#475569">🗂️ بطاقات</button>
+    <button onclick="copyTomorrowMsg()" style="padding:6px 12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;color:#15803d">📋 رسالة الغد</button>
+    <button onclick="showTaskModal()" class="btn btn-primary">➕ مهمة جديدة</button>
+  </div>
+
+  <!-- Table -->
+  <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.05)">
+    <table style="width:100%;border-collapse:collapse;min-width:900px">
+      <thead>
+        <tr>
+          ${thSort('title','المهمة')}
+          ${thSort('client_name','العميل')}
+          ${thSort('assigned_to_name','الموظف')}
+          ${thSort('priority','الأولوية')}
+          ${thSort('due_date','تاريخ الاستحقاق')}
+          ${thSort('status','الحالة')}
+          ${thSort('created_at','تاريخ الإنشاء')}
+          <th style="padding:9px 8px;background:#1e3a5f;color:#e8edf8;font-size:11.5px;font-weight:700;text-align:center;width:90px">إجراءات</th>
+        </tr>
+      </thead>
+      <tbody>${rowHtml}</tbody>
+    </table>
+  </div>`;
+
+  window._taskTableSort = function(col) {
+    if (_taskSortCol===col) _taskSortDir = _taskSortDir==='asc'?'desc':'asc';
+    else { _taskSortCol=col; _taskSortDir='asc'; }
+    renderTasksTable();
+  };
+  window.quickDoneTask = async function(id) {
+    try {
+      await api('PUT', `/api/tasks/${id}`, {status:'done'});
+      tasksData = tasksData.map(t=>t.id===id?{...t,status:'done'}:t);
+      renderTasksTable();
+      toast('✅ تم إنهاء المهمة');
+    } catch(e) { toast(e.message,'error'); }
+  };
 }
 
 // ── فولدر الموظف: الشغل المفروض يعمله + اللي خلص ──────────────────
@@ -3991,106 +4132,192 @@ function downloadDoc(idx,e){
   }
 }
 
-// ── FILTER state ──
+// ── FILTER + NAVIGATION state ──
 var docCatFilter='', docClientFilter='', docSearchQ='';
+var _docOpenClientId = null; // null = root folders view
 
 function renderDocuments() {
-  const main=document.getElementById('main');
-  main.className='page';
-  const imgExts=['.jpg','.jpeg','.png','.gif','.webp'];
-
-  // Filter
-  let filtered=docsData;
-  if(docCatFilter) filtered=filtered.filter(d=>d.category===docCatFilter);
-  if(docClientFilter) filtered=filtered.filter(d=>String(d.client_id)===docClientFilter);
-  if(docSearchQ) {
-    const _dq=docSearchQ.toLowerCase();
-    filtered=filtered.filter(d=>(d.name||'').toLowerCase().includes(_dq)||(d.original_name||'').toLowerCase().includes(_dq)||(d.client_name||'').toLowerCase().includes(_dq)||(d.trade_name||'').toLowerCase().includes(_dq));
+  if (_docOpenClientId !== null) {
+    _renderDocClientFolder(_docOpenClientId);
+  } else {
+    _renderDocRoot();
   }
+}
 
-  // Group by client
-  const grouped={};
-  filtered.forEach(d=>{
-    const key=d.client_id?String(d.client_id):'__general__';
-    if(!grouped[key]) grouped[key]={client_name:d.client_name||'عام',docs:[]};
-    grouped[key].docs.push(d);
+// ═══════════════════════════════════════════════════════════
+// ROOT VIEW — Company folders grid
+// ═══════════════════════════════════════════════════════════
+function _renderDocRoot() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+
+  // Search filter on root
+  const q = docSearchQ.toLowerCase();
+  let docs = q ? docsData.filter(d =>
+    (d.name||'').toLowerCase().includes(q) ||
+    (d.client_name||'').toLowerCase().includes(q) ||
+    (d.trade_name||'').toLowerCase().includes(q)
+  ) : docsData;
+
+  // Build company groups
+  const groups = {};
+  docs.forEach(d => {
+    const key = d.client_id ? String(d.client_id) : '__general__';
+    if (!groups[key]) groups[key] = {
+      id: d.client_id||null,
+      name: d.client_name || d.trade_name || 'ملفات عامة',
+      docs: []
+    };
+    groups[key].docs.push(d);
   });
 
-  function docCard(d,idx){
-    const url=docFileUrl(d);
-    const ext=(d.file_type||'').toLowerCase();
-    const isImg=imgExts.includes(ext);
-    const isDrive=!!d.gdrive_file_id;
-    const sizeTxt=d.file_size?(d.file_size<1024*1024?(d.file_size/1024).toFixed(1)+' KB':(d.file_size/1024/1024).toFixed(2)+' MB'):'';
-    const icon=DOC_CAT_ICON[d.category]||'📁';
-    const driveBadge=isDrive?`<span style="font-size:9px;background:#e3f0ff;color:#1a73e8;padding:1px 6px;border-radius:4px;font-weight:700">
-      <svg width="9" height="9" viewBox="0 0 87.3 78" fill="none" style="vertical-align:middle;margin-right:2px"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L38 42.55H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-14-24.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 45.5c-.8 1.4-1.2 2.95-1.2 4.5h38z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57c.8-1.4 1.2-2.95 1.2-4.5H49.3l8.1 15.45z" fill="#ea4335"/><path d="M43.65 25 57.65.8C56.3 0 54.75-.4 53.2-.4H34.1c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/><path d="M49.3 52.05H87.3c0-1.55-.4-3.1-1.2-4.5L71.15 20.3 57.65.8 43.65 25z" fill="#2684fc"/><path d="M13.8 76.8c1.35.8 2.9 1.2 4.45 1.2h50.8c1.55 0 3.1-.4 4.45-1.2L38 42.55l-24.2 34.25z" fill="#ffba00"/></svg>Drive
-    </span>`:'';
-    const preview=isImg&&url
-      ?`<div style="height:90px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:#f8fafc;border:1px solid #e2e8f0">
-          <img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='<div style=&quot;text-align:center;padding:25px;font-size:28px&quot;>${icon}</div>'"/>
-        </div>`
-      :`<div style="font-size:34px;margin-bottom:8px;text-align:center;padding:8px 0">${icon}</div>`;
-    return `<div class="card" style="padding:12px;cursor:pointer;transition:transform .15s,box-shadow .15s;position:relative" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" onclick="openDoc(${idx})">
-      <button onclick="downloadDoc(${idx},event)" title="تحميل الملف" style="position:absolute;top:6px;left:6px;background:rgba(255,255,255,0.93);border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.1);line-height:1">⬇️</button>
-      ${preview}
-      <div style="font-size:11px;font-weight:600;color:#1e293b;margin-bottom:5px;word-break:break-word;line-height:1.4">${escH(d.original_name||d.name||'')}</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:3px;margin-bottom:4px">
-        <span class="badge badge-gray" style="font-size:9px">${DOC_CAT_LABEL[d.category]||'أخرى'}</span>
-        ${driveBadge}
-        <span style="font-size:9px;color:#94a3b8">${sizeTxt}</span>
-      </div>
-      <div style="font-size:10px;color:#cbd5e1">${dateAr(d.created_at)}</div>
-    </div>`;
-  }
+  // Sort alphabetically
+  const sorted = Object.values(groups).sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ar'));
 
-  // Build unique client list for filter (use all cached clients + any in docs)
-  const _allClientsMap = new Map(docsData.filter(d=>d.client_id).map(d=>[d.client_id,d.client_name]));
-  (_tcAllClients||[]).forEach(c=>{ if(!_allClientsMap.has(c.id)) _allClientsMap.set(c.id,c.name); });
-  const clientOpts=[..._allClientsMap.entries()].sort((a,b)=>(a[1]||'').localeCompare(b[1]||''));
-
-  main.innerHTML=`
+  main.innerHTML = `
   <!-- Header -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <span style="font-size:13px;color:#64748b;font-weight:600">${docsData.length} ملف إجمالي</span>
-      <span style="font-size:13px;color:#1a73e8;font-weight:600">${docsData.filter(d=>d.gdrive_file_id).length} من Drive</span>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div>
+      <h2 style="font-size:17px;font-weight:800;color:#1e293b;margin:0">📂 الأرشيف</h2>
+      <div style="font-size:12px;color:#64748b;margin-top:3px">${docsData.length} ملف — ${sorted.length} شركة / مجلد</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-secondary" onclick="showDriveImportWizard()" style="background:#e3f0ff;color:#1a73e8;border-color:#bbd4f8;font-weight:700">
-        <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none" style="vertical-align:middle;margin-left:4px"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L38 42.55H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-14-24.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 45.5c-.8 1.4-1.2 2.95-1.2 4.5h38z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57c.8-1.4 1.2-2.95 1.2-4.5H49.3l8.1 15.45z" fill="#ea4335"/><path d="M43.65 25 57.65.8C56.3 0 54.75-.4 53.2-.4H34.1c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/><path d="M49.3 52.05H87.3c0-1.55-.4-3.1-1.2-4.5L71.15 20.3 57.65.8 43.65 25z" fill="#2684fc"/><path d="M13.8 76.8c1.35.8 2.9 1.2 4.45 1.2h50.8c1.55 0 3.1-.4 4.45-1.2L38 42.55l-24.2 34.25z" fill="#ffba00"/></svg>
-        استيراد من Google Drive
+      <button class="btn btn-secondary" onclick="showDriveImportWizard()" style="background:#e3f0ff;color:#1a73e8;border-color:#bbd4f8;font-weight:700;font-size:12px">
+        <svg width="13" height="13" viewBox="0 0 87.3 78" fill="none" style="vertical-align:middle;margin-left:3px"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L38 42.55H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-14-24.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 45.5c-.8 1.4-1.2 2.95-1.2 4.5h38z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57c.8-1.4 1.2-2.95 1.2-4.5H49.3l8.1 15.45z" fill="#ea4335"/><path d="M43.65 25 57.65.8C56.3 0 54.75-.4 53.2-.4H34.1c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/><path d="M49.3 52.05H87.3c0-1.55-.4-3.1-1.2-4.5L71.15 20.3 57.65.8 43.65 25z" fill="#2684fc"/><path d="M13.8 76.8c1.35.8 2.9 1.2 4.45 1.2h50.8c1.55 0 3.1-.4 4.45-1.2L38 42.55l-24.2 34.25z" fill="#ffba00"/></svg>
+        Drive
       </button>
       <button class="btn btn-primary" onclick="showUploadModal()">⬆️ رفع ملف</button>
     </div>
   </div>
 
-  <!-- Filters -->
-  <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-    <input class="input" style="max-width:200px;font-size:12px" placeholder="🔍 بحث في الملفات..." value="${escH(docSearchQ)}" oninput="setDocSearch(this.value)"/>
-    <select class="input" style="max-width:180px;font-size:12px" onchange="docCatFilter=this.value;renderDocuments()">
+  <!-- Search -->
+  <div style="margin-bottom:14px">
+    <input class="input" style="max-width:280px" placeholder="🔍 بحث باسم الشركة أو الملف..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;_renderDocRoot()"/>
+  </div>
+
+  <!-- Company Folders Grid -->
+  ${sorted.length === 0
+    ? `<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:52px;margin-bottom:14px">📂</div><div style="font-size:15px;font-weight:600">لا توجد ملفات</div></div>`
+    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+        ${sorted.map(g => {
+          const catCounts = {};
+          g.docs.forEach(d => { catCounts[d.category||'other'] = (catCounts[d.category||'other']||0)+1; });
+          const topCats = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]).slice(0,3);
+          const lastDate = g.docs.reduce((mx,d)=>d.created_at>mx?d.created_at:mx,'');
+          return `<div onclick="window._docOpenFolder(${g.id===null?'null':g.id})"
+            style="background:white;border:1.5px solid #e2e8f0;border-radius:14px;padding:16px 14px;cursor:pointer;transition:all .15s;text-align:center"
+            onmouseover="this.style.borderColor='#1a2472';this.style.background='#f8faff';this.style.transform='translateY(-2px)'"
+            onmouseout="this.style.borderColor='#e2e8f0';this.style.background='white';this.style.transform=''">
+            <div style="font-size:40px;margin-bottom:8px">📁</div>
+            <div style="font-size:12px;font-weight:700;color:#1e293b;line-height:1.4;margin-bottom:6px;word-break:break-word">${escH(g.name)}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:6px">${g.docs.length} ملف</div>
+            <div style="display:flex;justify-content:center;gap:3px;flex-wrap:wrap">
+              ${topCats.map(([cat])=>`<span style="font-size:14px" title="${DOC_CAT_LABEL[cat]||cat}">${DOC_CAT_ICON[cat]||'📄'}</span>`).join('')}
+            </div>
+            ${lastDate?`<div style="font-size:10px;color:#cbd5e1;margin-top:5px">${lastDate.slice(0,10)}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`}`;
+
+  window._docOpenFolder = function(clientId) {
+    _docOpenClientId = clientId;
+    _renderDocClientFolder(clientId);
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// FOLDER VIEW — Files inside one company
+// ═══════════════════════════════════════════════════════════
+function _renderDocClientFolder(clientId) {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  const imgExts = ['.jpg','.jpeg','.png','.gif','.webp'];
+
+  const clientDocs = clientId === null
+    ? docsData.filter(d => !d.client_id)
+    : docsData.filter(d => String(d.client_id) === String(clientId));
+
+  const clientName = clientDocs[0]?.client_name || clientDocs[0]?.trade_name || 'ملفات عامة';
+
+  // Apply category filter
+  let filtered = docCatFilter ? clientDocs.filter(d=>d.category===docCatFilter) : clientDocs;
+  if (docSearchQ) {
+    const q = docSearchQ.toLowerCase();
+    filtered = filtered.filter(d=>(d.name||'').toLowerCase().includes(q)||(d.original_name||'').toLowerCase().includes(q));
+  }
+
+  // Group by category
+  const catGroups = {};
+  filtered.forEach(d => {
+    const cat = d.category || 'other';
+    if (!catGroups[cat]) catGroups[cat] = [];
+    catGroups[cat].push(d);
+  });
+
+  function docRow(d, idx) {
+    const url = docFileUrl(d);
+    const ext = (d.file_type||'').toLowerCase();
+    const isImg = imgExts.includes(ext);
+    const isDrive = !!d.gdrive_file_id;
+    const sizeTxt = d.file_size ? (d.file_size < 1024*1024 ? (d.file_size/1024).toFixed(1)+' KB' : (d.file_size/1024/1024).toFixed(2)+' MB') : '';
+    const icon = DOC_CAT_ICON[d.category] || '📄';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;transition:background .1s"
+        onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''"
+        onclick="openDoc(${idx})">
+      <div style="font-size:22px;flex-shrink:0">${isImg&&url?`<img src="${url}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0" onerror="this.outerHTML='${icon}'"/>`:icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(d.original_name||d.name||'')}</div>
+        <div style="font-size:10px;color:#94a3b8">${sizeTxt} ${d.description?'— '+escH(d.description.slice(0,40)):''}</div>
+      </div>
+      <div style="font-size:10px;color:#94a3b8;flex-shrink:0">${d.created_at?d.created_at.slice(0,10):''}</div>
+      ${isDrive?`<span style="font-size:10px;background:#e3f0ff;color:#1a73e8;padding:2px 6px;border-radius:4px;font-weight:700;flex-shrink:0">Drive</span>`:''}
+      <button onclick="downloadDoc(${idx},event)" title="تحميل" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;flex-shrink:0">⬇️</button>
+      <button onclick="window._docDelete(${d.id},event)" title="حذف" style="background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;flex-shrink:0;color:#dc2626">🗑</button>
+    </div>`;
+  }
+
+  main.innerHTML = `
+  <!-- Breadcrumb -->
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:13px">
+    <button onclick="_docOpenClientId=null;_renderDocRoot()" style="background:none;border:none;color:#1a2472;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;padding:0">📂 الأرشيف</button>
+    <span style="color:#94a3b8">›</span>
+    <span style="font-weight:700;color:#1e293b">📁 ${escH(clientName)}</span>
+  </div>
+
+  <!-- Toolbar -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+    <input class="input" style="width:220px;font-size:12px" placeholder="🔍 بحث في ملفات هذه الشركة..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;_renderDocClientFolder(${clientId===null?'null':clientId})"/>
+    <select class="input" style="width:160px;font-size:12px" onchange="docCatFilter=this.value;_renderDocClientFolder(${clientId===null?'null':clientId})">
       <option value="">كل التصنيفات</option>
       ${Object.entries(DOC_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${docCatFilter===k?'selected':''}>${DOC_CAT_ICON[k]||'📁'} ${v}</option>`).join('')}
     </select>
-    <select class="input" style="max-width:200px;font-size:12px" onchange="docClientFilter=this.value;renderDocuments()">
-      <option value="">كل العملاء</option>
-      ${clientOpts.map(([id,name])=>`<option value="${id}" ${docClientFilter===String(id)?'selected':''}>${escH(name)}</option>`).join('')}
-    </select>
+    <span style="font-size:12px;color:#94a3b8;flex:1">${filtered.length} ملف</span>
+    <button class="btn btn-primary" style="font-size:12px" onclick="showUploadModal(${clientId===null?'null':clientId})">⬆️ رفع ملف</button>
   </div>
 
-  <!-- Files Grid (grouped by client) -->
-  ${Object.keys(grouped).length===0
-    ? `<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:14px">📁</div><div style="font-size:14px">لا توجد ملفات</div></div>`
-    : Object.entries(grouped).map(([key,g])=>`
-        <div style="margin-bottom:24px">
-          <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:10px;display:flex;align-items:center;gap:6px">
-            <span style="background:#f1f5f9;border-radius:6px;padding:3px 10px">👤 ${escH(g.client_name)}</span>
-            <span style="color:#94a3b8;font-weight:400">${g.docs.length} ملف</span>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px">
-            ${g.docs.map(d=>docCard(d,docsData.indexOf(d))).join('')}
-          </div>
-        </div>`).join('')}`;
+  <!-- Files by category -->
+  ${Object.keys(catGroups).length === 0
+    ? `<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:40px;margin-bottom:10px">📂</div><div>لا توجد ملفات</div></div>`
+    : Object.entries(catGroups).sort((a,b)=>(DOC_CAT_LABEL[a[0]]||'').localeCompare(DOC_CAT_LABEL[b[0]]||'')).map(([cat,catDocs]) => `
+    <div style="margin-bottom:18px;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:white">
+      <div style="background:#f8fafc;padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0">
+        <span style="font-size:16px">${DOC_CAT_ICON[cat]||'📁'}</span>
+        <span style="font-size:13px;font-weight:700;color:#1e293b">${DOC_CAT_LABEL[cat]||cat}</span>
+        <span style="font-size:11px;color:#64748b;background:#e2e8f0;padding:1px 7px;border-radius:10px">${catDocs.length}</span>
+      </div>
+      ${catDocs.map(d => docRow(d, docsData.indexOf(d))).join('')}
+    </div>`).join('')}`;
+
+  window._docDelete = async function(docId, e) {
+    if(e) e.stopPropagation();
+    if(!confirm('هل تريد حذف هذا الملف نهائياً؟')) return;
+    try {
+      await api('DELETE', `/api/documents/${docId}`);
+      docsData = docsData.filter(d => d.id !== docId);
+      _renderDocClientFolder(clientId);
+      toast('تم حذف الملف');
+    } catch(err) { toast(err.message, 'error'); }
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -4471,8 +4698,7 @@ function _renderTaxShell() {
   const tabs = [
     {id:'dashboard', icon:'📊', label:'لوحة التحكم'},
     {id:'vat',       icon:'🧾', label:'ض.ق.م.'},
-    {id:'wht',       icon:'✂️',  label:'أسس توحيد المرتبات'},
-    {id:'corporate', icon:'🏢', label:'ضريبة الدخل'},
+    {id:'corporate', icon:'🏢', label:'ضريبة الخصم والتحصيل'},
     {id:'salary',    icon:'👤', label:'ضريبة المرتبات'},
     {id:'calendar',  icon:'📅', label:'التقويم الضريبي'},
     {id:'portals',   icon:'🌐', label:'البوابات'},
@@ -4601,7 +4827,7 @@ async function _tcRenderDashboard(el) {
   el.innerHTML = `
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">
     ${kpi('🧾','ض.ق.م. مستحقة',money(vat.net_vat_due||0),'#dc2626')}
-    ${kpi('✂️','خصم وإضافة',money(wht.total_withholding||0),'#7c3aed')}
+    ${kpi('🏛️','خصم والتحصيل',money(corp.gross_tax||0),'#7c3aed')}
     ${kpi('🏢','ضريبة الدخل',money(corp.gross_tax||0),'#1a2472')}
     ${kpi('📅','مواعيد قادمة',upcoming.length,'#d97706',upcoming.length?`أقرب: ${dateAr(upcoming[0]?.due_date)}`:'لا يوجد')}
   </div>
@@ -4658,13 +4884,18 @@ async function _tcRenderVat(el) {
   if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
 
   el.innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
     <div style="font-size:15px;font-weight:700;color:#1e293b">🧾 إقرارات ض.ق.م. — ${escH(_tcClientName)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-secondary" onclick="tcVatExcelModal()" style="font-size:12px;background:#f0fdf4;border-color:#86efac;color:#15803d">📊 رفع ملف Excel فواتير</button>
+      <button class="btn btn-secondary" onclick="tcVatExcelModal()" style="font-size:12px;background:#f0fdf4;border-color:#86efac;color:#15803d">📊 رفع Excel فواتير</button>
       <button class="btn btn-secondary" onclick="tcVatBuildManualModal()" style="font-size:12px">✏️ إدخال يدوي</button>
       <button class="btn btn-primary" onclick="tcVatBuild()">⚡ بناء إقرار ${TC_MONTH_AR[_tcMonth]} ${_tcYear}</button>
     </div>
+  </div>
+  <div style="background:#fff7ed;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;border:1px solid #fed7aa;margin-bottom:12px">
+    💡 <strong>كيف تعمل الإقرارات:</strong>
+    اضغط <strong>إدخال يدوي</strong> لإدخال أرقام المبيعات والمشتريات يدوياً وبناء الإقرار، أو <strong>⚡ بناء إقرار</strong> إذا كان مربوط بـ ETA.
+    رفع ملف Excel هو للأرشفة فقط ولا يؤثر على أرقام الإقرار.
   </div>
   <div id="tcVatArea"><div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div></div>`;
 
@@ -7590,6 +7821,83 @@ async function _fmDoMoveStage(caseId, newStage, btn) {
   } catch(e){toast(e.message,'error');btn.disabled=false;}
 }
 
+// ── Stage Attachment Upload ──────────────
+window._fmShowAttachModal = function(caseId, companyName, stageKey, clientId) {
+  const stage = FORMATION_STAGES.find(s=>s.key===stageKey)||{label:stageKey,icon:'📄'};
+  const html = `
+  <div class="modal-backdrop" id="fmAttachModal">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h3>${stage.icon} رفع مرفق — ${escH(companyName)}</h3>
+        <button onclick="document.getElementById('fmAttachModal').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#eef1fb;border-radius:8px;padding:10px;font-size:13px;color:#1a2472">
+          المرحلة: <strong>${stage.icon} ${stage.label}</strong>
+        </div>
+        <div>
+          <label class="label" style="font-weight:700">📎 اختر ملف (PDF / صورة)</label>
+          <div style="border:2px dashed #c7d3ef;border-radius:10px;padding:14px;text-align:center;background:#f8fafc;cursor:pointer"
+               onclick="document.getElementById('fmAttachFileInput').click()"
+               ondragover="event.preventDefault();this.style.borderColor='#1a2472'"
+               ondragleave="this.style.borderColor='#c7d3ef'"
+               ondrop="event.preventDefault();this.style.borderColor='#c7d3ef';window._fmAttachDrop(event)">
+            <input id="fmAttachFileInput" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx" style="display:none" onchange="window._fmAttachSelect(this)"/>
+            <div id="fmAttachPreview"><div style="font-size:28px;margin-bottom:6px">📎</div><div style="font-size:13px;color:#374151;font-weight:600">اسحب الملف هنا أو اضغط للاختيار</div></div>
+          </div>
+        </div>
+        <div>
+          <label class="label">وصف الملف (اختياري)</label>
+          <input id="fmAttachDesc" class="input" placeholder="مثال: عقد تأسيس موقع" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="document.getElementById('fmAttachModal').remove()" class="btn btn-secondary">إلغاء</button>
+        <button id="fmAttachUploadBtn" class="btn btn-primary" style="background:#94a3b8;cursor:not-allowed" disabled onclick="window._fmAttachUpload(${caseId},'${stageKey}',${clientId||'null'})">📎 اختر ملف أولاً</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  window._fmAttachFile = null;
+  window._fmAttachSelect = function(inp) {
+    const f = inp.files[0]; if (!f) return;
+    window._fmAttachFile = f;
+    document.getElementById('fmAttachPreview').innerHTML = `<div style="font-size:22px">✅</div><div style="font-size:12px;font-weight:700;color:#15803d;margin-top:4px">${escH(f.name)}</div>`;
+    const btn = document.getElementById('fmAttachUploadBtn');
+    if (btn) { btn.disabled=false; btn.style.background='#1a2472'; btn.style.cursor='pointer'; btn.textContent='⬆️ رفع الملف'; }
+  };
+  window._fmAttachDrop = function(e) {
+    const f = e.dataTransfer.files[0]; if (!f) return;
+    window._fmAttachFile = f;
+    window._fmAttachSelect({files:[f]});
+  };
+  window._fmAttachUpload = async function(caseId, stageKey, clientId) {
+    if (!window._fmAttachFile) return;
+    const btn = document.getElementById('fmAttachUploadBtn');
+    if (btn) { btn.disabled=true; btn.textContent='⏳ جاري الرفع...'; }
+    try {
+      const fd = new FormData();
+      fd.append('file', window._fmAttachFile);
+      if (clientId) fd.append('client_id', clientId);
+      fd.append('category', 'establishment');
+      fd.append('description', document.getElementById('fmAttachDesc')?.value || window._fmAttachFile.name);
+      fd.append('tags', `formation,stage:${stageKey},case:${caseId}`);
+      const token = localStorage.getItem('token');
+      const res = await fetch(API_BASE + '/api/documents/upload', {
+        method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
+      });
+      if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'فشل الرفع'); }
+      toast(`✅ تم رفع المرفق بنجاح وأرشفته تحت "${stage.label}"`);
+      document.getElementById('fmAttachModal')?.remove();
+      // Refresh detail modal
+      showFormationDetail(caseId);
+    } catch(err) {
+      toast(err.message, 'error');
+      if (btn) { btn.disabled=false; btn.style.background='#1a2472'; btn.textContent='⬆️ رفع الملف'; }
+    }
+  };
+};
+
 // ── Case Detail Modal with Timeline ──────────────
 async function showFormationDetail(caseId) {
   const overlay = document.createElement('div');
@@ -7607,7 +7915,13 @@ async function showFormationDetail(caseId) {
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
 
   try {
-    const c = await api('GET',`/api/formation/${caseId}`);
+    const [c, docsRes] = await Promise.all([
+      api('GET',`/api/formation/${caseId}`),
+      api('GET',`/api/documents?page_size=200${''}`).catch(()=>({items:[]})),
+    ]);
+    // Attach documents that have 'case:{id}' or 'stage:' tags
+    const allDocs = docsRes.items || [];
+    c.documents = allDocs.filter(d => d.tags && (d.tags.includes(`case:${caseId}`) || (d.client_id && d.client_id === c.client_id && d.tags.includes('formation'))));
     document.getElementById('fmDetailTitle').textContent = `📋 ${c.company_name} — ${c.code}`;
     const stg = FORMATION_STAGES.find(s=>s.key===c.current_stage)||FORMATION_STAGES[0];
     const CTYPE_FULL = {llc:'شركة ذات مسؤولية محدودة',jsc:'شركة مساهمة',sole:'مؤسسة فردية',partnership:'شركة تضامن',ngo:'جمعية',branch:'فرع',rep:'مكتب تمثيل'};
@@ -7662,6 +7976,25 @@ async function showFormationDetail(caseId) {
         ${!c.is_completed?`<button onclick="showMoveStageModal(${c.id},'${c.current_stage}')" class="btn btn-primary">➜ نقل للمرحلة التالية</button>`:''}
         <button onclick="_fmAddNote(${c.id})" class="btn btn-secondary">📝 إضافة ملاحظة</button>
         <button onclick="showFormationEditModal(${c.id})" class="btn btn-secondary">✏️ تعديل البيانات</button>
+        <button onclick="_fmShowAttachModal(${c.id},'${escH(c.company_name)}','${c.current_stage}',${c.client_id||'null'})" class="btn btn-secondary" style="background:#f0fdf4;border-color:#86efac;color:#15803d">📎 رفع مرفق للمرحلة</button>
+      </div>
+
+      <!-- Stage Attachments -->
+      <div style="margin-bottom:20px">
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">📎 مرفقات كل مرحلة</div>
+        <div style="display:grid;gap:6px">
+          ${FORMATION_STAGES.map(s => {
+            const stageAttachments = (c.documents||[]).filter(d=>d.tags&&d.tags.includes('stage:'+s.key));
+            return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;background:${stageAttachments.length?'#f0fdf4':'#f8fafc'}">
+              <span style="font-size:16px">${s.icon}</span>
+              <span style="font-size:12px;font-weight:600;color:#374151;flex:1">${s.label}</span>
+              ${stageAttachments.length
+                ? stageAttachments.map(d=>`<a href="#" onclick="event.preventDefault();window.open('${API+'/'+d.file_path?.replace(/\\/g,'/')?.split('/').map(p=>encodeURIComponent(p)).join('/')||''}','_blank')" style="font-size:11px;color:#1a2472;background:#eef1fb;padding:2px 8px;border-radius:5px;text-decoration:none">📄 ${escH((d.original_name||d.name||'').slice(0,25))}</a>`).join('')
+                : `<span style="font-size:11px;color:#94a3b8">لا يوجد مرفق</span>`}
+              <button onclick="_fmShowAttachModal(${c.id},'${escH(c.company_name)}','${s.key}',${c.client_id||'null'})" style="background:#eef1fb;border:1px solid #c7d3ef;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;color:#1a2472;white-space:nowrap">+ رفع</button>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
 
       <!-- Timeline -->
@@ -7853,7 +8186,7 @@ const OBL_NAME_AR = {
   stamp_quarterly:          'الدمغة النسبية ربعي',
   income_annual:            'إقرار ضريبة الدخل السنوي',
   form_41:                  'نموذج 41 — إقرار المرتبات السنوي',
-  corporate_tax:            'ضريبة الأرباح التجارية السنوية',
+  corporate_tax:            'ضريبة الخصم والتحصيل — ربع سنوي',
   commercial_register_renewal: 'تجديد السجل التجاري',
 };
 const OBL_ICON = {
@@ -8204,7 +8537,7 @@ async function showObligationModal(preClientId=null) {
           <optgroup label="▸ سنوية">
             <option value="income_annual">📊 إقرار ضريبة الدخل السنوي</option>
             <option value="form_41">📋 نموذج 41 — إقرار المرتبات السنوي</option>
-            <option value="corporate_tax">🏛️ ضريبة الأرباح التجارية</option>
+            <option value="corporate_tax">🏛️ ضريبة الخصم والتحصيل</option>
             <option value="commercial_register_renewal">📜 تجديد السجل التجاري</option>
           </optgroup>
         </select>
@@ -8246,12 +8579,12 @@ async function showObligationModal(preClientId=null) {
     stamp_quarterly:'ضريبة الدمغة النسبية على المعاملات التجارية',
     income_annual:'الإقرار السنوي لضريبة الدخل — 30 أبريل من كل عام',
     form_41:'الإقرار السنوي عن المرتبات — 31 يناير',
-    corporate_tax:'ضريبة الأرباح التجارية والصناعية — 30 أبريل',
+    corporate_tax:'ضريبة الخصم والتحصيل — ربع سنوي (مارس، يونيو، سبتمبر، ديسمبر)',
     commercial_register_renewal:'تجديد السجل التجاري سنويًا',
   };
 
   window.autoFillOblFields = function(type) {
-    const freqMap = {vat_monthly:'monthly',payroll_monthly:'monthly',withholding_monthly:'monthly',insurance_monthly:'monthly',vat_quarterly:'quarterly',stamp_quarterly:'quarterly',income_annual:'annual',form_41:'annual',corporate_tax:'annual',commercial_register_renewal:'annual'};
+    const freqMap = {vat_monthly:'monthly',payroll_monthly:'monthly',withholding_monthly:'monthly',insurance_monthly:'monthly',vat_quarterly:'quarterly',stamp_quarterly:'quarterly',income_annual:'annual',form_41:'annual',corporate_tax:'quarterly',commercial_register_renewal:'annual'};
     const dayMap = {vat_monthly:15,payroll_monthly:15,withholding_monthly:15,insurance_monthly:15,vat_quarterly:15,stamp_quarterly:15,income_annual:30,form_41:31,corporate_tax:30,commercial_register_renewal:28};
     const freq = freqMap[type]; const day = dayMap[type];
     if(freq){ const f=document.getElementById('oblFreq'); if(f) f.value=freq; }
@@ -8828,7 +9161,7 @@ function renderCollections(summary) {
       <button onclick="switchCollTab('monthly_fee')" class="btn btn-sm ${collectionsTab==='monthly_fee'?'btn-primary':'btn-secondary'}">🔄 الأتعاب الشهرية (${monthlyData.length})</button>
       <input class="input" style="font-size:12px;padding:5px 10px;width:180px" placeholder="🔍 بحث باسم الشركة..." value="${escH(collectionsSearch)}" oninput="setCollSearch(this.value)"/>
     </div>
-    <button class="btn btn-primary" onclick="showCollectionModal('${collectionsTab}')">+ إضافة عقد</button>
+    <button class="btn btn-primary" onclick="showCollectionModal('${collectionsTab}')">+ إضافة</button>
   </div>
 
   <!-- Table -->
