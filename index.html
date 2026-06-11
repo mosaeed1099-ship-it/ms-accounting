@@ -2129,12 +2129,12 @@ async function loadDashboard(silent=false) {
         <div style="font-size:12px;color:#94a3b8;margin-bottom:22px">رحلة العميل — نسبة التحويل بين المراحل</div>
         ${(()=>{
           const stages = [
-            {l:'عملاء محتملون',c:leads.length,col:'#6366f1',bg:'#eef2ff'},
-            {l:'مهتمون',c:lCount('interested')+lCount('meeting'),col:'#0ea5e9',bg:'#e0f2fe'},
-            {l:'عرض سعر أُرسل',c:lCount('quotation_sent'),col:'#f59e0b',bg:'#fefce8'},
-            {l:'تم الدفع',c:lCount('paid'),col:'#10b981',bg:'#dcfce7'},
-            {l:'بدأ التأسيس',c:lCount('under_establishment'),col:'#8b5cf6',bg:'#f5f3ff'},
-            {l:'أصبح عميلاً',c:lCount('accounting_client'),col:'#059669',bg:'#d1fae5'},
+            {l:'إجمالي العملاء المحتملين',c:leads.length,col:'#6366f1',bg:'#eef2ff'},
+            {l:'مهتم',c:lCount('interested'),col:'#15803d',bg:'#f0fdf4'},
+            {l:'كلمني لاحقاً',c:lCount('call_later'),col:'#d97706',bg:'#fefce8'},
+            {l:'عرض مرسل',c:lCount('quotation_sent'),col:'#f97316',bg:'#fff7ed'},
+            {l:'قيد التأسيس',c:lCount('under_establishment'),col:'#0891b2',bg:'#ecfeff'},
+            {l:'خسارة',c:lCount('lost'),col:'#dc2626',bg:'#fef2f2'},
           ];
           const top = stages[0].c||1;
           return stages.map((s,i)=>{
@@ -6003,8 +6003,8 @@ function toWAPhone(raw) {
 }
 const LEAD_STATUS_COLORS={interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
 const LEAD_STATUS_LABEL={interested:'مهتم',not_answered:'لم يرد',call_later:'كلمني لاحقاً',quotation_sent:'عرض مرسل',under_establishment:'قيد التأسيس',lost:'خسارة'};
-const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',call_later:'#fefce8',lost:'#fef2f2'};
-const LEAD_ROW_BG_ALT={interested:'#dcfce7',not_answered:'#e2e8f0',call_later:'#fef9c3',lost:'#fee2e2'};
+const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',call_later:'#fefce8',quotation_sent:'#fff7ed',under_establishment:'#ecfeff',lost:'#fef2f2'};
+const LEAD_ROW_BG_ALT={interested:'#dcfce7',not_answered:'#e2e8f0',call_later:'#fef9c3',quotation_sent:'#ffedd5',under_establishment:'#cffafe',lost:'#fee2e2'};
 
 const LEAD_DEFAULT_DELIVERABLES = [
   'عقد تأسيس',
@@ -6078,13 +6078,13 @@ function renderLeads(stats) {
   main.className='page';
   main.innerHTML=`
   ${stats?`<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px">
-    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('')"><div style="font-size:18px;font-weight:800;color:#1a2472">${stats.total}</div><div style="font-size:10px;color:#64748b;margin-top:2px">الإجمالي 🎯</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('new')"><div style="font-size:18px;font-weight:800;color:#5b8ec4">${stats.new}</div><div style="font-size:10px;color:#64748b;margin-top:2px">جديد</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('interested')"><div style="font-size:18px;font-weight:800;color:#7c3aed">${stats.interested||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">مهتم ⭐</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('quotation_sent')"><div style="font-size:18px;font-weight:800;color:#f97316">${stats.quotation||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">عرض سعر 📄</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('not_answered')"><div style="font-size:18px;font-weight:800;color:#94a3b8">${stats.not_answered||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">لم يرد 📵</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('accounting_client')"><div style="font-size:18px;font-weight:800;color:#16a34a">${stats.converted}</div><div style="font-size:10px;color:#64748b;margin-top:2px">تحوّل لعميل ✅</div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="setLeadsStatusFilter('lost')"><div style="font-size:18px;font-weight:800;color:#dc2626">${stats.lost}</div><div style="font-size:10px;color:#64748b;margin-top:2px">خسارة ❌</div></div>
+    <div class="stat-card" style="cursor:pointer;${leadsStatusFilter===''?'border:2px solid #1a2472;':''}" onclick="setLeadsStatusFilter('')"><div style="font-size:18px;font-weight:800;color:#1a2472">${stats.total}</div><div style="font-size:10px;color:#64748b;margin-top:2px">الإجمالي 🎯</div></div>
+    <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='interested'?'border:2px solid #15803d;':''}" onclick="setLeadsStatusFilter('interested')"><div style="font-size:18px;font-weight:800;color:#15803d">${stats.interested||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">مهتم ⭐</div></div>
+    <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='not_answered'?'border:2px solid #6b7280;':''}" onclick="setLeadsStatusFilter('not_answered')"><div style="font-size:18px;font-weight:800;color:#6b7280">${stats.not_answered||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">لم يرد 📵</div></div>
+    <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='call_later'?'border:2px solid #d97706;':''}" onclick="setLeadsStatusFilter('call_later')"><div style="font-size:18px;font-weight:800;color:#d97706">${stats.call_later||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">كلمني لاحقاً 🔄</div></div>
+    <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='quotation_sent'?'border:2px solid #f97316;':''}" onclick="setLeadsStatusFilter('quotation_sent')"><div style="font-size:18px;font-weight:800;color:#f97316">${stats.quotation_sent||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">عرض مرسل 📄</div></div>
+    <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='under_establishment'?'border:2px solid #0891b2;':''}" onclick="setLeadsStatusFilter('under_establishment')"><div style="font-size:18px;font-weight:800;color:#0891b2">${stats.under_establishment||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">قيد التأسيس 🏗️</div></div>
+    <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='lost'?'border:2px solid #dc2626;':''}" onclick="setLeadsStatusFilter('lost')"><div style="font-size:18px;font-weight:800;color:#dc2626">${stats.lost||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">خسارة ❌</div></div>
   </div>`:''}
   <!-- Date filter bar -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
