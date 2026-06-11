@@ -54,7 +54,7 @@
     tbody tr:hover{background:#fafbff}
     tbody tr:last-child td{border-bottom:none}
     /* Modal */
-    .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;backdrop-filter:blur(4px)}
+    .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;backdrop-filter:blur(4px)}
     .modal{background:white;border-radius:18px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.25)}
     /* Toast */
     .toasts{position:fixed;top:16px;left:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
@@ -125,9 +125,9 @@
       .stats-grid{grid-template-columns:1fr 1fr!important}
       /* Page padding */
       #main{padding:10px!important}
-      /* Modal full width */
-      .modal{max-width:100%!important;margin:0;border-radius:14px 14px 0 0;position:fixed;bottom:0;right:0;left:0;max-height:92vh}
-      .modal-overlay{align-items:flex-end}
+      /* Modal full width - bottom sheet on mobile */
+      .modal-overlay{align-items:flex-end!important;padding:0!important}
+      .modal{max-width:100%!important;width:100%!important;margin:0!important;border-radius:16px 16px 0 0!important;max-height:92vh!important;overflow-y:auto}
       /* Topbar */
       .topbar-date{display:none}
       .topbar-extra-btn{display:none!important}
@@ -3422,11 +3422,12 @@ function renderDailyTasks() {
   const days=[];
   for(let i=-5;i<=1;i++) days.push(_addDays(today,i));
 
+  const _isMob = window.innerWidth <= 768;
   main.innerHTML=`
-<div style="display:flex;height:calc(100vh - 60px);overflow:hidden">
+<div style="display:${_isMob?'block':'flex'};height:${_isMob?'auto':'calc(100vh - 60px)'};${_isMob?'':'overflow:hidden'}">
 
   <!-- ─── Sidebar ─── -->
-  <div class="tasks-inner-sidebar" style="width:170px;min-width:150px;background:#1e3a5f;color:#e8edf8;display:flex;flex-direction:column;padding:12px 8px;overflow-y:auto">
+  <div class="tasks-inner-sidebar" style="width:170px;min-width:150px;background:#1e3a5f;color:#e8edf8;${_isMob?'display:none':'display:flex'};flex-direction:column;padding:12px 8px;overflow-y:auto">
     <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#93c5fd;margin-bottom:10px;text-transform:uppercase">المهام اليومية</div>
 
     <!-- Stats -->
