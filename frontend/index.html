@@ -54,7 +54,7 @@
     tbody tr:hover{background:#fafbff}
     tbody tr:last-child td{border-bottom:none}
     /* Modal */
-    .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;backdrop-filter:blur(4px)}
+    .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;backdrop-filter:blur(4px)}
     .modal{background:white;border-radius:18px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.25)}
     /* Toast */
     .toasts{position:fixed;top:16px;left:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
@@ -104,6 +104,8 @@
     .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:190;backdrop-filter:blur(2px)}
 
     @media(max-width:768px){
+      /* Prevent horizontal overflow on all pages */
+      body,#app{overflow-x:hidden;max-width:100vw}
       /* Sidebar becomes a slide-in drawer */
       .app-sidebar{
         position:fixed;right:-250px;top:0;width:250px;height:100vh;
@@ -8103,27 +8105,28 @@ function renderObligations() {
   const typeSet = [...new Set(oblInstances.map(i=>i.obligation_type).filter(Boolean))];
 
   // Toolbar
+  const _oblMob = window.innerWidth <= 768;
   const toolbar = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input class="input" style="width:160px;font-size:12px;padding:5px 10px" placeholder="🔍 بحث باسم الشركة..." value="${escH(oblSearchQ)}" oninput="setOblSearch(this.value)"/>
-      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="oblDays=+this.value;loadObligations()">
+  <div style="margin-bottom:16px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <input class="input" style="flex:1;min-width:120px;font-size:12px;padding:5px 10px" placeholder="🔍 بحث باسم الشركة..." value="${escH(oblSearchQ)}" oninput="setOblSearch(this.value)" id="oblSearchInput"/>
+      <select class="input" style="flex:1;min-width:${_oblMob?'100px':'auto'};font-size:12px;padding:5px 10px" onchange="oblDays=+this.value;loadObligations()">
         ${[7,14,30,60,90].map(d=>`<option value="${d}" ${oblDays===d?'selected':''}>خلال ${d} يوم</option>`).join('')}
       </select>
-      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="setOblTypeFilter(this.value)">
+      <select class="input" style="flex:1;min-width:${_oblMob?'100px':'auto'};font-size:12px;padding:5px 10px" onchange="setOblTypeFilter(this.value)">
         <option value="">كل الأنواع</option>
         ${typeSet.map(t=>`<option value="${t}" ${oblTypeFilter===t?'selected':''}>${OBL_NAME_AR[t]||t}</option>`).join('')}
       </select>
-      <select class="input" style="width:auto;font-size:12px;padding:5px 10px" onchange="setOblStatusFilter(this.value)">
+      <select class="input" style="flex:1;min-width:${_oblMob?'100px':'auto'};font-size:12px;padding:5px 10px" onchange="setOblStatusFilter(this.value)">
         <option value="">كل الحالات</option>
         ${Object.entries(OBL_STATUS_AR).map(([k,v])=>`<option value="${k}" ${oblStatusFilter===k?'selected':''}>${v}</option>`).join('')}
       </select>
-      ${oblSearchQ||oblTypeFilter||oblStatusFilter?`<button class="btn btn-secondary btn-sm" onclick="clearOblFilters()">✕ مسح الفلاتر</button>`:''}
+      ${oblSearchQ||oblTypeFilter||oblStatusFilter?`<button class="btn btn-secondary btn-sm" onclick="clearOblFilters()">✕</button>`:''}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-secondary" onclick="runBulkGenerate()" title="توليد الالتزامات لجميع العملاء تلقائياً">⚙️ Auto-Generate الكل</button>
-      <button class="btn btn-secondary" onclick="runRefreshNotifs()">🔔 تحديث الإشعارات</button>
-      <button class="btn btn-primary" onclick="showObligationModal()">+ إضافة التزام</button>
+      <button class="btn btn-secondary btn-sm" onclick="runBulkGenerate()">⚙️ Auto-Generate</button>
+      <button class="btn btn-secondary btn-sm" onclick="runRefreshNotifs()">🔔 تحديث</button>
+      <button class="btn btn-primary btn-sm" onclick="showObligationModal()">+ إضافة</button>
     </div>
   </div>`;
 
@@ -8158,11 +8161,11 @@ function renderObligations() {
     return `<tr style="${rowStyle}" data-id="${i.id}">
       <td><div style="font-weight:600;color:#1e293b;font-size:13px">${escH(i.client_name||'—')}</div></td>
       <td><div style="font-size:11px;color:#64748b">${subtypeName}<br/><span style="color:#94a3b8;font-size:10px">${i.period_label||''}</span></div></td>
-      <td style="font-size:13px">${dateAr(i.due_date)}</td>
+      <td class="col-mob-hide" style="font-size:13px">${dateAr(i.due_date)}</td>
       <td>${daysText}</td>
-      <td><span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;background:${prioColor}22;color:${prioColor};padding:2px 8px;border-radius:99px;font-weight:700">${PRIORITY_AR[i.priority]||'—'}</span></td>
+      <td class="col-mob-hide"><span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;background:${prioColor}22;color:${prioColor};padding:2px 8px;border-radius:99px;font-weight:700">${PRIORITY_AR[i.priority]||'—'}</span></td>
       <td><span class="badge ${OBL_STATUS_BADGE[i.status]||'badge-gray'}">${OBL_STATUS_AR[i.status]||i.status}</span></td>
-      <td style="color:#64748b;font-size:12px">${escH(i.assigned_name||'—')}</td>
+      <td class="col-mob-hide" style="color:#64748b;font-size:12px">${escH(i.assigned_name||'—')}</td>
       <td onclick="event.stopPropagation()">
         <div style="display:flex;gap:4px">
           ${i.status!=='submitted'&&i.status!=='paid'?`<button class="btn btn-success btn-sm" onclick="submitObligation(${i.id})" title="تقديم">✅</button>`:''}
@@ -8207,8 +8210,8 @@ function renderObligations() {
       <div style="overflow-x:auto">
       <table>
         <thead><tr style="background:${grp.bg}55">
-          <th>العميل</th><th>النوع / الفترة</th><th>الاستحقاق</th><th>المتبقي</th>
-          <th>الأولوية</th><th>الحالة</th><th>المحاسب</th><th>إجراءات</th>
+          <th>العميل</th><th>النوع / الفترة</th><th class="col-mob-hide">الاستحقاق</th><th>المتبقي</th>
+          <th class="col-mob-hide">الأولوية</th><th>الحالة</th><th class="col-mob-hide">المحاسب</th><th>إجراءات</th>
         </tr></thead>
         <tbody>${sorted.map(instRow).join('')}</tbody>
       </table>
