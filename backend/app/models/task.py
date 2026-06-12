@@ -48,6 +48,8 @@ class Task(Base):
     department = Column(String(200))
     assigned_to = Column(Integer, ForeignKey("users.id"))
     created_by = Column(Integer, ForeignKey("users.id"))
+    task_date = Column(Date)          # the day this task belongs to (for daily pages)
+    inline_notes = Column(Text)       # quick inline notes in the daily table
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

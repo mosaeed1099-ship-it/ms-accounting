@@ -211,6 +211,11 @@ def _run_migrations_pg():
         "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS variable_pay FLOAT DEFAULT 0",
         "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS allowances FLOAT DEFAULT 0",
         "ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS insurance_start_date DATE",
+        # ── Tasks daily system ────────────────────────────────────────────────
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_date DATE",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS inline_notes TEXT",
+        # backfill task_date from created_at for existing rows
+        "UPDATE tasks SET task_date = created_at::date WHERE task_date IS NULL",
     ]
     with engine.connect() as conn:
         for sql in migrations:

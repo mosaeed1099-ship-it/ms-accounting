@@ -29,12 +29,14 @@ class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
     notes: Optional[str] = None  # alias for description if description not provided
+    inline_notes: Optional[str] = None
     client_id: Optional[int] = None
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
     category: TaskCategory = TaskCategory.OTHER
     department: Optional[str] = None
     due_date: Optional[date] = None
+    task_date: Optional[date] = None
     estimated_hours: Optional[int] = None
     assigned_to: Optional[int] = None
     tags: Optional[str] = None
@@ -44,12 +46,14 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     notes: Optional[str] = None
+    inline_notes: Optional[str] = None
     client_id: Optional[int] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     category: Optional[TaskCategory] = None
     department: Optional[str] = None
     due_date: Optional[date] = None
+    task_date: Optional[date] = None
     estimated_hours: Optional[int] = None
     actual_hours: Optional[int] = None
     assigned_to: Optional[int] = None
@@ -60,25 +64,30 @@ class CommentCreate(BaseModel):
     content: str
 
 
-def task_to_dict(task: Task) -> dict:
-    today = date.today()
+def task_to_dict(task: Task, ref_date: date = None) -> dict:
+    today = ref_date or date.today()
     due = task.due_date
     is_overdue = (due and due < today and task.status not in (TaskStatus.DONE, TaskStatus.CANCELLED))
     days_until_due = (due - today).days if due else None
+    task_date = task.task_date or (task.created_at.date() if task.created_at else None)
+    carry_over_days = (today - task_date).days if (task_date and task_date < today and task.status not in (TaskStatus.DONE, TaskStatus.CANCELLED)) else 0
     return {
         "id": task.id,
         "title": task.title,
         "description": task.description,
+        "inline_notes": task.inline_notes,
         "client_id": task.client_id,
         "client_name": task.client.name if task.client else None,
         "status": task.status,
         "priority": task.priority,
         "category": task.category,
         "department": task.department,
-        "due_date": task.due_date,
+        "due_date": str(task.due_date) if task.due_date else None,
+        "task_date": str(task_date) if task_date else None,
+        "carry_over_days": carry_over_days,
         "days_until_due": days_until_due,
         "is_overdue": is_overdue,
-        "completed_at": task.completed_at,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         "estimated_hours": task.estimated_hours,
         "actual_hours": task.actual_hours,
         "tags": task.tags,
@@ -86,9 +95,36 @@ def task_to_dict(task: Task) -> dict:
         "assigned_to_name": task.assigned_to_user.name if task.assigned_to_user else None,
         "created_by": task.created_by,
         "created_by_name": task.created_by_user.name if task.created_by_user else None,
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "updated_at": task.updated_at.isoformat() if task.updated_at else None,
         "comments_count": len(task.comments),
+    }
+
+
+@router.get("/daily")
+async def daily_tasks(
+    task_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return tasks for a specific date, including carried-over incomplete tasks from prior days."""
+    target = date.fromisoformat(task_date) if task_date else date.today()
+    # Tasks assigned to this date
+    owned = db.query(Task).filter(Task.task_date == target).all()
+    # Incomplete tasks from before this date (carried over)
+    carried = db.query(Task).filter(
+        Task.task_date < target,
+        Task.status.not_in([TaskStatus.DONE, TaskStatus.CANCELLED])
+    ).all()
+    all_tasks = owned + [t for t in carried if t.id not in {x.id for x in owned}]
+    all_tasks.sort(key=lambda t: (t.task_date or date.min, t.id))
+    return {
+        "date": str(target),
+        "tasks": [task_to_dict(t, target) for t in all_tasks],
+        "total": len(all_tasks),
+        "done": sum(1 for t in all_tasks if t.status == TaskStatus.DONE),
+        "overdue": sum(1 for t in all_tasks if t.status not in (TaskStatus.DONE, TaskStatus.CANCELLED) and (t.task_date or date.min) < target),
+        "new_today": sum(1 for t in all_tasks if t.task_date == target),
     }
 
 
@@ -228,10 +264,11 @@ async def create_task(
     current_user: User = Depends(get_current_user),
 ):
     task_data = data.dict()
-    # Merge notes into description if description is empty
     if not task_data.get("description") and task_data.get("notes"):
         task_data["description"] = task_data["notes"]
     task_data.pop("notes", None)
+    if not task_data.get("task_date"):
+        task_data["task_date"] = date.today()
     task = Task(**task_data, created_by=current_user.id)
     db.add(task)
     db.commit()
@@ -276,7 +313,6 @@ async def update_task(
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
 
     updates = data.dict(exclude_none=True)
-    # Merge notes into description
     if "notes" in updates:
         if not updates.get("description"):
             updates["description"] = updates["notes"]
