@@ -3682,7 +3682,7 @@ window._showBulkAddModal = function _showBulkAddModal() {
           status:'todo', priority:'medium', category:'other'
         },{retries:1, retryDelay:1000});
       }
-      // إغلاق المودال فوراً ثم إرسال واتساب
+      // إغلاق المودال فوراً
       ov.remove();
       _AC.invalidate('/api/tasks');
       loadTasks(false);
@@ -3694,12 +3694,26 @@ window._showBulkAddModal = function _showBulkAddModal() {
         const lines = [`📋 *مهام ${assigneeName} — ${dateStr}*\n`];
         tasks.forEach((t,i) => lines.push(`${i+1}. ${t.title}${t.client_name?' — '+t.client_name:''}`));
         const msg = lines.join('\n');
-        if(phone) {
-          window.open(`https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
-        } else {
-          navigator.clipboard?.writeText(msg).catch(()=>{});
-          toast('📋 تم نسخ الرسالة — لا يوجد رقم واتساب للموظف','warning');
-        }
+        // عرض مودال الواتساب — window.open مش شغال بعد await في Safari
+        const waNum = phone ? String(phone).replace(/\D/g,'') : '';
+        const waUrl = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}` : '';
+        const waOv = document.createElement('div');
+        waOv.className='modal-overlay';
+        waOv.innerHTML=`<div class="modal" style="max-width:400px">
+          <div style="padding:14px 18px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+            <h2 style="font-size:15px;font-weight:700;margin:0;color:#1e293b">📱 رسالة لـ ${escH(assigneeName)}</h2>
+            <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer">✕</button>
+          </div>
+          <div style="padding:14px 18px">
+            <textarea readonly style="width:100%;height:160px;background:#e9f5e1;border:none;border-radius:10px;padding:12px;font-size:12px;color:#1a3c00;line-height:1.9;direction:rtl;resize:none;font-family:inherit">${escH(msg)}</textarea>
+            ${waUrl
+              ? `<a href="${escH(waUrl)}" target="_blank" style="display:block;width:100%;margin-top:10px;background:#25D366;color:white;border:none;padding:11px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;text-align:center;text-decoration:none">📲 فتح واتساب — ${escH(assigneeName)}</a>`
+              : `<button onclick="navigator.clipboard?.writeText(${JSON.stringify(msg)});this.textContent='✅ تم النسخ'" style="width:100%;margin-top:10px;background:#64748b;color:white;border:none;padding:11px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📋 نسخ الرسالة (لا يوجد رقم مسجل)</button>`
+            }
+          </div>
+        </div>`;
+        document.body.append(waOv);
+        waOv.onclick=e=>{if(e.target===waOv)waOv.remove();};
       } else if(sendWA && !assigneeName) {
         toast('اختر موظفاً لإرسال واتساب','warning');
       }
