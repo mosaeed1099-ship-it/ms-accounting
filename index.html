@@ -629,7 +629,7 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
   const opts = {
     method,
     headers:{'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{})},
-    signal: AbortSignal.timeout(isGet ? 30000 : 12000),
+    signal: AbortSignal.timeout(isGet ? 30000 : 30000),
   };
   if (body) opts.body = JSON.stringify(body);
 
@@ -3669,8 +3669,13 @@ window._showBulkAddModal = function _showBulkAddModal() {
     btn.disabled=true;
     try {
       const tasks = rawLines.map(line => {
-        const parts = line.split(/\s*[-–]\s*/);
-        return { title: parts[0].trim(), client_name: parts[1]?.trim()||null };
+        // إزالة الأرقام والنقاط والشرطات من أول السطر (١- أو 1. أو ١) أو 1)
+        const stripped = line.replace(/^[\d٠-٩٠-٩]+\s*[-–.،)\s]+\s*/, '').trim() || line.trim();
+        // الفصل بين اسم المهمة واسم العميل: "مهمة — عميل" أو "مهمة - عميل"
+        const dashIdx = stripped.search(/\s+[-–—]\s+/);
+        const title      = dashIdx >= 0 ? stripped.slice(0, dashIdx).trim() : stripped;
+        const client_name = dashIdx >= 0 ? stripped.slice(dashIdx).replace(/^\s*[-–—]\s*/, '').trim() : null;
+        return { title: title || stripped, client_name: client_name || null };
       });
       // حفظ المهام واحدة واحدة مع إظهار التقدم
       for(let i=0; i<tasks.length; i++) {
@@ -3680,12 +3685,12 @@ window._showBulkAddModal = function _showBulkAddModal() {
           client_name: tasks[i].client_name||null,
           assigned_to: assigneeId,
           status:'todo', priority:'medium', category:'other'
-        },{retries:1, retryDelay:1000});
+        },{retries:2, retryDelay:3000, useCache:false});
       }
       // إغلاق المودال فوراً
       ov.remove();
       _AC.invalidate('/api/tasks');
-      loadTasks(false);
+      loadTasks(false).catch(()=>{});
       toast(`✅ تمت إضافة ${tasks.length} مهمة`);
       if(sendWA && assigneeName) {
         const emp = users.find(u=>u.id===assigneeId);
