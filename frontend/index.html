@@ -3628,7 +3628,7 @@ async function _restoreTask(id) {
 }
 
 window._showBulkAddModal = function _showBulkAddModal() {
-  const users = (tasksUsersData||[]).filter(u=>['employee','manager','admin'].includes(u.role));
+  const users = TASK_EMPS.map(name=>(tasksUsersData||[]).find(u=>(u.name||'').trim()===name)).filter(Boolean);
   const empOpts = `<option value="">— بلا تكليف —</option>` +
     users.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('');
   const ov=document.createElement('div');
