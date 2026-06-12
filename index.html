@@ -3941,10 +3941,7 @@ async function showTaskModal(id=null) {
         </div>
         <div>
           <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل / الشركة</label>
-          <select id="tClient" class="input">
-            <option value="">— اختر عميل —</option>
-            ${clients.map(c=>`<option value="${c.id}" ${t?.client_id==c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
-          </select>
+          <input id="tClientName" class="input" value="${escH(t?.client_name||'')}" placeholder="اكتب اسم العميل أو الشركة..."/>
         </div>
       </div>
       <div class="form-row">
@@ -4030,7 +4027,7 @@ async function showTaskModal(id=null) {
       const body={
         title:       document.getElementById('tTitle').value.trim(),
         assigned_to: parseInt(document.getElementById('tAssignee').value)||null,
-        client_id:   parseInt(document.getElementById('tClient').value)||null,
+        client_id:   (()=>{const n=(document.getElementById('tClientName')?.value||'').trim();const m=clients.find(c=>c.name.trim()===n);return m?m.id:null;})(),
         priority:    document.getElementById('tPriority').value,
         category:    document.getElementById('tCat').value,
         status:      document.getElementById('tStatus').value,
