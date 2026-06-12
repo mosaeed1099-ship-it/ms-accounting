@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # Cache-bust: 2026-06-10a
-ARG CACHEBUST=2026-06-10g-portal
+ARG CACHEBUST=2026-06-12a-wa-endpoints
 
 WORKDIR /app
 
