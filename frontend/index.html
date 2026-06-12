@@ -3667,332 +3667,388 @@ function _genWAMessage() {
     navigator.clipboard.writeText(msg).then(()=>toast('📋 تم نسخ الرسالة'));
   };
 }
-<div style="display:${_isMob?'block':'flex'};height:${_isMob?'auto':'calc(100vh - 60px)'};${_isMob?'':'overflow:hidden'}">
 
-  <!-- ─── Sidebar ─── -->
-  <div class="tasks-inner-sidebar" style="width:170px;min-width:150px;background:#1e3a5f;color:#e8edf8;${_isMob?'display:none':'display:flex'};flex-direction:column;padding:12px 8px;overflow-y:auto">
-    <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#93c5fd;margin-bottom:10px;text-transform:uppercase">المهام اليومية</div>
-
-    <!-- Stats -->
-    <div style="background:#ffffff15;border-radius:8px;padding:10px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:11px;color:#93c5fd">إجمالي</span><span style="font-weight:700">${tasksData.length}</span></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:11px;color:#86efac">✅ مكتملة</span><span style="font-weight:700;color:#86efac">${done}</span></div>
-      <div style="display:flex;justify-content:space-between"><span style="font-size:11px;color:#fca5a5">⏩ مرحلة</span><span style="font-weight:700;color:#fca5a5">${carried}</span></div>
-    </div>
-
-    <!-- Day nav -->
-    <div style="font-size:9px;color:#93c5fd;letter-spacing:.5px;margin-bottom:6px;text-transform:uppercase">التاريخ</div>
-    ${days.map(d=>{
-      const sel=d===_dailyDate;
-      const lbl=d===today?'اليوم':_isoToAr(d).split(' ').slice(0,2).join(' ');
-      return `<div onclick="window._switchDay('${d}')" style="padding:7px 8px;border-radius:7px;cursor:pointer;margin-bottom:3px;font-size:11px;font-weight:${sel?'700':'400'};background:${sel?'#ffffff25':'transparent'};color:${sel?'#fff':'#93c5fd'};border:${sel?'1px solid #ffffff40':'1px solid transparent'}" onmouseover="this.style.background='#ffffff20'" onmouseout="this.style.background='${sel?'#ffffff25':'transparent'}'">
-        ${d===today?'● ':d<today?'• ':'○ '}${lbl}
-      </div>`;
-    }).join('')}
-
-    <div style="flex:1"></div>
-    <button onclick="window._sendDailyWhatsApp()" style="background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px;font-size:11px;font-weight:700;cursor:pointer;margin-top:10px;width:100%">📱 إرسال واتساب</button>
-  </div>
-
-  <!-- ─── Main Table ─── -->
-  <div style="flex:1;overflow:auto;background:#f8fafc;display:flex;flex-direction:column">
-  <!-- Mobile day strip -->
-  <div class="tasks-day-strip">
-    ${days.map(d=>`<div class="tasks-day-pill${d===_dailyDate?' active':''}" onclick="window._switchDay('${d}')">${d===today?'اليوم':_isoToAr(d).split(' ').slice(0,2).join(' ')}</div>`).join('')}
-    <div class="tasks-day-pill" onclick="window._sendDailyWhatsApp()" style="background:#25d366;color:#fff;border-color:#25d366">📱</div>
-  </div>
-  <div style="flex:1;overflow:auto;padding:12px">
-
-    <!-- Header -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <div>
-        <span style="font-weight:800;font-size:16px;color:#1e293b">${_isoToAr(_dailyDate)}</span>
-        ${carried>0?`<span style="margin-right:8px;background:#fef3c7;color:#d97706;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700">⏩ ${carried} مهمة مرحلة</span>`:''}
-      </div>
-      <div style="flex:1"></div>
-      <button onclick="window._prevDay()" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px">‹</button>
-      <button onclick="window._switchDay(new Date().toISOString().slice(0,10))" style="background:#e0f2fe;color:#0369a1;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer">اليوم</button>
-      <button onclick="window._nextDay()" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px">›</button>
-      <button onclick="showTaskModal()" style="background:#1e3a5f;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer">➕ مهمة جديدة</button>
-    </div>
-
-    <!-- THE TABLE -->
-    <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px #0001;border:1px solid #e2e8f0">
-      <table id="tasksMainTable" style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr style="background:#1e3a5f">
-            <th style="padding:10px 8px;color:#e8edf8;font-size:12px;font-weight:700;text-align:center;width:36px">#</th>
-            <th style="padding:10px 12px;color:#e8edf8;font-size:12px;font-weight:700;text-align:right">المهمة</th>
-            ${empCols.map(e=>`
-              <th style="padding:10px 4px;color:#e8edf8;font-size:11px;font-weight:700;text-align:center;width:60px">
-                <div style="width:26px;height:26px;border-radius:50%;background:${_empBg(e.id)};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin:0 auto 2px">${(e.name||'?').slice(0,2)}</div>
-                ${(e.name||'').split(' ')[0]}
-              </th>`).join('')}
-            <th style="padding:10px 8px;color:#e8edf8;font-size:12px;font-weight:700;text-align:center;width:80px">الإكمال</th>
-          </tr>
-        </thead>
-        <tbody id="tasksBody">
-          ${_renderTaskRows(tasksData, empCols)}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Quick add row -->
-    <div style="background:#fff;border-radius:10px;padding:10px 14px;margin-top:10px;border:2px dashed #e2e8f0;display:flex;gap:8px;align-items:center">
-      <span style="font-size:20px;color:#94a3b8">✏️</span>
-      <input id="quickTitle" class="input" style="flex:1;font-size:13px;border:none;outline:none;box-shadow:none" placeholder="اكتب المهمة واضغط Enter..." onkeydown="if(event.key==='Enter')window._quickAdd()"/>
-      <select id="quickEmp" class="input" style="width:120px;font-size:12px">
-        <option value="">— الموظف</option>
-        ${tasksUsersData.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('')}
-      </select>
-      <button onclick="window._quickAdd()" style="background:#1e3a5f;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer">إضافة</button>
-    </div>
-
-    <!-- Archive link -->
-    <div style="margin-top:12px;text-align:center">
-      <button onclick="window._showArchive()" style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;text-decoration:underline">📁 الأرشيف والبحث</button>
-      <button onclick="window._showDashboard()" style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;text-decoration:underline;margin-right:16px">📊 لوحة الأداء</button>
-    </div>
-  </div><!-- end padding div -->
-  </div><!-- end main flex col -->
-</div>`;
-}
-
-function _renderTaskRows(tasks, empCols) {
-  if(!tasks.length) return `<tr><td colspan="${2+empCols.length+1}" style="text-align:center;padding:50px;color:#94a3b8;font-size:14px">لا توجد مهام لهذا اليوم<br><span style="font-size:12px">اضغط "مهمة جديدة" أو استخدم الإضافة السريعة أدناه</span></td></tr>`;
-  return tasks.map((t,i)=>{
-    const done=t.status==='done';
-    const carried=t.carry_over_days>0&&!done;
-    const bg=done?'#f0fdf4':carried?'#fff7ed':i%2===0?'#fff':'#f9fafb';
-    return `<tr style="background:${bg};border-bottom:1px solid #f1f5f9" id="tr_${t.id}">
-      <td style="padding:10px 8px;text-align:center;color:#94a3b8;font-size:11px;font-weight:600">${i+1}</td>
-      <td style="padding:10px 12px">
-        <div style="font-weight:600;font-size:13px;color:${done?'#94a3b8':'#1e293b'};${done?'text-decoration:line-through':''}">
-          ${escH(t.title)}
-          ${carried?`<span style="background:#fef3c7;color:#d97706;border:1px solid #fde68a;border-radius:20px;padding:1px 8px;font-size:9px;font-weight:700;margin-right:6px">⏩ مرحلة ${t.carry_over_days} ${t.carry_over_days===1?'يوم':'أيام'}</span>`:''}
-        </div>
-        ${t.client_name?`<div style="font-size:10px;color:#94a3b8;margin-top:1px">🏢 ${escH(t.client_name)}</div>`:''}
-      </td>
-      ${empCols.map(e=>{
-        const assigned=t.assigned_to===e.id;
-        const cbDone=done&&assigned;
-        return `<td style="padding:10px 4px;text-align:center">
-          ${assigned
-            ? `<button onclick="window._toggleDone(${t.id},'${t.status}')" style="width:28px;height:28px;border-radius:8px;border:2px solid ${cbDone?'#16a34a':'#3b82f6'};background:${cbDone?'#16a34a':'transparent'};cursor:pointer;display:flex;align-items:center;justify-content:center;margin:0 auto;font-size:13px" title="${e.name}">${cbDone?'<span style="color:#fff">✓</span>':'<span style="color:#3b82f6;font-size:10px">•</span>'}</button>`
-            : `<div style="width:22px;height:22px;border-radius:6px;border:1.5px solid #e2e8f0;margin:0 auto;background:#f8fafc"></div>`}
-        </td>`;
-      }).join('')}
-      <td style="padding:8px;text-align:center">
-        <div style="display:flex;gap:4px;justify-content:center;align-items:center">
-          <button onclick="window._toggleDone(${t.id},'${t.status}')" title="${done?'إلغاء الإتمام':'تم'}" style="width:28px;height:28px;border-radius:7px;border:none;background:${done?'#16a34a':'#f0fdf4'};color:${done?'#fff':'#16a34a'};cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">✓</button>
-          <button onclick="window._waTask(${t.id})" title="واتساب" style="width:28px;height:28px;border-radius:7px;border:none;background:#f0fdf4;color:#16a34a;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">📱</button>
-          <button onclick="window._delTask(${t.id})" title="حذف" style="width:28px;height:28px;border-radius:7px;border:none;background:#fef2f2;color:#dc2626;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">✕</button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function _empBg(id){
-  const c=['#1e3a5f','#7c3aed','#0369a1','#15803d','#d97706','#dc2626'];
-  return c[(parseInt(id)||0)%c.length];
-}
-
-// ── Handlers ────────────────────────────────────
-window._switchDay=function(iso){_dailyDate=iso;loadTasks(false);};
-window._prevDay=function(){_dailyDate=_addDays(_dailyDate,-1);loadTasks(false);};
-window._nextDay=function(){_dailyDate=_addDays(_dailyDate,1);loadTasks(false);};
-
-window._toggleDone=async function(id,cur){
-  const ns=cur==='done'?'in_progress':'done';
-  try{await api('PUT',`/api/tasks/${id}`,{status:ns});await loadTasks(true);}
-  catch(e){toast(e.message,'error');}
-};
-
-window._delTask=async function(id){
-  if(!await confirmDlg('حذف هذه المهمة؟')) return;
-  try{await api('DELETE',`/api/tasks/${id}`);toast('تم الحذف');await loadTasks(true);}
-  catch(e){toast(e.message,'error');}
-};
-
-window._quickAdd=async function(){
-  const title=document.getElementById('quickTitle')?.value?.trim();
-  if(!title){toast('اكتب وصف المهمة','warning');return;}
-  const emp=document.getElementById('quickEmp')?.value;
-  try{
-    await api('POST','/api/tasks',{title,assigned_to:emp?parseInt(emp):null,task_date:_dailyDate,status:'todo'});
-    document.getElementById('quickTitle').value='';
-    toast('تمت الإضافة ✅');
-    await loadTasks(true);
-  }catch(e){toast(e.message,'error');}
-};
-
-window._waTask=function(id){
-  const t=tasksData.find(x=>x.id===id);if(!t)return;
-  const msg=`مكتب المحاسبة — مهمة مُسندة\n━━━━━━━━━\n📋 ${t.title}${t.client_name?'\n🏢 '+t.client_name:''}\n👤 ${t.assigned_to_name||'—'}\n📅 ${_isoToAr(_dailyDate)}\n━━━━━━━━━\nبرجاء الإنجاز في أقرب وقت 🙏`;
-  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-};
-
-window._sendDailyWhatsApp=function(){
-  const pending=tasksData.filter(t=>t.status!=='done'&&t.status!=='cancelled');
-  if(!pending.length){toast('لا توجد مهام معلقة','warning');return;}
-  let lines=[`📋 *مهام يوم ${_isoToAr(_dailyDate)}*`,'━━━━━━━━━━━━━━'];
-  pending.forEach((t,i)=>{
-    const c=t.carry_over_days>0?` ⏩${t.carry_over_days}يوم`:'';
-    lines.push(`${i+1}. ${t.title}${t.assigned_to_name?' ('+t.assigned_to_name+')':''}${c}`);
+// ── Employee folder cards view ──────────────────────────────────────
+function renderTaskFolders() {
+  const main = document.getElementById('main');
+  const empMap = {};
+  tasksData.forEach(t => {
+    const key  = t.assigned_to || 0;
+    const name = t.assigned_to_name || (key ? `مستخدم #${key}` : 'غير محدد');
+    if (!empMap[key]) empMap[key] = {id: key, name, pending: [], done: []};
+    if (t.status === 'done' || t.status === 'cancelled') empMap[key].done.push(t);
+    else empMap[key].pending.push(t);
   });
-  lines.push('━━━━━━━━━━━━━━\n✅ برجاء التحديث عند الإنجاز');
-  window.open('https://wa.me/?text='+encodeURIComponent(lines.join('\n')),'_blank');
-};
-
-window._showArchive=async function(){
-  const el=document.querySelector('main, #main');
-  const res=await api('GET','/api/tasks?page_size=300').catch(()=>({items:[]}));
-  const all=res.items||[];
-  const overlay=document.createElement('div');
-  overlay.className='modal-overlay';
-  overlay.innerHTML=`<div class="modal" style="max-width:800px;width:96%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
-    <div class="modal-header"><h3 class="modal-title">📁 أرشيف المهام</h3><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
-    <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap">
-      <input id="archQ" class="input" style="flex:1;min-width:150px;font-size:12px" placeholder="بحث..." oninput="window._filterArch()"/>
-      <select id="archEmp" class="input" style="width:140px;font-size:12px" onchange="window._filterArch()">
-        <option value="">كل الموظفين</option>
-        ${tasksUsersData.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('')}
-      </select>
-      <select id="archSt" class="input" style="width:120px;font-size:12px" onchange="window._filterArch()">
-        <option value="">كل الحالات</option>
-        ${Object.entries(TASK_STATUS_LABEL).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
-      </select>
+  const emps = Object.values(empMap).sort((a,b) => b.pending.length - a.pending.length);
+  main.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+    <div>
+      <h2 style="font-size:18px;font-weight:800;color:#1e293b;margin:0">✅ المهام</h2>
+      <p style="font-size:13px;color:#64748b;margin:4px 0 0">${tasksData.length} مهمة — ${emps.filter(e=>e.pending.length>0).length} موظف لديه مهام قيد التنفيذ</p>
     </div>
-    <div id="archBody" style="overflow-y:auto;flex:1"></div>
+    <div style="display:flex;gap:8px">
+      <button onclick="_taskViewMode='daily';renderDailySheet()"
+        style="padding:8px 16px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">📋 اليومية</button>
+      <button onclick="showTaskModal()" class="btn btn-primary" style="font-size:13px">➕ مهمة جديدة</button>
+    </div>
+  </div>
+  ${emps.find(e=>e.id===0) ? `
+  <div style="background:#fff8f0;border:1.5px solid #fed7aa;border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <span style="font-size:13px;font-weight:700;color:#c2410c">⚠️ مهام بدون موظف محدد</span>
+      <span style="font-size:12px;color:#9a3412;margin-right:10px">${emps.find(e=>e.id===0).pending.length} معلقة</span>
+    </div>
+    <button onclick="openEmployeeTasks(0,'غير محدد')"
+      style="padding:6px 14px;background:#f97316;color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">عرض</button>
+  </div>` : ''}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">
+    ${emps.filter(e=>e.id!==0).map(emp => {
+      const overdue = emp.pending.filter(t => t.due_date && daysUntil(t.due_date) < 0).length;
+      const urgent  = emp.pending.filter(t => t.priority === 'urgent').length;
+      return `
+    <div style="background:white;border-radius:16px;padding:20px;border:1.5px solid #e8edf3;box-shadow:0 2px 8px rgba(0,0,0,.05);cursor:pointer;transition:transform .15s,box-shadow .15s"
+         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'"
+         onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,.05)'"
+         onclick="openEmployeeTasks(${emp.id},'${escH(emp.name)}')">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#1a2472,#2563eb);display:flex;align-items:center;justify-content:center;color:white;font-size:16px;font-weight:800;flex-shrink:0">${escH(emp.name[0])}</div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1e293b">${escH(emp.name)}</div>
+          ${overdue > 0 ? `<div style="font-size:11px;color:#dc2626;font-weight:600">⚠️ ${overdue} متأخرة</div>` :
+            urgent > 0  ? `<div style="font-size:11px;color:#f97316;font-weight:600">🔴 ${urgent} عاجل</div>` :
+            `<div style="font-size:11px;color:#94a3b8">لا تنبيهات</div>`}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:#fef9c3;border-radius:10px;padding:10px;text-align:center;border:1px solid #fde68a">
+          <div style="font-size:20px;font-weight:800;color:#92400e">${emp.pending.length}</div>
+          <div style="font-size:10px;color:#92400e;font-weight:600">⏳ معلقة</div>
+        </div>
+        <div style="background:#f0fdf4;border-radius:10px;padding:10px;text-align:center;border:1px solid #bbf7d0">
+          <div style="font-size:20px;font-weight:800;color:#15803d">${emp.done.length}</div>
+          <div style="font-size:10px;color:#15803d;font-weight:600">✅ مكتملة</div>
+        </div>
+      </div>
+      ${emp.pending.slice(0,2).map(t=>`
+      <div style="background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:#1e293b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${escH(t.title)}</span>
+        <span style="font-size:10px;font-weight:700;color:${PRIORITY_COLOR[t.priority]||'#64748b'};background:${PRIORITY_COLOR[t.priority]||'#64748b'}18;padding:2px 7px;border-radius:5px;white-space:nowrap">${PRIORITY_LABEL[t.priority]||''}</span>
+      </div>`).join('')}
+      ${emp.pending.length > 2 ? `<div style="font-size:11px;color:#94a3b8;text-align:center;margin-top:4px">+ ${emp.pending.length-2} مهام أخرى</div>` : ''}
+    </div>`}).join('')}
+    ${emps.filter(e=>e.id!==0).length === 0 ? `
+    <div style="grid-column:1/-1;text-align:center;padding:60px;color:#94a3b8">
+      <div style="font-size:48px;margin-bottom:12px">✅</div>
+      <div style="font-size:16px;font-weight:600">لا توجد مهام مسندة لموظفين</div>
+    </div>` : ''}
   </div>`;
-  document.body.appendChild(overlay);
-  window._archAll=all;
-  window._filterArch=function(){
-    const q=(document.getElementById('archQ')?.value||'').toLowerCase();
-    const emp=document.getElementById('archEmp')?.value||'';
-    const st=document.getElementById('archSt')?.value||'';
-    const f=window._archAll.filter(t=>
-      (!q||(t.title+' '+(t.client_name||'')+' '+(t.assigned_to_name||'')).toLowerCase().includes(q))&&
-      (!emp||String(t.assigned_to)===emp)&&
-      (!st||t.status===st)
-    );
-    const body=document.getElementById('archBody');
-    if(!body)return;
-    if(!f.length){body.innerHTML='<div style="text-align:center;padding:40px;color:#94a3b8">لا توجد نتائج</div>';return;}
-    body.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="background:#f8fafc"><th style="padding:8px 12px;text-align:right;font-weight:700;color:#475569">المهمة</th><th style="padding:8px;text-align:center;color:#475569">الموظف</th><th style="padding:8px;text-align:center;color:#475569">العميل</th><th style="padding:8px;text-align:center;color:#475569">التاريخ</th><th style="padding:8px;text-align:center;color:#475569">الحالة</th></tr></thead>
-      <tbody>${f.map((t,i)=>`<tr style="border-bottom:1px solid #f1f5f9;background:${i%2?'#f9fafb':'#fff'}">
-        <td style="padding:8px 12px;font-weight:500">${escH(t.title)}</td>
-        <td style="padding:8px;text-align:center;color:#64748b">${escH(t.assigned_to_name||'—')}</td>
-        <td style="padding:8px;text-align:center;color:#64748b">${escH(t.client_name||'—')}</td>
-        <td style="padding:8px;text-align:center;color:#94a3b8;font-size:11px">${t.created_at?.slice(0,10)||'—'}</td>
-        <td style="padding:8px;text-align:center"><span style="background:${TASK_STATUS_BG[t.status]};color:${TASK_STATUS_COLOR[t.status]};border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">${TASK_STATUS_LABEL[t.status]||t.status}</span></td>
-      </tr>`).join('')}</tbody>
-    </table>`;
+}
+
+async function openEmployeeTasks(empId, empName) {
+  _taskEmpFilter = {id: empId, name: empName};
+  _taskViewMode  = 'folders';
+  const main = document.getElementById('main');
+  main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+  try {
+    const res = empId
+      ? await api('GET', `/api/tasks?assigned_to=${empId}&page_size=200`)
+      : await api('GET', '/api/tasks?page_size=200');
+    tasksData = (res?.items || []).filter(t => empId === 0 ? !t.assigned_to : true);
+    renderEmployeeTasks();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function renderEmployeeTasks() {
+  const main = document.getElementById('main');
+  const emp  = _taskEmpFilter;
+  const pending = tasksData.filter(t => t.status !== 'done' && t.status !== 'cancelled');
+  const done    = tasksData.filter(t => t.status === 'done');
+  const taskCard = (t, showDone = false) => {
+    const overdue = t.due_date && daysUntil(t.due_date) < 0 && t.status !== 'done';
+    return `
+    <div style="background:white;border-radius:14px;padding:16px 18px;border:1.5px solid ${overdue?'#fecaca':'#e8edf3'};box-shadow:0 1px 6px rgba(0,0,0,.04);display:flex;gap:14px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <span style="font-size:14px;font-weight:700;color:${showDone?'#94a3b8':'#1e293b'};${showDone?'text-decoration:line-through':''}">${escH(t.title)}</span>
+          <span style="font-size:11px;font-weight:700;color:${PRIORITY_COLOR[t.priority]||'#64748b'};background:${PRIORITY_COLOR[t.priority]||'#64748b'}18;padding:2px 9px;border-radius:8px;white-space:nowrap">${PRIORITY_LABEL[t.priority]||''}</span>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#64748b">
+          ${t.client_name ? `<span>👤 ${escH(t.client_name)}</span>` : ''}
+          ${t.due_date    ? `<span style="color:${overdue?'#dc2626':'#64748b'};font-weight:${overdue?'700':'400'}">${overdue?'⚠️ متأخر: ':'📅 '}${dateAr(t.due_date)}</span>` : ''}
+        </div>
+        ${t.notes ? `<div style="font-size:11px;color:#94a3b8;margin-top:5px">${escH(t.notes)}</div>` : ''}
+      </div>
+      ${!showDone ? `
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <button onclick="quickDoneTask(${t.id})"
+          style="padding:7px 14px;background:#15803d;color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✅ خلصت</button>
+        <button onclick="showTaskModal(${t.id})"
+          style="padding:5px 10px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">تعديل</button>
+      </div>` : `
+      <div style="flex-shrink:0">
+        <span style="background:#f0fdf4;color:#15803d;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700">✓ مكتمل</span>
+      </div>`}
+    </div>`;
   };
-  window._filterArch();
-};
-
-window._showDashboard=function(){
-  const empPerf={};
-  tasksData.forEach(t=>{
-    if(!t.assigned_to)return;
-    if(!empPerf[t.assigned_to])empPerf[t.assigned_to]={name:t.assigned_to_name||'?',total:0,done:0};
-    empPerf[t.assigned_to].total++;
-    if(t.status==='done')empPerf[t.assigned_to].done++;
-  });
-  const sorted=Object.values(empPerf).sort((a,b)=>(b.done/Math.max(b.total,1))-(a.done/Math.max(a.total,1)));
-  const overlay=document.createElement('div');
-  overlay.className='modal-overlay';
-  overlay.innerHTML=`<div class="modal" style="max-width:500px;width:95%">
-    <div class="modal-header"><h3 class="modal-title">📊 أداء الموظفين — اليوم</h3><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
-    <div class="modal-body">
-      ${!sorted.length?'<div style="text-align:center;padding:30px;color:#94a3b8">لا توجد بيانات لهذا اليوم</div>':
-        sorted.map((e,i)=>{const p=e.total?Math.round(e.done/e.total*100):0;return`
-        <div style="margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-            <span style="font-weight:700;color:#1e293b">${i===0?'🏆 ':''} ${e.name}</span>
-            <span style="font-size:13px;color:#64748b">${e.done}/${e.total} — <strong style="color:${p===100?'#16a34a':p>50?'#2563eb':'#d97706'}">${p}%</strong></span>
-          </div>
-          <div style="height:8px;background:#e2e8f0;border-radius:4px"><div style="height:8px;background:${p===100?'#16a34a':p>50?'#2563eb':'#f59e0b'};border-radius:4px;width:${p}%;transition:width .4s"></div></div>
-        </div>`;}).join('')}
-    </div>
-    <div class="modal-footer"><button onclick="this.closest('.modal-overlay').remove()" class="btn btn-ghost">إغلاق</button></div>
-  </div>`;
-  document.body.appendChild(overlay);
-};
-
-// ── Task Modal (add/edit) ──────────────────────
-async function showTaskModal(id=null) {
-  let task=null;
-  if(id){try{task=await api('GET',`/api/tasks/${id}`);}catch(e){toast(e.message,'error');return;}}
-  const empOpts=tasksUsersData.map(u=>`<option value="${u.id}" ${task?.assigned_to===u.id?'selected':''}>${escH(u.name)}</option>`).join('');
-  const overlay=document.createElement('div');
-  overlay.className='modal-overlay';
-  overlay.innerHTML=`<div class="modal" style="max-width:460px;width:95%">
-    <div class="modal-header">
-      <h3 class="modal-title">${id?'✏️ تعديل المهمة':'➕ مهمة جديدة'}</h3>
-      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
-    </div>
-    <div class="modal-body" style="display:grid;gap:12px">
-      <div><label class="label">وصف المهمة *</label><input id="tmTitle" class="input" value="${escH(task?.title||'')}" placeholder="اكتب وصف المهمة..."/></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div><label class="label">الموظف المسؤول</label>
-          <select id="tmEmp" class="input"><option value="">— اختر موظفاً</option>${empOpts}</select></div>
-        <div><label class="label">العميل (اختياري)</label>
-          <select id="tmClient" class="input">
-            <option value="">— بدون عميل</option>
-            ${(window.clientsData||[]).map(c=>`<option value="${c.id}" ${task?.client_id===c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
-          </select></div>
+  main.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button onclick="_taskEmpFilter=null;loadTasks()"
+        style="background:#f1f5f9;border:none;border-radius:10px;padding:8px 14px;cursor:pointer;font-size:13px;color:#475569">← رجوع</button>
+      <div>
+        <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0">👷 مهام ${escH(emp.name)}</h2>
+        <p style="font-size:12px;color:#64748b;margin:2px 0 0">${pending.length} معلقة · ${done.length} مكتملة</p>
       </div>
-      <div><label class="label">تاريخ المهمة</label><input id="tmDate" type="date" class="input" value="${task?.task_date||_dailyDate}"/></div>
     </div>
-    <div class="modal-footer">
-      <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-ghost">إلغاء</button>
-      <button id="tmSave" onclick="window._saveModal(${id||'null'},this.closest('.modal-overlay'))" class="btn btn-primary">💾 ${id?'حفظ':'إضافة'}</button>
+    <button onclick="showTaskModal()" class="btn btn-primary" style="font-size:13px">➕ مهمة جديدة</button>
+  </div>
+  <div style="margin-bottom:24px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="font-size:15px;font-weight:800;color:#92400e">⏳ الشغل المفروض يعمله</span>
+      <span style="background:#fef9c3;color:#92400e;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;border:1px solid #fde68a">${pending.length}</span>
+    </div>
+    ${pending.length === 0 ? `<div style="text-align:center;padding:40px;background:white;border-radius:14px;border:1.5px dashed #e2e8f0;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🎉</div><div style="font-size:14px;font-weight:600">مفيش شغل معلق!</div></div>` :
+    `<div style="display:flex;flex-direction:column;gap:10px">${pending.map(t => taskCard(t, false)).join('')}</div>`}
+  </div>
+  ${done.length > 0 ? `
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="font-size:15px;font-weight:800;color:#15803d">✅ الشغل اللي خلص</span>
+      <span style="background:#f0fdf4;color:#15803d;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;border:1px solid #bbf7d0">${done.length}</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">${done.map(t => taskCard(t, true)).join('')}</div>
+  </div>` : ''}`;
+}
+
+async function quickDoneTask(id) {
+  try {
+    await api('PUT', `/api/tasks/${id}`, {status:'done'});
+    tasksData = tasksData.map(t => t.id === id ? {...t, status:'done'} : t);
+    renderEmployeeTasks();
+    toast('✅ تم إنجاز المهمة');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Kanban board view ───────────────────────────────────────────────
+function renderKanban() {
+  const main=document.getElementById('main');
+  main.className='page';
+  const cols=[
+    {id:'todo',label:'قيد الانتظار',color:'#64748b',bg:'#f8fafc'},
+    {id:'in_progress',label:'جاري التنفيذ',color:'#1a2472',bg:'#eef1fb'},
+    {id:'done',label:'مكتمل',color:'#16a34a',bg:'#f0fdf4'},
+    {id:'cancelled',label:'ملغى',color:'#dc2626',bg:'#fff5f5'},
+  ];
+  main.innerHTML=`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button onclick="_taskViewMode='daily';renderDailySheet()"
+        style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">📋 اليومية</button>
+      <button onclick="_taskViewMode='folders';_taskEmpFilter=null;renderTaskFolders()"
+        style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
+      ${cols.map(c=>{const n=tasksData.filter(t=>t.status===c.id).length;return`<span style="font-size:12px;background:${c.bg};color:${c.color};padding:4px 12px;border-radius:8px;font-weight:700;border:1.5px solid ${c.color}22">${c.label} (${n})</span>`}).join('')}
+    </div>
+    <button class="btn btn-primary" onclick="showTaskModal()">+ مهمة جديدة</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start">
+    ${cols.map(col=>`
+    <div class="kanban-col" style="background:${col.bg};padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700;color:${col.color}">${col.label}</span>
+        <span style="background:${col.color};color:white;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${tasksData.filter(t=>t.status===col.id).length}</span>
+      </div>
+      ${tasksData.filter(t=>t.status===col.id).map(t=>`
+      <div class="kanban-card priority-${t.priority}" onclick="showTaskModal(${t.id})">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:600;color:#1e293b;line-height:1.4">${escH(t.title)}</div>
+          <span style="font-size:10px;font-weight:700;color:${PRIORITY_COLOR[t.priority]||'#64748b'};white-space:nowrap;background:${PRIORITY_COLOR[t.priority]||'#64748b'}18;padding:2px 8px;border-radius:6px">${PRIORITY_LABEL[t.priority]||t.priority}</span>
+        </div>
+        ${t.assigned_to_name?`<div style="font-size:11px;color:#1a2472;margin-bottom:4px;font-weight:600">👷 ${escH(t.assigned_to_name)}</div>`:''}
+        ${t.client_name?`<div style="font-size:11px;color:#64748b;margin-bottom:4px">👤 ${escH(t.client_name)}</div>`:''}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+          ${t.due_date?`<span style="font-size:11px;color:${(daysUntil(t.due_date)<=0&&t.status!=='done'&&t.status!=='cancelled')?'#dc2626':'#64748b'};font-weight:600">${(daysUntil(t.due_date)<=0&&t.status!=='done'&&t.status!=='cancelled')?'⚠ متأخر':dateAr(t.due_date)}</span>`:'<span></span>'}
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px" onclick="event.stopPropagation()">
+          ${cols.filter(c=>c.id!==col.id).slice(0,2).map(c=>`<button onclick="updateTaskStatus(${t.id},'${c.id}')" style="font-size:10px;padding:3px 8px;border-radius:6px;background:${c.bg};color:${c.color};border:1px solid ${c.color}33;cursor:pointer;font-family:inherit;font-weight:600">${c.label}</button>`).join('')}
+        </div>
+      </div>`).join('')}
+      ${tasksData.filter(t=>t.status===col.id).length===0?`<div style="text-align:center;padding:24px;color:#94a3b8;font-size:12px">لا مهام</div>`:''}
+    </div>`).join('')}
+  </div>`;
+}
+
+async function updateTaskStatus(id, status) {
+  try {
+    await api('PUT',`/api/tasks/${id}`,{status});
+    tasksData=tasksData.map(t=>t.id===id?{...t,status}:t);
+    renderKanban();
+    toast('تم تحديث حالة المهمة');
+  } catch(e){toast(e.message,'error')}
+}
+
+// ── Task Modal (add / edit) ────────────────────────────────────────────
+async function showTaskModal(id=null) {
+  const t = id ? tasksData.find(x=>x.id===id) : null;
+  const defaultAssignee = _taskEmpFilter?.id || null;
+  let clients=[];
+  try { clients=await getClients(); } catch(e){}
+  const users = tasksUsersData;
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal" style="max-width:540px;max-height:90vh;overflow-y:auto">
+    <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:white;z-index:1">
+      <h2 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">${t?'✏️ تعديل مهمة':'➕ مهمة جديدة'}</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;display:flex;flex-direction:column;gap:13px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">عنوان المهمة *</label>
+        <input id="tTitle" class="input" value="${escH(t?.title||'')}" placeholder="مثال: مراجعة إقرار ضريبة القيمة المضافة"/>
+      </div>
+      <div class="form-row">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">👷 الموظف المسؤول</label>
+          <select id="tAssignee" class="input">
+            <option value="">— بلا موظف —</option>
+            ${users.map(u=>`<option value="${u.id}" ${(t?.assigned_to||defaultAssignee)==u.id?'selected':''}>${escH(u.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">العميل / الشركة</label>
+          <select id="tClient" class="input">
+            <option value="">— اختر عميل —</option>
+            ${clients.map(c=>`<option value="${c.id}" ${t?.client_id==c.id?'selected':''}>${escH(c.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">📅 تاريخ الاستحقاق</label>
+          <input id="tDue" class="input" type="date" value="${t?.due_date||''}"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
+          <select id="tStatus" class="input">
+            <option value="todo"        ${!t||t?.status==='todo'       ?'selected':''}>⏳ لم تبدأ</option>
+            <option value="in_progress" ${t?.status==='in_progress'    ?'selected':''}>🔄 جاري العمل</option>
+            <option value="done"        ${t?.status==='done'           ?'selected':''}>✅ تم التنفيذ</option>
+            <option value="cancelled"   ${t?.status==='cancelled'      ?'selected':''}>❌ ملغى</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الأولوية</label>
+          <select id="tPriority" class="input">
+            <option value="urgent" ${t?.priority==='urgent'?'selected':''}>🔴 عاجل</option>
+            <option value="high"   ${t?.priority==='high'  ?'selected':''}>🟠 عالي</option>
+            <option value="medium" ${!t||t?.priority==='medium'?'selected':''}>🟡 متوسط</option>
+            <option value="low"    ${t?.priority==='low'   ?'selected':''}>🟢 منخفض</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">التصنيف</label>
+          <select id="tCat" class="input">
+            <option value="tax"        ${t?.category==='tax'       ?'selected':''}>ضرائب</option>
+            <option value="accounting" ${t?.category==='accounting'?'selected':''}>محاسبة</option>
+            <option value="payroll"    ${t?.category==='payroll'   ?'selected':''}>مرتبات</option>
+            <option value="legal"      ${t?.category==='legal'     ?'selected':''}>قانوني</option>
+            <option value="other"      ${!t||t?.category==='other' ?'selected':''}>أخرى</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">📝 ملاحظات</label>
+        <textarea id="tNotes" class="input" rows="2" placeholder="مثال: العميل مستعجل — راجع أحمد قبل الإرسال">${escH(t?.notes||t?.inline_notes||'')}</textarea>
+      </div>
+      <!-- مهمة متكررة -->
+      <div id="recurToggleRow" onclick="document.getElementById('tRecur').checked=!document.getElementById('tRecur').checked;_toggleRecurUI()"
+        style="display:flex;align-items:center;gap:10px;padding:10px 13px;border-radius:10px;border:1.5px solid ${t?.is_recurring?'#7c3aed':'#e2e8f0'};background:${t?.is_recurring?'#ede9fe':'#f8fafc'};cursor:pointer;transition:all .15s">
+        <input type="checkbox" id="tRecur" ${t?.is_recurring?'checked':''} style="pointer-events:none;accent-color:#7c3aed;width:16px;height:16px"/>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:#1e293b">🔁 مهمة متكررة</div>
+          <div style="font-size:11px;color:#64748b">تتجدد تلقائياً في موعدها</div>
+        </div>
+        <select id="tRecurType" onclick="event.stopPropagation()" class="input" style="width:auto;padding:5px 10px;font-size:12px;${t?.is_recurring?'':'opacity:.4;pointer-events:none'}">
+          <option value="monthly"     ${t?.recur_type==='monthly'    ?'selected':''}>شهرية</option>
+          <option value="quarterly"   ${t?.recur_type==='quarterly'  ?'selected':''}>ربع سنوية</option>
+          <option value="annual"      ${t?.recur_type==='annual'     ?'selected':''}>سنوية</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid #f1f5f9;display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;background:white">
+      ${t?`<button class="btn btn-secondary" onclick="deleteTask(${t.id},this.closest('.modal-overlay'))" style="color:#dc2626;border-color:#fecaca">🗑️ حذف</button>`:''}
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveTaskBtn" class="btn btn-primary">💾 ${t?'حفظ التعديلات':'إضافة مهمة'}</button>
     </div>
   </div>`;
-  document.body.appendChild(overlay);
-  document.getElementById('tmTitle')?.focus();
+  document.body.append(overlay);
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
+
+  function _toggleRecurUI(){
+    const on=document.getElementById('tRecur').checked;
+    const row=document.getElementById('recurToggleRow');
+    const sel=document.getElementById('tRecurType');
+    row.style.borderColor=on?'#7c3aed':'#e2e8f0';
+    row.style.background=on?'#ede9fe':'#f8fafc';
+    sel.style.opacity=on?'1':'0.4';
+    sel.style.pointerEvents=on?'auto':'none';
+  }
+
+  document.getElementById('saveTaskBtn').onclick=async()=>{
+    const btn=document.getElementById('saveTaskBtn');
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      const isRecur=document.getElementById('tRecur').checked;
+      const body={
+        title:       document.getElementById('tTitle').value.trim(),
+        assigned_to: parseInt(document.getElementById('tAssignee').value)||null,
+        client_id:   parseInt(document.getElementById('tClient').value)||null,
+        priority:    document.getElementById('tPriority').value,
+        category:    document.getElementById('tCat').value,
+        status:      document.getElementById('tStatus').value,
+        due_date:    document.getElementById('tDue').value||null,
+        notes:       document.getElementById('tNotes').value||null,
+        is_recurring:isRecur,
+        recur_type:  isRecur?document.getElementById('tRecurType').value:null,
+      };
+      if(!body.title){toast('عنوان المهمة مطلوب','error');btn.disabled=false;return;}
+      if(t) await api('PUT',`/api/tasks/${t.id}`,body);
+      else  await api('POST','/api/tasks',body);
+      if(body.status==='done'&&t&&t.status!=='done') {
+        const mgr=tasksUsersData.find(u=>u.role==='admin'||u.role==='manager');
+        if(mgr?.phone) {
+          const msg=`✅ تم تنفيذ المهمة:\n\n*${body.title}*\n👤 بواسطة: ${tasksUsersData.find(u=>u.id===body.assigned_to)?.name||'—'}\n\n— MS Accounting`;
+          window.open(`https://wa.me/${String(mgr.phone).replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
+        }
+      }
+      toast(t?'تم تحديث المهمة ✅':'تمت إضافة المهمة ✅');
+      overlay.remove(); loadTasks(true);
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${t?'حفظ':'إضافة'}`;}
+  };
 }
 
-window._saveModal=async function(id,overlay){
-  const title=document.getElementById('tmTitle')?.value?.trim();
-  if(!title){toast('وصف المهمة مطلوب','warning');return;}
-  const body={title,assigned_to:document.getElementById('tmEmp')?.value?parseInt(document.getElementById('tmEmp').value):null,
-    task_date:document.getElementById('tmDate')?.value||_dailyDate,
-    client_id:document.getElementById('tmClient')?.value?parseInt(document.getElementById('tmClient').value):null};
-  const btn=document.getElementById('tmSave');btn.disabled=true;btn.textContent='جارٍ...';
-  try{
-    if(id)await api('PUT',`/api/tasks/${id}`,body);
-    else await api('POST','/api/tasks',body);
-    overlay.remove();toast(id?'تم التحديث ✅':'تمت الإضافة ✅');
-    await loadTasks(true);
-  }catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💾 '+(id?'حفظ':'إضافة');}
-};
-
-async function deleteTask(id,overlay){
-  if(!await confirmDlg('حذف هذه المهمة نهائياً؟'))return;
-  try{await api('DELETE',`/api/tasks/${id}`);overlay?.remove();toast('تم الحذف');loadTasks(true);}
-  catch(e){toast(e.message,'error');}
+async function deleteTask(id, overlay) {
+  if (!await confirmDlg('حذف هذه المهمة نهائياً؟')) return;
+  try {
+    await api('DELETE', `/api/tasks/${id}`);
+    overlay?.remove();
+    toast('تم حذف المهمة');
+    loadTasks(true);
+  } catch(e) { toast(e.message,'error'); }
 }
 
-// Legacy stubs
+// ── Legacy compat stubs ────────────────────────────────────────────────
 function showTaskModalForClient(){showTaskModal();}
-async function quickDoneTask(id){window._toggleDone(id,'in_progress');}
-function renderKanban(){loadTasks(true);}
-function renderTaskFolders(){loadTasks(true);}
-function renderTasksTable(){renderDailyTasks();}
-function renderEmployeeTasks(){renderDailyTasks();}
+function renderTasksTable(){renderDailySheet();}
 async function renderOverdueBoard(){loadTasks(false);}
-async function openEmployeeTasks(){loadTasks(false);}
-async function updateTaskStatus(id,status){try{await api('PUT',`/api/tasks/${id}`,{status});}catch(e){}}
 window.backToTasks=()=>loadTasks(false);
 window.showKanban=()=>loadTasks(false);
 window.showFolders=()=>loadTasks(false);
 window._taskClientFilter='';
 window.filterTasksByClient=()=>{};
+
+// ── DOCUMENTS ──────────────────────────────────────
 // ── DOCUMENTS ──────────────────────────────────────
 let docsData=[];
 
