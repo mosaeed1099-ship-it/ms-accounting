@@ -8,6 +8,7 @@ from app.database import Base
 
 
 class LeadStatus:
+    NEW = "new"
     INTERESTED = "interested"
     NOT_ANSWERED = "not_answered"
     CALL_LATER = "call_later"
