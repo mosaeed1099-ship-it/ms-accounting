@@ -5907,10 +5907,10 @@ window.tcCalDone = async function(id) {
 // ── PORTALS ─────────────────────────────────────────────────────────────────
 function _tcRenderPortals(el) {
   const portals = [
-    {icon:'🧾',title:'منظومة الفواتير الإلكترونية',sub:'invoicing.eta.gov.eg',desc:'رفع الفواتير والإشعارات، مزامنة المستندات، إدارة API',url:'https://invoicing.eta.gov.eg',color:'#1a2472',bg:'#eef1fb',btn:'فتح المنظومة'},
-    {icon:'📊',title:'mytax — بوابة الإقرارات',sub:'mytax.eta.gov.eg',desc:'تقديم ق.م.م، ضريبة الدخل، الخصم والإضافة، الدمغة',url:'https://mytax.eta.gov.eg',color:'#15803d',bg:'#f0fdf4',btn:'فتح mytax'},
-    {icon:'🏛️',title:'منظومة الضرائب (emps)',sub:'emps.taxes.gov.eg',desc:'الإقرارات القديمة، نموذج 1، تسوية الضرائب السابقة',url:'https://emps.taxes.gov.eg',color:'#7c3aed',bg:'#ede9fe',btn:'فتح النظام'},
-    {icon:'📝',title:'بوابة التسجيل الضريبي',sub:'taxes.gov.eg',desc:'تسجيل شركات جديدة، تحديث البيانات، إلغاء التسجيل',url:'https://www.taxes.gov.eg',color:'#d97706',bg:'#fef9c3',btn:'فتح البوابة'},
+    {icon:'🌐',title:'الهيئة العامة للضرائب (ETA)',sub:'eta.gov.eg',desc:'الموقع الرسمي للهيئة، أخبار ضريبية، إرشادات، التواصل مع الدعم',url:'https://eta.gov.eg/ar/home',color:'#1a2472',bg:'#eef1fb',btn:'فتح الموقع'},
+    {icon:'📊',title:'بوابة ضريبة الدخل',sub:'eservice.incometax.gov.eg',desc:'تقديم إقرارات ضريبة الدخل، الاستعلام، المدفوعات',url:'https://eservice.incometax.gov.eg/etax',color:'#15803d',bg:'#f0fdf4',btn:'فتح البوابة'},
+    {icon:'🏛️',title:'بوابة الجهاز العام للاستثمار (GAFI)',sub:'portal.gafi.gov.eg',desc:'تسجيل الشركات، التراخيص، الاستثمار، تأسيس المنشآت',url:'https://portal.gafi.gov.eg/auth/register',color:'#7c3aed',bg:'#ede9fe',btn:'فتح البوابة'},
+    {icon:'🧾',title:'منظومة الفواتير الإلكترونية',sub:'invoicing.eta.gov.eg',desc:'رفع الفواتير والإشعارات، مزامنة المستندات، إدارة API',url:'https://invoicing.eta.gov.eg',color:'#d97706',bg:'#fef9c3',btn:'فتح المنظومة'},
     {icon:'🧾',title:'منظومة الإيصالات الإلكترونية',sub:'receipts.eta.gov.eg',desc:'إدارة نقاط البيع، الإيصالات، بيانات الـ POS',url:'https://receipts.eta.gov.eg',color:'#0369a1',bg:'#eff6ff',btn:'فتح المنظومة'},
   ];
   // render after DOM insert so onclick handlers fire as user gestures
