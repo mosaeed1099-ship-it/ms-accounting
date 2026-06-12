@@ -369,12 +369,62 @@ async def get_whatsapp_settings(current_user: User = Depends(get_current_user)):
 async def test_whatsapp(
     req: WhatsAppTestRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Send a test WhatsApp message to any number."""
-    from app.services.whatsapp_service import send_whatsapp, is_enabled
+    from app.services.whatsapp_service import send_and_log, is_enabled
     if not is_enabled():
         raise HTTPException(400, detail="WhatsApp غير مُعيَّن. أضف instanceId و token أولاً.")
-    ok = send_whatsapp(req.phone, req.message)
-    if ok:
+    result = send_and_log(db, req.phone, req.message, recipient="اختبار", sent_by=current_user.name)
+    if result["success"]:
         return {"success": True, "message": f"✅ تم إرسال رسالة اختبار إلى {req.phone}"}
-    raise HTTPException(500, detail="فشل الإرسال — تحقق من instanceId و token وتأكد أن الرقم مسجّل في واتساب")
+    raise HTTPException(500, detail=result["error"] or "فشل الإرسال")
+
+
+class WASendRequest(BaseModel):
+    phone: str
+    message: str
+    recipient: Optional[str] = ""
+    task_id: Optional[int] = None
+
+
+@router.post("/whatsapp-send")
+async def send_whatsapp_message(
+    req: WASendRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Send a WhatsApp message and log the result."""
+    from app.services.whatsapp_service import send_and_log, is_enabled
+    if not is_enabled():
+        raise HTTPException(400, detail="WhatsApp غير مُعيَّن — أضف GREENAPI_INSTANCE_ID و GREENAPI_TOKEN في Railway")
+    result = send_and_log(
+        db, req.phone, req.message,
+        recipient=req.recipient, task_id=req.task_id,
+        sent_by=current_user.name,
+    )
+    if result["success"]:
+        return {"success": True, "log_id": result["log_id"]}
+    raise HTTPException(500, detail=result["error"] or "فشل الإرسال")
+
+
+@router.get("/whatsapp-status")
+async def whatsapp_status(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get WA connection status and message stats."""
+    from app.services.whatsapp_service import get_status
+    return get_status(db)
+
+
+@router.get("/whatsapp-logs")
+async def whatsapp_logs(
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.wa_log import WALog
+    from app.services.whatsapp_service import _log_dict
+    logs = db.query(WALog).order_by(WALog.created_at.desc()).limit(limit).all()
+    return [_log_dict(l) for l in logs]

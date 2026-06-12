@@ -122,3 +122,66 @@ def notify_task_done(task, closed_by: str, phone: str) -> bool:
         f"MS Accounting"
     )
     return send_whatsapp(phone, msg)
+
+
+def send_and_log(db, phone: str, message: str, recipient: str = "",
+                 task_id: int = None, sent_by: str = "") -> dict:
+    """Send WA message and persist result to wa_logs table."""
+    from app.models.wa_log import WALog
+    success = False
+    error = None
+    try:
+        success = send_whatsapp(phone, message)
+        if not success:
+            error = "الإرسال فشل — تحقق من instanceId وتأكد أن الرقم مسجّل"
+    except Exception as e:
+        error = str(e)
+    log = WALog(
+        phone=phone, recipient=recipient, message=message,
+        success=success, error=error, task_id=task_id, sent_by=sent_by,
+    )
+    db.add(log)
+    db.commit()
+    return {"success": success, "error": error, "log_id": log.id}
+
+
+def get_status(db) -> dict:
+    """Return WA connection status and stats."""
+    from app.models.wa_log import WALog
+    from sqlalchemy import func as sqlfunc
+    from datetime import datetime, timedelta
+    cfg = _get_config()
+    today = datetime.utcnow().date()
+    sent_today = db.query(sqlfunc.count(WALog.id)).filter(
+        sqlfunc.date(WALog.created_at) == today, WALog.success == True
+    ).scalar() or 0
+    failed_today = db.query(sqlfunc.count(WALog.id)).filter(
+        sqlfunc.date(WALog.created_at) == today, WALog.success == False
+    ).scalar() or 0
+    last_sent = db.query(WALog).filter(WALog.success == True).order_by(WALog.created_at.desc()).first()
+    recent = db.query(WALog).order_by(WALog.created_at.desc()).limit(20).all()
+    failed = db.query(WALog).filter(WALog.success == False).order_by(WALog.created_at.desc()).limit(10).all()
+    return {
+        "configured": cfg["enabled"],
+        "instance_id": cfg["instance_id"],
+        "sent_today": sent_today,
+        "failed_today": failed_today,
+        "last_sent_at": last_sent.created_at.isoformat() if last_sent else None,
+        "last_sent_to": last_sent.recipient if last_sent else None,
+        "recent": [_log_dict(l) for l in recent],
+        "failed": [_log_dict(l) for l in failed],
+    }
+
+
+def _log_dict(l) -> dict:
+    return {
+        "id": l.id,
+        "created_at": l.created_at.isoformat() if l.created_at else None,
+        "phone": l.phone,
+        "recipient": l.recipient,
+        "message": l.message[:120] + ("…" if len(l.message) > 120 else ""),
+        "success": l.success,
+        "error": l.error,
+        "task_id": l.task_id,
+        "sent_by": l.sent_by,
+    }

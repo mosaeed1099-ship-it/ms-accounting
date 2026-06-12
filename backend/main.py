@@ -44,6 +44,7 @@ from app.database import SessionLocal
 from app.models.user import User, UserRole
 # Import new models so create_all registers their tables
 import app.models.permission          # noqa: F401
+import app.models.wa_log              # noqa: F401
 import app.models.company_document    # noqa: F401
 import app.models.audit_log           # noqa: F401
 import app.models.folder              # noqa: F401
