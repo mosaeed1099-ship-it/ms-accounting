@@ -493,16 +493,22 @@ function _rtConnect() {
 }
 
 function _rtHandleEvent(event) {
-  const { entity, action, affects_dashboard } = event;
+  const { entity, raw_entity, action, affects_dashboard } = event;
   const cfg = _RT_ENTITY_MAP[entity];
+
+  // Always bust the API cache for this entity so stale sessionStorage doesn't block the reload
+  if (raw_entity) _AC.invalidate('/api/' + raw_entity);
+  if (entity && entity !== raw_entity) _AC.invalidate('/api/' + entity);
 
   // Refresh the page if user is currently viewing it
   if (cfg && cfg.pages.includes(currentPage)) {
-    cfg.fn();
+    _silentRefresh = true;
+    Promise.resolve(cfg.fn()).finally(() => { _silentRefresh = false; });
   }
 
   // Refresh dashboard live counters if relevant
   if (affects_dashboard && currentPage === 'dashboard') {
+    _AC.invalidate('/api/dashboard');
     loadDashboard(true);
   }
 
