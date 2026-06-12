@@ -3398,6 +3398,84 @@ document.addEventListener('_navigateTo', e=>{
   if(e.detail!=='tasks'&&_tasksAutoRefresh){clearInterval(_tasksAutoRefresh);_tasksAutoRefresh=null;}
 });
 
+// ── Bulk task helpers ──────────────────────────────────────────────────
+function _parseBulkTask(t) {
+  try {
+    if(t.notes && t.notes.startsWith('{"bulk"')) {
+      const d=JSON.parse(t.notes);
+      if(d.bulk&&Array.isArray(d.items)) return d;
+    }
+  } catch(e){}
+  return null;
+}
+
+window._toggleBulkItem = async function(taskId, idx) {
+  const task=tasksData.find(t=>t.id===taskId);
+  if(!task) return;
+  const d=_parseBulkTask(task);
+  if(!d) return;
+  d.items[idx].done=!d.items[idx].done;
+  const allDone=d.items.every(it=>it.done);
+  const newNotes=JSON.stringify(d);
+  const newStatus=allDone?'done':'todo';
+  try {
+    await api('PUT',`/api/tasks/${taskId}`,{notes:newNotes,status:newStatus},{useCache:false});
+    task.notes=newNotes;
+    task.status=newStatus;
+    renderDailySheet();
+  } catch(e){ toast(e.message,'error'); }
+};
+
+function _showBulkEditModal(t, bulkData) {
+  const textContent=bulkData.items.map((item,i)=>`${i+1}- ${item.text}`).join('\n');
+  const ov=document.createElement('div');
+  ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal" style="max-width:460px">
+    <div style="padding:14px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:white;z-index:1">
+      <div style="display:flex;align-items:center;gap:8px">
+        <h2 style="font-size:14px;font-weight:700;margin:0;color:#1e293b">✏️ تعديل مهمة مجمعة</h2>
+        ${t.assigned_to_name?`<span style="background:#1a2472;color:white;padding:2px 8px;border-radius:4px;font-size:10px">${escH(t.assigned_to_name)}</span>`:''}
+      </div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">المهام (كل مهمة في سطر)</label>
+      <textarea id="bulkEditTxt" class="input" rows="9" style="resize:vertical;line-height:2;direction:rtl">${escH(textContent)}</textarea>
+      <p style="font-size:11px;color:#94a3b8;margin:6px 0 0">يمكنك إضافة أو حذف أو تعديل أي سطر</p>
+    </div>
+    <div style="padding:12px 18px;border-top:1px solid #f1f5f9;display:flex;justify-content:space-between;gap:8px">
+      <button onclick="deleteTask(${t.id},this.closest('.modal-overlay'))" style="padding:8px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🗑️ حذف الكل</button>
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.modal-overlay').remove()" style="padding:8px 14px;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit">إلغاء</button>
+        <button id="saveBulkEditBtn" style="padding:8px 14px;background:#1a2472;color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">💾 حفظ</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick=e=>{if(e.target===ov)ov.remove()};
+  document.getElementById('saveBulkEditBtn').onclick=async()=>{
+    const btn=document.getElementById('saveBulkEditBtn');
+    btn.disabled=true; btn.textContent='جاري الحفظ...';
+    try {
+      const rawLines=document.getElementById('bulkEditTxt').value.split('\n').map(l=>l.trim()).filter(Boolean);
+      if(!rawLines.length){toast('اكتب مهمة واحدة على الأقل','error');btn.disabled=false;return;}
+      const newItems=rawLines.map(line=>{
+        const stripped=line.replace(/^[\d٠-٩٠-٩]+\s*[-–.،)\s]+\s*/,'').trim()||line.trim();
+        const old=bulkData.items.find(it=>it.text===stripped);
+        return {text:stripped, done:old?old.done:false};
+      });
+      const allDone=newItems.every(i=>i.done);
+      const newNotes=JSON.stringify({bulk:true,items:newItems});
+      const newTitle=newItems.length===1?newItems[0].text:`مهام مجمعة (${newItems.length} بنود)`;
+      await api('PUT',`/api/tasks/${t.id}`,{title:newTitle,notes:newNotes,status:allDone?'done':'todo'},{useCache:false});
+      ov.remove();
+      _AC.invalidate('/api/tasks');
+      loadTasks(false).catch(()=>{});
+      toast('✅ تم تحديث المهمة المجمعة');
+    } catch(e){toast(e.message||'فشل الحفظ','error');btn.disabled=false;btn.textContent='💾 حفظ';}
+  };
+}
+
 // ── Daily Sheet (نظام التشغيل اليومي) ─────────────────────────────────
 function renderDailySheet() {
   const main=document.getElementById('main');
@@ -3529,19 +3607,44 @@ function renderDailySheet() {
         ?`<button onclick="_restoreTask(${t.id})" title="إعادة" style="background:none;border:none;cursor:pointer;font-size:12px;color:#94a3b8;padding:3px 5px">↩</button>`
         :`<button onclick="showTaskModal(${t.id})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:3px 5px;border-radius:5px;color:#64748b">✏️</button>`;
 
+      const bulkData=_parseBulkTask(t);
+      const titleTd = bulkData
+        ? `<td style="padding:6px 10px;border-right:3px solid ${accentColor}" colspan="1">
+            <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+              <span style="background:#1a2472;color:white;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700">مجمعة</span>
+              ${carryBdg}${lateBdg}
+            </div>
+            ${bulkData.items.map((item,idx)=>`
+              <div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+                <div onclick="event.stopPropagation();window._toggleBulkItem(${t.id},${idx})"
+                  style="width:18px;height:18px;border-radius:50%;flex-shrink:0;cursor:pointer;
+                  background:${item.done?'#15803d':'white'};
+                  border:${item.done?'none':'1.5px solid #94a3b8'};
+                  display:flex;align-items:center;justify-content:center;font-size:10px;color:white;font-weight:700">
+                  ${item.done?'✓':''}
+                </div>
+                <span style="font-size:11px;${item.done?'text-decoration:line-through;color:#94a3b8':''}">${escH(item.text)}</span>
+              </div>`).join('')}
+          </td>`
+        : `<td style="padding:7px 10px;border-right:3px solid ${accentColor}">
+            <div style="font-size:12px;font-weight:600;color:${isDoneSec?'#94a3b8':'#1e293b'};${isDoneSec?'text-decoration:line-through':''}">
+              ${lateBdg}${carryBdg}${recurBdg}${escH(t.title)}
+            </div>${dueLbl}
+          </td>`;
+
+      const notesTd = bulkData
+        ? `<td style="text-align:center;font-size:10px;color:#94a3b8;padding:5px 3px">${bulkData.items.filter(i=>i.done).length}/${bulkData.items.length}</td>`
+        : `<td style="font-size:10px;color:#64748b;padding:5px 7px;text-align:right;word-break:break-word">${escH(t.notes||t.inline_notes||'—')}</td>`;
+
       return `<tr style="border-bottom:0.5px solid #e8edf3;background:${rowBg}">
         <td style="text-align:center;font-size:10px;color:#94a3b8;padding:6px 3px">${i+1}</td>
-        <td style="padding:7px 10px;border-right:3px solid ${accentColor}">
-          <div style="font-size:12px;font-weight:600;color:${isDoneSec?'#94a3b8':'#1e293b'};${isDoneSec?'text-decoration:line-through':''}">
-            ${lateBdg}${carryBdg}${recurBdg}${escH(t.title)}
-          </div>${dueLbl}
-        </td>
-        <td style="text-align:center;font-size:10.5px;color:#64748b;padding:5px 3px">${escH(t.client_name||'—')}</td>
+        ${titleTd}
+        <td style="text-align:center;font-size:10.5px;color:#64748b;padding:5px 3px">${bulkData?'—':escH(t.client_name||'—')}</td>
         <td style="text-align:center;font-size:10px;padding:5px 3px;color:#64748b">${t.due_date?t.due_date:'—'}</td>
         <td style="text-align:center;padding:5px 3px">
           <span style="background:${scBg};color:${scFg};padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700">${ST_LBL[t.status]||t.status}</span>
         </td>
-        <td style="font-size:10px;color:#64748b;padding:5px 7px;text-align:right;word-break:break-word">${escH(t.notes||t.inline_notes||'—')}</td>
+        ${notesTd}
         ${empCells}
         <td style="text-align:center;padding:4px">${editBtn}</td>
       </tr>`;
@@ -3677,21 +3780,19 @@ window._showBulkAddModal = function _showBulkAddModal() {
         const client_name = dashIdx >= 0 ? stripped.slice(dashIdx).replace(/^\s*[-–—]\s*/, '').trim() : null;
         return { title: title || stripped, client_name: client_name || null };
       });
-      // حفظ المهام واحدة واحدة مع إظهار التقدم
-      for(let i=0; i<tasks.length; i++) {
-        btn.textContent=`جاري الإضافة ${i+1}/${tasks.length}...`;
-        await api('POST','/api/tasks',{
-          title: tasks[i].title,
-          client_name: tasks[i].client_name||null,
-          assigned_to: assigneeId,
-          status:'todo', priority:'medium', category:'other'
-        },{retries:2, retryDelay:3000, useCache:false});
-      }
-      // إغلاق المودال فوراً
+      btn.textContent='جاري الإضافة...';
+      const bulkItems=tasks.map(t=>({text:t.title+(t.client_name?' — '+t.client_name:''), done:false}));
+      const bulkTitle=tasks.length===1?tasks[0].title:`مهام مجمعة (${tasks.length} بنود)`;
+      await api('POST','/api/tasks',{
+        title: bulkTitle,
+        notes: JSON.stringify({bulk:true, items:bulkItems}),
+        assigned_to: assigneeId,
+        status:'todo', priority:'medium', category:'other'
+      },{retries:2, retryDelay:3000, useCache:false});
       ov.remove();
       _AC.invalidate('/api/tasks');
       loadTasks(false).catch(()=>{});
-      toast(`✅ تمت إضافة ${tasks.length} مهمة`);
+      toast(`✅ تمت إضافة مهمة مجمعة (${tasks.length} بنود)`);
       if(sendWA && assigneeName) {
         const emp = users.find(u=>u.id===assigneeId);
         const phone = emp?.whatsapp_phone || emp?.phone;
@@ -3761,7 +3862,16 @@ window._genWAMessage = function() {
     const mine=active.filter(t=>t.assigned_to===u.id);
     if(mine.length){
       lines.push(`\n*${u.name}:*`);
-      mine.forEach((t,i)=>lines.push(`${i+1}. ${t.title}${t.client_name?' ('+t.client_name+')':''}${(t.notes||t.inline_notes)?' — '+(t.notes||t.inline_notes):''}`));
+      let n=1;
+      mine.forEach(t=>{
+        const bd=_parseBulkTask(t);
+        if(bd){
+          bd.items.filter(it=>!it.done).forEach(it=>lines.push(`${n++}. ${it.text}`));
+        } else {
+          const noteStr=(t.notes||t.inline_notes)&&!String(t.notes||'').startsWith('{')?` — ${t.notes||t.inline_notes}`:'';
+          lines.push(`${n++}. ${t.title}${t.client_name?' ('+t.client_name+')':''}${noteStr}`);
+        }
+      });
     }
   });
   const unassigned=active.filter(t=>!t.assigned_to);
@@ -4010,6 +4120,7 @@ async function updateTaskStatus(id, status) {
 // ── Task Modal (add / edit) ────────────────────────────────────────────
 async function showTaskModal(id=null) {
   const t = id ? tasksData.find(x=>x.id===id) : null;
+  if(t) { const bd=_parseBulkTask(t); if(bd){ _showBulkEditModal(t,bd); return; } }
   const defaultAssignee = _taskEmpFilter?.id || null;
   let clients=[];
   try { clients=await getClients(); } catch(e){}
