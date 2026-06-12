@@ -6739,7 +6739,7 @@ function _syncLeadInlineToState(row){
   const locEl   = row.querySelector('[data-field="quote_location"]');
   if(emailEl) _leadExpandState[id].email = emailEl.value || '';
   if(legalEl) _leadExpandState[id].legal_entity = legalEl.value || '';
-  if(feesEl)  _leadExpandState[id].total_fees = feesEl.value !== '' ? parseFloat(feesEl.value) : '';
+  if(feesEl)  _leadExpandState[id].total_fees = feesEl.value !== '' ? parseFloat(feesEl.value.replace(/[,،٬]/g,'')) : '';
   if(locEl)   _leadExpandState[id].location = locEl.value || '';
 }
 
