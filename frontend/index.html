@@ -3426,6 +3426,11 @@ function renderDailySheet() {
       </div>`).join('')}
   </div>`;
 
+  // Excel-like cell style helper
+  const XL_BORDER='1px solid #c6c6c6';
+  const xl=(extra='')=>`border:${XL_BORDER};padding:5px 8px;${extra}`;
+  const xlH=(extra='')=>`border:${XL_BORDER};padding:6px 8px;background:#d8e4bc;font-size:10px;font-weight:700;color:#1a1a1a;${extra}`;
+
   const empSections=emps.map(u=>{
     const mine=tasksData.filter(t=>t.assigned_to===u.id&&t.status!=='cancelled');
     const doneT=mine.filter(t=>t.status==='done');
@@ -3433,64 +3438,77 @@ function renderDailySheet() {
     const lateT=mine.filter(t=>t.carry_over_days>0&&t.status!=='done');
     const notes=_getEmpNotes(u.id);
     const init=(u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2);
+    const phone=String(u.phone||u.mobile||u.whatsapp_phone||'').replace(/\D/g,'');
+
     const rows=mine.map((t,i)=>{
       const carried=t.carry_over_days>0&&t.status!=='done';
       const isDone=t.status==='done';
       const doneAt=_taskDoneAt[t.id]||'';
-      return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary);${carried?'background:#fffde7':''}">
-        <td style="padding:7px 10px;color:var(--color-text-secondary);font-size:10px;width:3%;text-align:center">${i+1}</td>
-        <td style="padding:7px 10px">
-          ${carried?`<span style="background:#fff3e0;color:#e65100;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:500;margin-left:4px">مرحّلة من أمس</span>`:''}
-          <span style="${isDone?'text-decoration:line-through;color:var(--color-text-secondary)':''};font-size:12px">${escH(t.title)}</span>
-          ${t.client_name?`<span style="color:var(--color-text-secondary);font-size:10px"> · ${escH(t.client_name)}</span>`:''}
+      const rowBg=isDone?'#f0f0f0':carried?'#fffde7':i%2===0?'#ffffff':'#f7fbf0';
+      const taskMsg=`السلام عليكم ${u.name} 👋\n\nتذكير بمهمة:\n*${t.title}*${t.client_name?'\n🏢 '+t.client_name:''}\n\n— MS Accounting`;
+      const waHref=phone?`https://wa.me/${phone}?text=${encodeURIComponent(taskMsg)}`:'';
+      return `<tr style="background:${rowBg}">
+        <td style="${xl('text-align:center;font-size:10px;color:#555;width:3%')}">${i+1}</td>
+        <td style="${xl('width:36%')}">
+          ${carried?`<span style="background:#ff6d00;color:white;border-radius:2px;padding:0 4px;font-size:8px;font-weight:700;margin-left:4px">مرحّل</span>`:''}
+          <span style="${isDone?'text-decoration:line-through;color:#888':'color:#1a1a1a'};font-size:11.5px">${escH(t.title)}</span>
+          ${t.client_name?`<span style="color:#666;font-size:10px"> · ${escH(t.client_name)}</span>`:''}
         </td>
-        <td style="padding:7px 10px;text-align:center;font-size:10px;color:var(--color-text-secondary);width:9%">${t.created_at?t.created_at.slice(5,10).replace('-','/'):'—'}</td>
-        <td style="padding:7px 10px;text-align:center;font-size:10px;color:${carried?'#e65100':'var(--color-text-secondary)'};width:10%">${t.due_date||'—'}</td>
-        <td style="padding:7px 10px;text-align:center;font-size:10px;color:var(--color-text-secondary);width:13%">${doneAt}</td>
-        <td style="padding:7px 10px;text-align:center;width:7%">
+        <td style="${xl('text-align:center;font-size:10px;color:#555;width:8%')}">${t.created_at?t.created_at.slice(5,10).replace('-','/'):'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:'+(!isDone&&t.due_date&&new Date(t.due_date)<new Date()?'#c00':'#555')+';width:9%')}">${t.due_date||'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:#555;width:12%')}">${doneAt}</td>
+        <td style="${xl('text-align:center;width:6%')}">
           <div onclick="window._markDone(${t.id})"
-            style="width:20px;height:20px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:white;font-weight:500;transition:all .15s;${isDone?'background:#15803d;border:none':'background:var(--color-background-primary);border:1.5px solid #94a3b8'}">
-            ${isDone?'✓':''}
+            style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all .12s;${isDone?'background:#1e7e34;color:white;border:1px solid #155724':'background:white;border:1.5px solid #999;color:transparent'}">
+            ✓
           </div>
         </td>
-        <td style="padding:7px 10px;text-align:center;width:7%">
-          <button onclick="showTaskModal(${t.id})" style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">✏️</button>
+        <td style="${xl('text-align:center;width:8%')}">
+          ${phone
+            ?`<a href="https://wa.me/${phone}?text=${encodeURIComponent(taskMsg)}" target="_blank"
+                style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;background:#25D366;border-radius:4px;text-decoration:none;font-size:13px">📲</a>`
+            :`<span style="font-size:9px;color:#999">لا رقم</span>`
+          }
         </td>
-        <td style="padding:7px 10px;text-align:center;width:7%">
-          <button onclick="deleteTask(${t.id},null)" style="background:#fee2e2;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">🗑️</button>
+        <td style="${xl('text-align:center;width:6%')}">
+          <button onclick="showTaskModal(${t.id})" style="background:#e8f0fe;border:1px solid #aac4ff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#1a2472">✏️</button>
+        </td>
+        <td style="${xl('text-align:center;width:6%')}">
+          <button onclick="deleteTask(${t.id},null)" style="background:#fce8e6;border:1px solid #f5c6c2;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#c00">🗑️</button>
         </td>
       </tr>`;
     }).join('');
 
-    return `<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:12px;margin-bottom:10px;overflow:hidden">
-      <div style="background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    return `<div style="background:white;border:1px solid #b0b0b0;border-radius:6px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+      <div style="background:#1a2472;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:9px">
-          <div style="width:32px;height:32px;border-radius:50%;background:#1a2472;color:white;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0">${escH(init)}</div>
+          <div style="width:30px;height:30px;border-radius:50%;background:#fff;color:#1a2472;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escH(init)}</div>
           <div>
-            <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${escH(u.name)}</div>
-            <div style="font-size:10px;color:var(--color-text-secondary)">${mine.length} مهمة · ${doneT.length} منجز · ${pendingT.length} متبق${lateT.length?` · <span style="color:#e65100">${lateT.length} متأخرة</span>`:''}</div>
+            <div style="font-size:13px;font-weight:700;color:white">${escH(u.name)}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,.7)">${mine.length} مهمة · ${doneT.length} منجز · ${pendingT.length} متبق${lateT.length?` · <span style="color:#ffcc00">${lateT.length} متأخرة</span>`:''}</div>
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          ${doneT.length===mine.length&&mine.length>0?'<span style="background:#dcfce7;color:#15803d;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:500">مكتمل ✓</span>':''}
-          <button onclick="window._empWA(${u.id})" style="background:#25D366;color:white;border:none;border-radius:7px;padding:5px 11px;font-size:11px;cursor:pointer;font-family:inherit">📱 واتساب</button>
-          <button onclick="window._empDelAll(${u.id})" style="background:#fee2e2;color:#dc2626;border:none;border-radius:7px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">🗑️ مسح الكل</button>
+          ${doneT.length===mine.length&&mine.length>0?'<span style="background:#25D366;color:white;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700">مكتمل ✓</span>':''}
+          <button onclick="window._empWA(${u.id})" style="background:#25D366;color:white;border:none;border-radius:5px;padding:5px 11px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:700">📱 إرسال الكل</button>
+          <button onclick="window._empDelAll(${u.id})" style="background:#dc3545;color:white;border:none;border-radius:5px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">🗑️ مسح الكل</button>
         </div>
       </div>
       <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
-          <thead><tr style="background:var(--color-background-secondary)">
-            <th style="padding:7px 10px;text-align:center;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);width:3%">#</th>
-            <th style="padding:7px 10px;text-align:right;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary)">المهمة</th>
-            <th style="padding:7px 10px;text-align:center;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);width:9%">الإضافة</th>
-            <th style="padding:7px 10px;text-align:center;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);width:10%">الاستحقاق</th>
-            <th style="padding:7px 10px;text-align:center;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);width:13%">وقت الإنجاز</th>
-            <th style="padding:7px 10px;text-align:center;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);width:7%">إنجاز</th>
-            <th style="padding:7px 10px;text-align:center;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);width:7%">تعديل</th>
-            <th style="padding:7px 10px;text-align:center;font-weight:500;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);width:7%">حذف</th>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px">
+          <thead><tr>
+            <th style="${xlH('text-align:center;width:3%')}">#</th>
+            <th style="${xlH('text-align:right;width:36%')}">المهمة</th>
+            <th style="${xlH('text-align:center;width:8%')}">الإضافة</th>
+            <th style="${xlH('text-align:center;width:9%')}">الاستحقاق</th>
+            <th style="${xlH('text-align:center;width:12%')}">وقت الإنجاز</th>
+            <th style="${xlH('text-align:center;width:6%')}">✓</th>
+            <th style="${xlH('text-align:center;width:8%')}">واتساب</th>
+            <th style="${xlH('text-align:center;width:6%')}">تعديل</th>
+            <th style="${xlH('text-align:center;width:6%')}">حذف</th>
           </tr></thead>
           <tbody>
-            ${mine.length===0?`<tr><td colspan="8" style="text-align:center;padding:14px;font-size:11px;color:var(--color-text-secondary)">لا توجد مهام — أضف مهمة أدناه</td></tr>`:''}
+            ${mine.length===0?`<tr><td colspan="9" style="text-align:center;padding:12px;font-size:11px;color:#888;border:${XL_BORDER}">لا توجد مهام — أضف مهمة أدناه</td></tr>`:''}
             ${rows}
           </tbody>
         </table>
