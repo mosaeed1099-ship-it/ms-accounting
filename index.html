@@ -14795,8 +14795,7 @@ async function renderEmpSettlements() {
           <thead>
             <tr style="background:#f8fafc">
               <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap">التاريخ</th>
-              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">البنود</th>
-              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">الوصف</th>
+              <th style="padding:10px 14px;text-align:right;color:#64748b;font-weight:600">البنود (تاريخ | عميل | بند | مبلغ)</th>
               <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">الإجمالي</th>
               <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">رصيد افتتاحي</th>
               <th style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">عهدة جديدة</th>
@@ -14810,18 +14809,21 @@ async function renderEmpSettlements() {
               <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">${dateAr(s.date)}</td>
               <td style="padding:10px 14px;vertical-align:top;min-width:200px">
                 ${(s.expense_items||[]).map(item=>`
-                <div style="display:flex;justify-content:space-between;gap:16px;font-size:12px;padding:2px 0;border-bottom:1px solid #f1f5f9;last-child:border:none">
-                  <span style="color:#475569">${escH(item.description)}</span>
-                  <span style="color:#1a2472;font-weight:700;white-space:nowrap">${money(item.amount)}</span>
+                <div style="display:grid;grid-template-columns:90px 1fr 1fr 80px;gap:4px;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9">
+                  <span style="color:#94a3b8">${item.expense_date||''}</span>
+                  <span style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(item.client_name||'—')}</span>
+                  <span style="color:#1e293b;font-weight:600">${escH(item.description||'—')}</span>
+                  <span style="color:#1a2472;font-weight:700;text-align:left">${money(item.amount)}</span>
                 </div>`).join('')}
               </td>
-              <td style="padding:10px 14px;color:#94a3b8;font-size:11px;vertical-align:top;max-width:130px">${escH(s.reason||'')}</td>
               <td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626;vertical-align:top;white-space:nowrap">${money(s.total_spent||0)}</td>
               <td style="padding:10px 14px;text-align:center;color:#475569;vertical-align:top;white-space:nowrap">${money(s.opening_balance||0)}</td>
               <td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">${s.custody_added?money(s.custody_added):'—'}</td>
               <td style="padding:10px 14px;text-align:center;font-weight:800;vertical-align:top;white-space:nowrap;color:${(s.closing_balance||0)>=0?'#15803d':'#dc2626'}">${money(s.closing_balance||0)}</td>
               <td style="padding:10px 14px;text-align:center;vertical-align:top">
                 <div style="display:flex;gap:4px;justify-content:center">
+                  <button onclick="printSettlement(${JSON.stringify(s).replace(/"/g,'&quot;')})" title="طباعة"
+                    style="background:#f0fdf4;border:none;border-radius:6px;color:#15803d;cursor:pointer;font-size:13px;padding:5px 8px">🖨️</button>
                   <button onclick="showEditSettlement(${s.id})" title="تعديل"
                     style="background:#eef1fb;border:none;border-radius:6px;color:#1a2472;cursor:pointer;font-size:13px;padding:5px 8px">✏️</button>
                   <button onclick="deleteSettlement(${s.id})" title="حذف"
@@ -14832,7 +14834,7 @@ async function renderEmpSettlements() {
           </tbody>
           <tfoot>
             <tr style="background:#1a2472;color:white">
-              <td colspan="3" style="padding:12px 14px;font-weight:700;font-size:13px">الإجمالي</td>
+              <td colspan="2" style="padding:12px 14px;font-weight:700;font-size:13px">الإجمالي</td>
               <td style="padding:12px 14px;text-align:center;font-weight:800;font-size:14px">${money(report.total_spent||0)}</td>
               <td colspan="3" style="padding:12px 14px"></td>
               <td></td>
@@ -14959,211 +14961,263 @@ async function saveCustodyTopup() {
   } catch(e) { toast(e.message,'error'); }
 }
 
-function showAddSettlement() {
+// ── Settlement Form — matching طلب تسوية عهدة ─────────────────────────
+const STL_CATS = ['انتقالات','مواصلات','تصوير وطباعه','اكرامية','مأكولات','بريد وشحن','رسوم حكومية','مستلزمات مكتبية','أخرى'];
+
+let _stlItemCount = 0;
+let _stlOpeningBal = 0;
+
+function _stlGetItems() {
+  const items = [];
+  document.getElementById('stlItemsList')?.querySelectorAll('[data-stl-row]').forEach(row => {
+    const date   = row.querySelector('[data-f=date]')?.value?.trim();
+    const client = row.querySelector('[data-f=client]')?.value?.trim();
+    const cat    = row.querySelector('[data-f=cat]')?.value?.trim();
+    const amt    = parseFloat(row.querySelector('[data-f=amt]')?.value||0);
+    if (client || cat || amt > 0) items.push({
+      description: cat||'—',
+      client_name: client||'—',
+      expense_date: date||'',
+      amount: amt,
+    });
+  });
+  return items;
+}
+
+function calcStlTotal() {
+  const items = _stlGetItems();
+  const total    = items.reduce((s,it)=>s+(it.amount||0), 0);
+  const cust     = parseFloat(document.getElementById('stlCustody')?.value||0);
+  const returned = parseFloat(document.getElementById('stlSumReturn')?.value||0);
+  const prevBal  = _stlOpeningBal;
+  const preTot   = prevBal + cust;
+  const final    = preTot - total - returned;
+  const fmt = v => v.toLocaleString('ar-EG',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' ج.م';
+  const set = (id, v) => { const el=document.getElementById(id); if(el&&el.tagName!=='INPUT') el.textContent=fmt(v); };
+  set('stlSumTotal',    total);
+  set('stlSumPrev',     prevBal);
+  set('stlSumCust',     cust);
+  set('stlSumPreSettle', preTot);
+  const fEl = document.getElementById('stlSumFinal');
+  if(fEl) { fEl.textContent = fmt(final); fEl.style.color = final < 0 ? '#dc2626' : '#15803d'; }
+}
+
+function addStlItem(data={}) {
+  const list = document.getElementById('stlItemsList');
+  if (!list) return;
+  const idx = _stlItemCount++;
+  const today = document.getElementById('stlDate')?.value || new Date().toISOString().slice(0,10);
+  const row = document.createElement('div');
+  row.dataset.stlRow = idx;
+  row.style.cssText = 'display:grid;grid-template-columns:120px 1fr 1fr 110px 34px;gap:0;border-top:1px solid #e2e8f0';
+  const cellStyle = 'padding:4px 6px;border-left:1px solid #e2e8f0;';
+  const inp = (f,type,val,ph) => `<input data-f="${f}" type="${type}" value="${escH(String(val||''))}" placeholder="${ph}"
+    class="input" style="width:100%;padding:5px 8px;font-size:12px;border:none;border-radius:0;background:transparent" oninput="calcStlTotal()"/>`;
+  const catOpts = STL_CATS.map(c=>`<option${(data.description||data.cat||'')==c?' selected':''}>${c}</option>`).join('');
+  row.innerHTML = `
+    <div style="${cellStyle}">${inp('date','date',data.expense_date||today,'')}</div>
+    <div style="${cellStyle}">${inp('client','text',data.client_name||'','مدينة نصر اول...')}</div>
+    <div style="${cellStyle}"><select data-f="cat" style="width:100%;padding:5px 6px;border:none;font-size:12px;font-family:inherit;background:transparent" onchange="calcStlTotal()">
+      <option value="">اختر البند</option>${catOpts}
+      <option${!STL_CATS.includes(data.description||'')&&(data.description)?' selected':''} value="${escH(data.description||'')}">
+        ${STL_CATS.includes(data.description||'')?'':escH(data.description||'')}
+      </option>
+    </select></div>
+    <div style="${cellStyle};text-align:center">${inp('amt','number',data.amount||'','0.00')}</div>
+    <div style="display:flex;align-items:center;justify-content:center;padding:2px">
+      <button type="button" onclick="removeStlItem(this.closest('[data-stl-row]'))"
+        style="background:#fee2e2;border:none;border-radius:5px;color:#dc2626;cursor:pointer;padding:3px 7px;font-size:12px">✕</button>
+    </div>`;
+  list.appendChild(row);
+  calcStlTotal();
+}
+
+function removeStlItem(row) { row?.remove(); calcStlTotal(); }
+
+function _stlOpenModal(existingData={}) {
   if (!_settleEmp) return;
-  const today = new Date().toISOString().split('T')[0];
-  const html = `
-  <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
-    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto">
-      <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">📋 تسوية جديدة — ${escH(_settleEmp.name)}</h3>
+  const today = existingData.date || new Date().toISOString().slice(0,10);
+  _stlOpeningBal = existingData.opening_balance ?? _settleEmp.current_balance ?? 0;
+  const custodyVal  = existingData.custody_added ?? 0;
+  const returnedVal = existingData.returned_amount ?? 0;
+  const isEdit = !!existingData.id;
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-        <div class="form-group">
-          <label class="label">التاريخ *</label>
-          <input id="stlDate" class="input" type="date" value="${today}">
-        </div>
-        <div class="form-group">
-          <label class="label">💰 عهدة جديدة اليوم</label>
-          <input id="stlCustody" class="input" type="number" placeholder="0" value="0" oninput="calcStlTotal()">
-        </div>
-        <div class="form-group" style="grid-column:1/-1">
-          <label class="label">وصف / سبب عام (اختياري)</label>
-          <input id="stlReason" class="input" placeholder="مثال: مأموريات يوم 26 مايو">
-        </div>
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'stlModalOv';
+  ov.innerHTML = `
+  <div class="modal" style="max-width:780px;width:98%;padding:0">
+    <div style="background:linear-gradient(135deg,#0d1540,#1a2472);padding:14px 20px;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="color:white;font-size:15px;font-weight:800">📋 طلب تسوية عهدة</div>
+        <div style="color:rgba(255,255,255,.65);font-size:11px">ا. ${escH(_settleEmp.name)}</div>
       </div>
-
-      <!-- بنود المصروفات -->
-      <div style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <label class="label" style="margin:0;font-size:13px;font-weight:700">📝 بنود المصروفات</label>
-          <button type="button" onclick="addStlItem()" style="background:#eef1fb;color:#1a2472;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">+ إضافة بند</button>
-        </div>
-        <div id="stlItemsList">
-          <!-- بند أول افتراضي -->
-        </div>
-        <div id="stlItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
-      </div>
-
-      <!-- ملخص -->
-      <div style="background:#f8fafc;border-radius:12px;padding:14px;margin-bottom:16px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
-        <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">إجمالي الصرف</div><div id="stlTotalDisp" style="font-size:17px;font-weight:800;color:#dc2626">0 ج.م</div></div>
-        <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">عهدة جديدة</div><div id="stlCustDisp" style="font-size:17px;font-weight:800;color:#15803d">0 ج.م</div></div>
-        <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">المتوقع يتبقى</div><div id="stlBalDisp" style="font-size:17px;font-weight:800;color:#1a2472">— ج.م</div></div>
-      </div>
-
-      <div class="form-group" style="margin-bottom:16px">
-        <label class="label">ملاحظات</label>
-        <input id="stlNotes" class="input" placeholder="ملاحظات إضافية...">
-      </div>
-
-      <div style="display:flex;gap:10px">
-        <button onclick="saveSettlement()" class="btn btn-primary" style="flex:1">💾 حفظ التسوية</button>
-        <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="color:rgba(255,255,255,.75);font-size:11px">تاريخ التسوية:</div>
+        <input id="stlDate" type="date" value="${today}"
+          style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:8px;padding:5px 10px;font-family:inherit;font-size:12px" onchange="calcStlTotal()"/>
+        <button onclick="document.getElementById('stlModalOv').remove()" style="background:rgba(255,255,255,.15);border:none;width:30px;height:30px;border-radius:7px;color:white;font-size:16px;cursor:pointer">✕</button>
       </div>
     </div>
+
+    <div style="padding:14px 18px;overflow-y:auto;max-height:calc(92vh - 140px)">
+      <!-- الرصيد السابق + تمويل العهدة -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+        <div style="background:#eef1fb;border-radius:10px;padding:10px 14px;border:1.5px solid #b3c4e8">
+          <div style="font-size:10px;color:#64748b;font-weight:600;margin-bottom:3px">الرصيد السابق</div>
+          <div style="font-size:17px;font-weight:800;color:#1a2472">${_stlOpeningBal.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div>
+        </div>
+        <div style="background:#fffde7;border-radius:10px;padding:10px 14px;border:2px solid #fde047">
+          <div style="font-size:10px;color:#a16207;font-weight:600;margin-bottom:3px">💰 تمويل العهدة</div>
+          <input id="stlCustody" type="number" step="0.01" placeholder="0.00" value="${custodyVal}"
+            style="font-size:17px;font-weight:800;color:#a16207;border:none;background:transparent;width:100%;font-family:inherit;padding:0" oninput="calcStlTotal()"/>
+        </div>
+        <div style="background:#f0fdf4;border-radius:10px;padding:10px 14px;border:1.5px solid #86efac">
+          <div style="font-size:10px;color:#15803d;font-weight:600;margin-bottom:3px">إجمالي الرصيد قبل التسوية</div>
+          <div id="stlSumPreSettle" style="font-size:17px;font-weight:800;color:#15803d">— ج.م</div>
+        </div>
+      </div>
+
+      <!-- جدول بنود المصروفات -->
+      <div style="border:1.5px solid #cbd5e1;border-radius:10px;overflow:hidden;margin-bottom:14px">
+        <div style="background:#1e3a5f;color:white;display:grid;grid-template-columns:120px 1fr 1fr 110px 34px">
+          <div style="padding:8px 10px;font-size:11px;font-weight:700;border-left:1px solid rgba(255,255,255,.2)">تاريخ المصروف</div>
+          <div style="padding:8px 10px;font-size:11px;font-weight:700;border-left:1px solid rgba(255,255,255,.2)">اسم الشركة / العميل</div>
+          <div style="padding:8px 10px;font-size:11px;font-weight:700;border-left:1px solid rgba(255,255,255,.2)">بند المصروف</div>
+          <div style="padding:8px 10px;font-size:11px;font-weight:700;text-align:center;border-left:1px solid rgba(255,255,255,.2)">ق. المصروف</div>
+          <div></div>
+        </div>
+        <div id="stlItemsList"></div>
+        <div style="padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0">
+          <button type="button" onclick="addStlItem()" style="background:#1e3a5f;color:white;border:none;border-radius:7px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">+ إضافة بند مصروف</button>
+        </div>
+      </div>
+
+      <!-- ملخص التسوية -->
+      <div style="border:1.5px solid #cbd5e1;border-radius:10px;overflow:hidden;margin-bottom:14px">
+        <div style="background:#374151;color:white;padding:8px 14px;font-size:12px;font-weight:700">ملخص التسوية</div>
+        ${[
+          ['اجمالي المصروفات','stlSumTotal','#dc2626','#fef2f2'],
+          ['الرصيد السابق','stlSumPrev','#1a2472','#eef1fb'],
+          ['تمويل العهدة','stlSumCust','#a16207','#fffde7'],
+          ['اجمالي الرصيد قبل التسوية','stlSumPreSettle2','#15803d','#f0fdf4'],
+          ['رد العهدة (اختياري)','stlSumReturn','#7c3aed','#f5f3ff'],
+          ['الرصيد الحـالي بعد التسوية','stlSumFinal','#dc2626','#fef2f2'],
+        ].map(([lbl,id,color,bg],i)=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 16px;background:${bg};border-top:${i?'1px solid #e2e8f0':'none'}">
+          <span style="font-size:13px;font-weight:700;color:${color}">${lbl}</span>
+          ${id==='stlSumReturn'
+            ? `<input id="${id}" type="number" step="0.01" placeholder="0.00" value="${returnedVal}"
+                style="width:140px;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;font-weight:700;text-align:center;font-family:inherit;background:white" oninput="calcStlTotal()"/>`
+            : `<span id="${id}" style="font-size:14px;font-weight:800;color:${color}">— ج.م</span>`
+          }
+        </div>`).join('')}
+      </div>
+
+      <!-- اضافات خاصة على العميل -->
+      <div style="border:1.5px solid #cbd5e1;border-radius:10px;overflow:hidden;margin-bottom:12px">
+        <div style="background:#374151;color:white;padding:8px 14px;font-size:12px;font-weight:700">اضافات خاصة على العميل (اختياري)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+          <div style="padding:8px 12px;border-left:1px solid #e2e8f0">
+            <label style="display:block;font-size:10px;color:#64748b;margin-bottom:3px">اتعاب الاجراءات</label>
+            <input id="stlFeeAmt" class="input" type="number" placeholder="0.00" step="0.01" value="${escH(String(existingData.fee_amount||''))}" style="font-size:12px"/>
+          </div>
+          <div style="padding:8px 12px">
+            <label style="display:block;font-size:10px;color:#64748b;margin-bottom:3px">بند الاتعاب</label>
+            <input id="stlFeeDesc" class="input" placeholder="وصف الاتعاب..." value="${escH(existingData.fee_desc||'')}" style="font-size:12px"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- ملاحظات -->
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px">ملاحظات</label>
+        <input id="stlNotes" class="input" placeholder="ملاحظات إضافية..." value="${escH(existingData.notes||'')}" style="font-size:12px"/>
+      </div>
+    </div>
+
+    <!-- أزرار -->
+    <div style="padding:12px 18px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button onclick="document.getElementById('stlModalOv').remove()" style="padding:8px 18px;background:#f1f5f9;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">إلغاء</button>
+      ${isEdit
+        ? `<button onclick="saveEditSettlement(${existingData.id})" class="btn btn-primary">💾 حفظ التعديل</button>`
+        : `<button onclick="saveSettlement()" class="btn btn-primary">💾 حفظ التسوية</button>`
+      }
+    </div>
   </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
-  // ابدأ ببند أول فارغ
-  addStlItem();
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if(e.target===ov) ov.remove(); });
+  _stlItemCount = 0;
+  const items = existingData.expense_items;
+  if (items?.length) items.forEach(it => addStlItem(it));
+  else { addStlItem(); addStlItem(); }
+  calcStlTotal();
+  // sync the hidden stlSumPreSettle2 with main one
+  const sync = () => {
+    const el2 = document.getElementById('stlSumPreSettle2');
+    const el1 = document.getElementById('stlSumPreSettle');
+    if(el2 && el1) el2.textContent = el1.textContent;
+  };
+  document.getElementById('stlItemsList')?.addEventListener('input', sync);
+  document.getElementById('stlCustody')?.addEventListener('input', sync);
+  setTimeout(sync, 50);
+}
+
+async function showAddSettlement() {
+  if (!_settleEmp) return;
+  try {
+    const d = await api('GET', `/api/settlements/employees/${encodeURIComponent(_settleEmp.name)}?month=${new Date().getMonth()+1}&year=${new Date().getFullYear()}`);
+    _settleEmp.current_balance = d.current_balance ?? 0;
+  } catch(e){}
+  _stlOpenModal();
 }
 
 async function showEditSettlement(id) {
   try {
     const s = await api('GET', `/api/settlements/${id}`);
-    const html = `
-    <div id="modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
-      <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto">
-        <h3 style="margin:0 0 20px;font-size:16px;font-weight:800;color:#1e293b">✏️ تعديل تسوية — ${escH(_settleEmp.name)}</h3>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-          <div class="form-group">
-            <label class="label">التاريخ *</label>
-            <input id="stlDate" class="input" type="date" value="${s.date||''}">
-          </div>
-          <div class="form-group">
-            <label class="label">💰 عهدة جديدة اليوم</label>
-            <input id="stlCustody" class="input" type="number" placeholder="0" value="${s.custody_added||0}" oninput="calcStlTotal()">
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label class="label">وصف / سبب عام (اختياري)</label>
-            <input id="stlReason" class="input" value="${escH(s.reason||'')}" placeholder="مثال: مأموريات يوم 26 مايو">
-          </div>
-        </div>
-
-        <div style="margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <label class="label" style="margin:0;font-size:13px;font-weight:700">📝 بنود المصروفات</label>
-            <button type="button" onclick="addStlItem()" style="background:#eef1fb;color:#1a2472;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">+ إضافة بند</button>
-          </div>
-          <div id="stlItemsList" style="display:flex;flex-direction:column;gap:8px"></div>
-        </div>
-
-        <div style="background:#f8fafc;border-radius:12px;padding:14px;margin-bottom:16px;border:1.5px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
-          <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">إجمالي الصرف</div><div id="stlTotalDisp" style="font-size:17px;font-weight:800;color:#dc2626">0 ج.م</div></div>
-          <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">عهدة جديدة</div><div id="stlCustDisp" style="font-size:17px;font-weight:800;color:#15803d">0 ج.م</div></div>
-          <div><div style="font-size:12px;color:#64748b;margin-bottom:3px">رصيد افتتاحي حالي</div><div style="font-size:14px;font-weight:700;color:#475569">${money(s.opening_balance||0)}</div></div>
-        </div>
-
-        <div class="form-group" style="margin-bottom:16px">
-          <label class="label">ملاحظات</label>
-          <input id="stlNotes" class="input" value="${escH(s.notes||'')}" placeholder="ملاحظات إضافية...">
-        </div>
-
-        <div style="display:flex;gap:10px">
-          <button onclick="saveEditSettlement(${id})" class="btn btn-primary" style="flex:1">💾 حفظ التعديل</button>
-          <button onclick="closeModal()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;cursor:pointer;font-weight:600">إلغاء</button>
-        </div>
-      </div>
-    </div>`;
-    document.body.insertAdjacentHTML('beforeend', html);
-    // حمّل البنود القديمة
-    _stlItemCount = 0;
-    (s.expense_items || []).forEach(item => addStlItem(item.description, item.amount));
-    if (!s.expense_items || s.expense_items.length === 0) addStlItem();
-    calcStlTotal();
+    _stlOpenModal(s);
   } catch(e) { toast(e.message,'error'); }
 }
 
+function _stlBuildPayload(empName) {
+  const date     = document.getElementById('stlDate')?.value;
+  const custody  = parseFloat(document.getElementById('stlCustody')?.value||0);
+  const returned = parseFloat(document.getElementById('stlSumReturn')?.value||0);
+  const notes    = document.getElementById('stlNotes')?.value?.trim();
+  const feeAmt   = parseFloat(document.getElementById('stlFeeAmt')?.value||0);
+  const feeDesc  = document.getElementById('stlFeeDesc')?.value?.trim();
+  const expense_items = _stlGetItems();
+  return { employee_name: empName, date, expense_items, custody_added: custody, returned_amount: returned,
+    notes: [notes, feeDesc?`اتعاب: ${feeDesc} — ${feeAmt} ج.م`:''].filter(Boolean).join(' | ')||null,
+    fee_amount: feeAmt||null, fee_desc: feeDesc||null };
+}
+
 async function saveEditSettlement(id) {
-  const date    = document.getElementById('stlDate')?.value;
-  const reason  = document.getElementById('stlReason')?.value?.trim();
-  const custody = parseFloat(document.getElementById('stlCustody')?.value||0);
-  const notes   = document.getElementById('stlNotes')?.value?.trim();
+  const date = document.getElementById('stlDate')?.value;
   if (!date) { toast('اختر التاريخ','error'); return; }
-
-  const expense_items = [];
-  document.getElementById('stlItemsList')?.querySelectorAll('div[id^="stlItem_"]').forEach(row => {
-    const inputs = row.querySelectorAll('input');
-    const desc   = inputs[0]?.value?.trim();
-    const amount = parseFloat(inputs[1]?.value||0);
-    if (desc || amount > 0) expense_items.push({description: desc||'—', amount});
-  });
-  if (expense_items.length === 0) { toast('أضف بند واحد على الأقل','error'); return; }
-
+  const items = _stlGetItems();
+  if (!items.length) { toast('أضف بند واحد على الأقل','error'); return; }
+  const payload = _stlBuildPayload(_settleEmp.name);
   try {
-    await api('PUT', `/api/settlements/${id}`, {
-      employee_name: _settleEmp.name,
-      date, reason, expense_items, custody_added: custody, notes
-    });
-    closeModal();
+    await api('PUT', `/api/settlements/${id}`, payload);
+    document.getElementById('stlModalOv')?.remove();
+    toast('تم تحديث التسوية ✅');
+    _AC.invalidate('/api/settlements');
     renderEmpSettlements();
   } catch(e) { toast(e.message,'error'); }
 }
 
-let _stlItemCount = 0;
-function addStlItem(desc = '', amount = '') {
-  const list = document.getElementById('stlItemsList');
-  if (!list) return;
-  const idx = _stlItemCount++;
-  const row = document.createElement('div');
-  row.id = `stlItem_${idx}`;
-  row.style.cssText = 'display:flex;gap:8px;align-items:center';
-  row.innerHTML = `
-    <input type="text" placeholder="اسم البند (مثال: الانتقالات)" value="${escH(desc)}"
-      class="input" style="flex:1;font-size:13px" oninput="calcStlTotal()">
-    <input type="number" placeholder="المبلغ" value="${amount}"
-      class="input" style="width:110px;font-size:13px;text-align:center" oninput="calcStlTotal()">
-    <span style="color:#64748b;font-size:11px;white-space:nowrap">ج.م</span>
-    <button type="button" onclick="removeStlItem('stlItem_${idx}')"
-      style="background:#fee2e2;border:none;border-radius:6px;color:#dc2626;cursor:pointer;padding:6px 9px;font-size:13px;flex-shrink:0">✕</button>
-  `;
-  list.appendChild(row);
-  calcStlTotal();
-}
-
-function removeStlItem(id) {
-  document.getElementById(id)?.remove();
-  calcStlTotal();
-}
-
-function calcStlTotal() {
-  const list = document.getElementById('stlItemsList');
-  let total = 0;
-  if (list) {
-    list.querySelectorAll('input[type=number]').forEach(inp => { total += parseFloat(inp.value||0); });
-  }
-  const cust = parseFloat(document.getElementById('stlCustody')?.value||0);
-  const disp = v => v.toLocaleString('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:0}) + ' ج.م';
-  if(document.getElementById('stlTotalDisp')) document.getElementById('stlTotalDisp').textContent = disp(total);
-  if(document.getElementById('stlCustDisp'))  document.getElementById('stlCustDisp').textContent  = disp(cust);
-  if(document.getElementById('stlBalDisp'))   document.getElementById('stlBalDisp').textContent   = '— ج.م';
-}
-
 async function saveSettlement() {
-  const date    = document.getElementById('stlDate')?.value;
-  const reason  = document.getElementById('stlReason')?.value?.trim();
-  const custody = parseFloat(document.getElementById('stlCustody')?.value||0);
-  const notes   = document.getElementById('stlNotes')?.value?.trim();
+  const date = document.getElementById('stlDate')?.value;
   if (!date) { toast('اختر التاريخ','error'); return; }
-
-  // اجمع البنود من الصفوف الديناميكية
-  const expense_items = [];
-  const list = document.getElementById('stlItemsList');
-  if (list) {
-    list.querySelectorAll('div[id^="stlItem_"]').forEach(row => {
-      const inputs = row.querySelectorAll('input');
-      const desc   = inputs[0]?.value?.trim();
-      const amount = parseFloat(inputs[1]?.value||0);
-      if (desc || amount > 0) expense_items.push({description: desc || '—', amount});
-    });
-  }
-  if (expense_items.length === 0) { toast('أضف بند واحد على الأقل','error'); return; }
+  const items = _stlGetItems();
+  if (!items.length) { toast('أضف بند واحد على الأقل','error'); return; }
+  const payload = _stlBuildPayload(_settleEmp.name);
   try {
-    await api('POST', '/api/settlements', {
-      employee_name: _settleEmp.name,
-      date, reason, expense_items, custody_added: custody, notes
-    });
-    closeModal();
+    await api('POST', '/api/settlements', payload);
+    document.getElementById('stlModalOv')?.remove();
+    toast('تم حفظ التسوية ✅');
+    _AC.invalidate('/api/settlements');
     renderEmpSettlements();
   } catch(e) { toast(e.message,'error'); }
 }
@@ -15176,6 +15230,75 @@ async function deleteSettlement(id) {
     _AC.invalidate('/api/settlements');
     await renderEmpSettlements();
   } catch(e) { toast(e.message,'error'); }
+}
+
+function printSettlement(s) {
+  const items = s.expense_items || [];
+  const total = s.total_spent || items.reduce((x,i)=>x+(i.amount||0),0);
+  const prevBal = s.opening_balance || 0;
+  const custody = s.custody_added || 0;
+  const returned = s.returned_amount || 0;
+  const preTot = prevBal + custody;
+  const final = preTot - total - returned;
+  const fmtNum = v => Number(v).toLocaleString('ar-EG',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const dateStr = s.date ? new Date(s.date+'T00:00:00').toLocaleDateString('ar-EG',{year:'numeric',month:'2-digit',day:'2-digit'}) : '';
+  const rows = items.map(it=>`
+    <tr>
+      <td>${it.expense_date||s.date||''}</td>
+      <td style="text-align:right">${escH(it.client_name||'—')}</td>
+      <td style="text-align:right">${escH(it.description||'—')}</td>
+      <td style="text-align:center;font-weight:700">ج.م. ${fmtNum(it.amount||0)}</td>
+    </tr>`).join('');
+  const blankRows = Math.max(0, 8 - items.length);
+  const blank = Array(blankRows).fill('<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>').join('');
+  const w = window.open('','_blank','width=800,height=700');
+  w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"/>
+  <style>
+    *{font-family:'Cairo',Tahoma,sans-serif;box-sizing:border-box}
+    body{margin:20px;font-size:12px;color:#000}
+    h2{text-align:center;font-size:16px;margin:0 0 6px}
+    .sub{text-align:center;font-size:11px;color:#333;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #000;padding:5px 8px;text-align:center}
+    th{background:#1a2472;color:white;font-weight:700}
+    .sum-row td{font-weight:700}
+    .yellow{background:#fffde7}
+    .gray{background:#f0f0f0}
+    .footer-row td{border:1px solid #000;padding:10px 8px;text-align:center;font-weight:700}
+    @media print{body{margin:10px}}
+  </style></head><body>
+  <h2>طلب تسوية عهدة</h2>
+  <div class="sub">تاريخ التسوية: ${dateStr} &nbsp;&nbsp;&nbsp; ا. ${escH(s.employee_name||_settleEmp?.name||'')}</div>
+  <table>
+    <thead><tr>
+      <th style="width:14%">تاريخ المصروف</th>
+      <th style="width:30%">اسم الشركة / العميل</th>
+      <th style="width:30%">بند المصروف</th>
+      <th style="width:26%">ق. المصروف</th>
+    </tr></thead>
+    <tbody>${rows}${blank}</tbody>
+    <tbody>
+      <tr class="sum-row"><td colspan="3" style="text-align:right">اجمالي المصروفات</td><td>ج.م. ${fmtNum(total)}</td></tr>
+      <tr class="sum-row"><td colspan="3" style="text-align:right">الرصيد السابق</td><td>ج.م. ${fmtNum(prevBal)}</td></tr>
+      <tr class="sum-row yellow"><td colspan="3" style="text-align:right">تمويل العهدة</td><td>ج.م. ${fmtNum(custody)}</td></tr>
+      <tr class="sum-row"><td colspan="3" style="text-align:right">اجمالي الرصيد القبل التسوية</td><td>ج.م. ${fmtNum(preTot)}</td></tr>
+      <tr class="sum-row gray"><td colspan="3" style="text-align:right">رد العهدة</td><td>ج.م. ${fmtNum(returned)}</td></tr>
+      <tr class="sum-row" style="background:${final<0?'#fee2e2':'#f0fdf4'}"><td colspan="3" style="text-align:right">الرصيد الحـالي بعد التسوية</td><td style="color:${final<0?'red':'green'}">ج.م. ${fmtNum(final)}</td></tr>
+    </tbody>
+  </table>
+  ${s.fee_amount||s.notes ? `
+  <table style="margin-top:10px">
+    <tr><th colspan="4">اضافات خاصة على العميل</th></tr>
+    <tr><td colspan="2" style="text-align:right">اتعاب الاجراءات</td><td colspan="2" style="text-align:right">بند الاتعاب</td></tr>
+    <tr><td colspan="2">${fmtNum(s.fee_amount||0)} ج.م</td><td colspan="2">${escH(s.fee_desc||s.notes||'')}</td></tr>
+  </table>` : ''}
+  <table style="margin-top:14px">
+    <tr class="footer-row"><td style="width:33%">مستلم العهدة</td><td style="width:33%">المراجعة</td><td style="width:33%">الادارة</td></tr>
+    <tr style="height:50px"><td></td><td></td><td></td></tr>
+  </table>
+  <script>setTimeout(()=>{window.print();window.close();},300);<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 async function resetEmployeeBalance(empName) {
