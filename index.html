@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v2.5 — Google Drive Integration + Document Archive System -->
+<!-- v2.6 — Bulk tasks: checkboxes per item, single record, WA clean message -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -3712,7 +3712,15 @@ async function _assignTask(taskId, userId, assign) {
     if(assign&&emp) {
       const t=tasksData.find(t=>t.id===taskId);
       const due=t?.due_date?new Date(t.due_date).toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'}):'غير محدد';
-      const msg=`📋 مهمة جديدة موكلة إليك:\n\n*${t?.title||''}*\n🏢 الشركة: ${t?.client_name||'—'}\n📅 الموعد: ${due}\n📝 ملاحظات: ${t?.notes||t?.inline_notes||'—'}\n\n— MS Accounting`;
+      const _bd=_parseBulkTask(t);
+      let msg;
+      if(_bd){
+        const itemLines=_bd.items.filter(it=>!it.done).map((it,i)=>`${i+1}. ${it.text}`).join('\n');
+        msg=`📋 *مهامك — ${emp.name}*\n\n${itemLines}\n\n— MS Accounting`;
+      } else {
+        const notesVal=(t?.notes||t?.inline_notes||'').startsWith('{')?'':t?.notes||t?.inline_notes||'—';
+        msg=`📋 مهمة جديدة موكلة إليك:\n\n*${t?.title||''}*\n🏢 الشركة: ${t?.client_name||'—'}\n📅 الموعد: ${due}\n📝 ملاحظات: ${notesVal}\n\n— MS Accounting`;
+      }
       const phone=String(emp.phone||emp.mobile||'').replace(/\D/g,'');
       if(phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
       else { navigator.clipboard.writeText(msg).catch(()=>{}); toast(`📋 تم نسخ رسالة واتساب لـ ${emp.name}`); }
