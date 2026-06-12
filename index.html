@@ -3917,7 +3917,7 @@ async function showTaskModal(id=null) {
   const defaultAssignee = _taskEmpFilter?.id || null;
   let clients=[];
   try { clients=await getClients(); } catch(e){}
-  const users = tasksUsersData;
+  const users = TASK_EMPS.map(name=>tasksUsersData.find(u=>(u.name||'').trim()===name)).filter(Boolean);
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.innerHTML=`<div class="modal" style="max-width:540px;max-height:90vh;overflow-y:auto">
