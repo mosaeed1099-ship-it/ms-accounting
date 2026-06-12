@@ -3577,7 +3577,7 @@ function renderDailySheet() {
         style="padding:6px 13px;border-radius:8px;background:rgba(255,255,255,.15);color:white;border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 كانبان</button>
       <button onclick="_taskViewMode='folders';_taskEmpFilter=null;renderTaskFolders()"
         style="padding:6px 13px;border-radius:8px;background:rgba(255,255,255,.15);color:white;border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">👥 فولدرات</button>
-      <button onclick="_showBulkAddModal()"
+      <button onclick="window._showBulkAddModal()"
         style="padding:6px 13px;border-radius:8px;background:rgba(255,255,255,.15);color:white;border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">➕ إضافة عدة مهام</button>
       <button onclick="showTaskModal()"
         style="padding:6px 13px;border-radius:8px;background:white;color:#1a2472;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">+ مهمة جديدة</button>
@@ -3627,7 +3627,7 @@ async function _restoreTask(id) {
   } catch(e){toast(e.message,'error');}
 }
 
-function _showBulkAddModal() {
+window._showBulkAddModal = function _showBulkAddModal() {
   const users = (tasksUsersData||[]).filter(u=>['employee','manager','admin'].includes(u.role));
   const empOpts = `<option value="">— بلا تكليف —</option>` +
     users.map(u=>`<option value="${u.id}">${escH(u.name)}</option>`).join('');
@@ -11897,7 +11897,14 @@ window.showTaskModal=showTaskModal;
 window.deleteTask=deleteTask;
 window.renderTaskFolders=renderTaskFolders;
 window.renderKanban=renderKanban;
+window.renderDailySheet=renderDailySheet;
 window.renderOverdueBoard=renderOverdueBoard;
+window.loadTasks=loadTasks;
+window._assignTask=_assignTask;
+window._restoreTask=_restoreTask;
+// expose module-scoped task vars as window setters so onclick can mutate them
+Object.defineProperty(window,'_taskViewMode',{get:()=>_taskViewMode,set:v=>{_taskViewMode=v;},configurable:true});
+Object.defineProperty(window,'_taskEmpFilter',{get:()=>_taskEmpFilter,set:v=>{_taskEmpFilter=v;},configurable:true});
 window.quickDoneTaskBoard=function(id){window._toggleTaskDone(id,'in_progress');};
 window.openEmployeeTasks=openEmployeeTasks;
 window.renderEmployeeTasks=renderEmployeeTasks;
