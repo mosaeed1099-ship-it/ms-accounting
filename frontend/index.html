@@ -3629,8 +3629,8 @@ window._empWASend = async function(uid) {
   if(btn){btn.disabled=true;btn.textContent='⏳ جاري الإرسال...';}
   if(resEl) resEl.innerHTML='';
   try {
-    await api('POST','/api/wa/send',{
-      phone, message:msg, recipient:u.name,
+    await api('POST','/api/notifications/whatsapp-test',{
+      phone, message:msg,
     },{useCache:false});
     if(resEl) resEl.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:9px 12px;font-size:12px;color:#15803d;font-weight:700">
       ✅ تم الإرسال بنجاح إلى ${escH(u.name)}<br>
