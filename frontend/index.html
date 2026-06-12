@@ -3388,7 +3388,13 @@ function renderDailySheet() {
   const isCarry=t=>(t.carry_over_days>0)&&!isLate(t)&&t.status!=='done'&&t.status!=='cancelled';
   const isDone =t=>t.status==='done'||t.status==='cancelled';
 
-  const emps=tasksUsersData;
+  // dedup by normalized name (removes duplicate users with same name)
+  const _seen=new Set();
+  const emps=tasksUsersData.filter(u=>{
+    const key=(u.name||'').trim().replace(/\s+/g,' ').toLowerCase();
+    if(_seen.has(key)) return false;
+    _seen.add(key); return true;
+  });
 
   // apply filter
   let filtered=[...tasksData];
