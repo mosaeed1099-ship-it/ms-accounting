@@ -3580,36 +3580,72 @@ window._empWA = function(uid) {
   const pending=tasksData.filter(t=>t.assigned_to===uid&&t.status!=='done'&&t.status!=='cancelled');
   if(!pending.length){toast('لا توجد مهام متبقية لـ '+u.name,'warning');return;}
   const dateStr=new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const msg=`السلام عليكم ${u.name} 👋\n\nمهام اليوم:\n`+pending.map((t,i)=>`${i+1}- ${t.title}${t.client_name?' ('+t.client_name+')':''}`).join('\n')+`\n\nبالتوفيق 🙏\n— MS Accounting`;
+  const defaultMsg=`السلام عليكم ${u.name} 👋\n\nمهام اليوم — ${dateStr}:\n`
+    +pending.map((t,i)=>`${i+1}- ${t.title}${t.client_name?' ('+t.client_name+')':''}`).join('\n')
+    +`\n\nبالتوفيق 🙏\n— MS Accounting`;
   const phone=String(u.phone||u.mobile||u.whatsapp_phone||'').replace(/\D/g,'');
-  const waUrl=phone?`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`:'';
+
   const ov=document.createElement('div'); ov.className='modal-overlay';
-  ov.innerHTML=`<div class="modal" style="max-width:420px">
+  ov.innerHTML=`<div class="modal" style="max-width:440px">
     <div style="padding:14px 18px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
       <div>
-        <div style="font-size:14px;font-weight:600;color:#1e293b">📱 رسالة لـ ${escH(u.name)}</div>
-        <div style="font-size:10px;color:#94a3b8;margin-top:2px">يمكنك تعديل الرسالة قبل الإرسال</div>
+        <div style="font-size:14px;font-weight:700;color:#1e293b">📱 إرسال مباشر لـ ${escH(u.name)}</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px">${pending.length} مهمة متبقية · ${phone?'رقم: '+phone:'⚠️ لا يوجد رقم مسجل'}</div>
       </div>
       <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer">✕</button>
     </div>
     <div style="padding:14px 18px">
-      <textarea id="empWATxt" style="width:100%;height:180px;background:#e9f5e1;border:none;border-radius:10px;padding:12px;font-size:12px;color:#1a3c00;line-height:1.9;direction:rtl;resize:vertical;font-family:inherit;outline:none">${escH(msg)}</textarea>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
-        ${waUrl?`<a id="empWALink" href="${escH(waUrl)}" target="_blank"
-          style="display:block;background:#25D366;color:white;border-radius:9px;padding:11px;text-align:center;text-decoration:none;font-size:13px;font-weight:500">📲 فتح واتساب — ${escH(u.name)}</a>`
-          :`<button onclick="navigator.clipboard?.writeText(document.getElementById('empWATxt').value);toast('تم النسخ')" style="background:#25D366;color:white;border:none;border-radius:9px;padding:11px;font-size:13px;cursor:pointer;font-family:inherit">📋 نسخ الرسالة</button>`}
-        <button onclick="this.closest('.modal-overlay').remove()" style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:9px;padding:9px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--color-text-secondary)">إغلاق</button>
+      <textarea id="empWATxt" style="width:100%;height:170px;background:#e9f5e1;border:1px solid #86efac;border-radius:8px;padding:12px;font-size:12px;color:#1a3c00;line-height:1.9;direction:rtl;resize:vertical;font-family:inherit;outline:none">${escH(defaultMsg)}</textarea>
+      <div id="empWASendResult" style="margin:8px 0;min-height:20px"></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        ${phone
+          ? `<button id="empWASendBtn" onclick="window._empWASend(${uid})"
+              style="background:#25D366;color:white;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+              📲 إرسال مباشر — بدون فتح واتساب
+            </button>`
+          : `<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:10px;font-size:11px;color:#92400e">
+              ⚠️ لا يوجد رقم واتساب لـ ${escH(u.name)} — أضفه من صفحة الإعدادات → الفريق
+            </div>
+            <button onclick="navigator.clipboard?.writeText(document.getElementById('empWATxt').value);toast('📋 تم النسخ')"
+              style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;cursor:pointer;font-family:inherit">
+              📋 نسخ الرسالة يدوياً
+            </button>`
+        }
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:8px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--color-text-secondary)">إغلاق</button>
       </div>
     </div>
   </div>`;
   document.body.append(ov);
   ov.onclick=e=>{if(e.target===ov)ov.remove();};
-  if(waUrl){
-    document.getElementById('empWALink').addEventListener('click',()=>{
-      const edited=document.getElementById('empWATxt').value;
-      const phone2=String(u.phone||u.mobile||u.whatsapp_phone||'').replace(/\D/g,'');
-      document.getElementById('empWALink').href=`https://wa.me/${phone2}?text=${encodeURIComponent(edited)}`;
-    });
+};
+
+window._empWASend = async function(uid) {
+  const u=tasksUsersData.find(x=>x.id===uid); if(!u) return;
+  const phone=String(u.phone||u.mobile||u.whatsapp_phone||'').replace(/\D/g,'');
+  const msg=document.getElementById('empWATxt')?.value?.trim();
+  const resEl=document.getElementById('empWASendResult');
+  const btn=document.getElementById('empWASendBtn');
+  if(!phone||!msg) return;
+  if(btn){btn.disabled=true;btn.textContent='⏳ جاري الإرسال...';}
+  if(resEl) resEl.innerHTML='';
+  try {
+    await api('POST','/api/notifications/whatsapp-send',{
+      phone, message:msg, recipient:u.name,
+    },{useCache:false});
+    if(resEl) resEl.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:9px 12px;font-size:12px;color:#15803d;font-weight:700">
+      ✅ تم الإرسال بنجاح إلى ${escH(u.name)}<br>
+      <span style="font-size:10px;font-weight:400;color:#64748b">${new Date().toLocaleString('ar-EG')}</span>
+    </div>`;
+    if(btn){btn.disabled=false;btn.textContent='📲 إرسال مرة أخرى';}
+    toast(`✅ تم إرسال الرسالة لـ ${u.name}`);
+  } catch(e) {
+    const isNotConfigured=e.message?.includes('GREENAPI')||e.message?.includes('غير مُعيَّن');
+    if(resEl) resEl.innerHTML=`<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:9px 12px;font-size:12px;color:#dc2626">
+      ❌ فشل الإرسال: ${escH(e.message)}<br>
+      ${isNotConfigured?`<span style="font-size:10px">→ اذهب للإعدادات → واتساب وأضف GREENAPI_INSTANCE_ID و GREENAPI_TOKEN</span>`:''}
+    </div>`;
+    if(btn){btn.disabled=false;btn.textContent='🔄 إعادة المحاولة';}
+    toast('❌ فشل إرسال الواتساب: '+e.message,'error');
   }
 };
 
@@ -11293,46 +11329,60 @@ async function loadSettings(activeTab) {
   </div>
 
   <!-- WhatsApp tab -->
-  <div id="stab-whatsapp" style="display:${tab==='whatsapp'?'block':'none'};max-width:640px">
-    <div class="card" style="padding:24px;margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #f1f5f9;margin-bottom:20px">
-        <h3 style="font-size:16px;font-weight:700;color:#1a2472;margin:0;padding-right:12px;border-right:3px solid #25d366">💬 إشعارات WhatsApp</h3>
-        <span id="waBadge" style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;color:#dc2626;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">❌ غير مُفعَّل</span>
-      </div>
-      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:#14532d;line-height:1.7">
-        <strong>🟢 كيف يعمل (مجاناً):</strong><br>
-        ١. سجّل مجاناً على <a href="https://green-api.com" target="_blank" style="color:#15803d;font-weight:700">green-api.com</a><br>
-        ٢. أنشئ Instance جديد → امسح QR بواتساب المكتب أو أي رقم مخصص<br>
-        ٣. انسخ <strong>instanceId</strong> و <strong>apiTokenInstance</strong> وضعهم أدناه<br>
-        ✅ بعد كده أي مهمة تتعمل أو تتغير ستصل رسالة واتساب للموظف المسؤول تلقائياً
-      </div>
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Instance ID</label>
-        <input id="waInstanceId" class="input" placeholder="مثال: 1101234567"/>
-      </div>
-      <div style="margin-bottom:20px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">API Token</label>
-        <input id="waToken" class="input" type="password" placeholder="الـ token من لوحة تحكم green-api"/>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-        <button class="btn btn-primary" onclick="saveWhatsAppSettings()" style="flex:1;min-width:160px">💾 حفظ وتفعيل</button>
-      </div>
-      <div id="waSettingsMsg"></div>
+  <div id="stab-whatsapp" style="display:${tab==='whatsapp'?'block':'none'}">
+
+    <!-- Status bar -->
+    <div id="waStatusBar" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span id="waBadge" style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;color:#dc2626;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700">⏳ جاري التحميل...</span>
+      <div id="waStatsInline" style="display:flex;gap:16px;flex:1;flex-wrap:wrap"></div>
+      <button onclick="_loadWhatsAppStatus()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:#64748b">🔄 تحديث</button>
     </div>
-    <div class="card" style="padding:24px">
-      <h3 style="font-size:15px;font-weight:700;color:#1a2472;margin:0 0 16px;padding-right:12px;border-right:3px solid #25d366">📤 إرسال رسالة اختبار</h3>
-      <div class="form-row" style="margin-bottom:14px">
-        <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">رقم الهاتف</label>
-          <input id="waTestPhone" class="input" placeholder="01xxxxxxxxx" value="01055024074"/>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+      <!-- Settings card -->
+      <div class="card" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:700;color:#1a2472;margin:0 0 14px;padding-right:10px;border-right:3px solid #25d366">⚙️ إعدادات الاتصال</h3>
+        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;margin-bottom:14px;font-size:11px;color:#14532d;line-height:1.7">
+          ١. سجّل على <strong>green-api.com</strong> → أنشئ Instance → امسح QR بواتساب الشغل<br>
+          ٢. انسخ <strong>instanceId</strong> و <strong>apiTokenInstance</strong> أدناه<br>
+          ٣. أو أضفهم مباشرةً في Railway → Variables
         </div>
-        <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الرسالة</label>
-          <input id="waTestMsg" class="input" value="✅ اختبار WhatsApp من MS Accounting"/>
+        <div style="margin-bottom:10px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px">Instance ID</label>
+          <input id="waInstanceId" class="input" style="font-size:12px" placeholder="مثال: 1101234567"/>
         </div>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px">API Token</label>
+          <input id="waToken" class="input" type="password" style="font-size:12px" placeholder="الـ token من لوحة green-api"/>
+        </div>
+        <button class="btn btn-primary" onclick="saveWhatsAppSettings()" style="width:100%;font-size:12px">💾 حفظ وتفعيل</button>
+        <div id="waSettingsMsg" style="margin-top:8px"></div>
       </div>
-      <button class="btn" style="border:1.5px solid #25d366;color:#15803d;background:#f0fdf4;font-weight:700" onclick="testWhatsApp()">📲 إرسال رسالة اختبار</button>
-      <div id="waTestResult" style="margin-top:10px"></div>
+
+      <!-- Test card -->
+      <div class="card" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:700;color:#1a2472;margin:0 0 14px;padding-right:10px;border-right:3px solid #25d366">📤 إرسال رسالة اختبار</h3>
+        <div style="margin-bottom:10px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px">رقم الهاتف</label>
+          <input id="waTestPhone" class="input" style="font-size:12px" placeholder="01xxxxxxxxx"/>
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px">الرسالة</label>
+          <textarea id="waTestMsg" class="input" rows="3" style="font-size:12px;resize:none">✅ اختبار من MS Accounting</textarea>
+        </div>
+        <button class="btn" onclick="testWhatsApp()" style="width:100%;background:#25D366;color:white;border:none;font-size:12px;font-weight:700">📲 إرسال مباشر — بدون فتح واتساب</button>
+        <div id="waTestResult" style="margin-top:10px;font-size:12px"></div>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="card" style="padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="font-size:14px;font-weight:700;color:#1a2472;margin:0;padding-right:10px;border-right:3px solid #25d366">📋 سجل الرسائل</h3>
+        <button onclick="_loadWALogs()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;color:#64748b">🔄 تحديث</button>
+      </div>
+      <div id="waLogsTable" style="font-size:11px;color:#94a3b8;text-align:center;padding:20px">جاري التحميل...</div>
     </div>
   </div>
 
@@ -11428,47 +11478,102 @@ function switchStab(tabId) {
 }
 
 async function _loadWhatsAppStatus() {
+  const badge = document.getElementById('waBadge');
+  const statsEl = document.getElementById('waStatsInline');
   try {
-    const r = await api('GET', '/api/notifications/whatsapp-settings');
-    const badge = document.getElementById('waBadge');
-    const instanceEl = document.getElementById('waInstanceId');
+    // Try full status endpoint first (has logs)
+    let r;
+    try {
+      r = await api('GET', '/api/notifications/whatsapp-status');
+    } catch(e) {
+      r = await api('GET', '/api/notifications/whatsapp-settings');
+    }
     if (badge) {
       if (r.configured) {
-        badge.innerHTML = '✅ مُفعَّل';
-        badge.style.background = '#f0fdf4';
-        badge.style.color = '#16a34a';
+        badge.innerHTML = '🟢 متصل ويعمل';
+        badge.style.background = '#f0fdf4'; badge.style.color = '#16a34a';
       } else {
-        badge.innerHTML = '❌ غير مُفعَّل';
-        badge.style.background = '#fef2f2';
-        badge.style.color = '#dc2626';
+        badge.innerHTML = '🔴 غير مُفعَّل — أضف GREENAPI_INSTANCE_ID في Railway';
+        badge.style.background = '#fef2f2'; badge.style.color = '#dc2626';
       }
     }
+    if (statsEl) {
+      const sent = r.sent_today ?? '—';
+      const failed = r.failed_today ?? '—';
+      const lastAt = r.last_sent_at ? new Date(r.last_sent_at).toLocaleString('ar-EG') : '—';
+      const lastTo = r.last_sent_to || '—';
+      statsEl.innerHTML = `
+        <span style="font-size:11px;color:#475569">📤 أُرسل اليوم: <strong style="color:#1d4ed8">${sent}</strong></span>
+        <span style="font-size:11px;color:#475569">❌ فشل اليوم: <strong style="color:#dc2626">${failed}</strong></span>
+        <span style="font-size:11px;color:#475569">🕐 آخر إرسال: <strong>${lastAt}</strong> → ${escH(String(lastTo))}</span>
+      `;
+    }
+    const instanceEl = document.getElementById('waInstanceId');
     if (instanceEl && r.instance_id) instanceEl.value = r.instance_id;
-  } catch(e) {}
+    _loadWALogs();
+  } catch(e) {
+    if(badge){ badge.innerHTML='⚠️ تعذّر الاتصال بالسيرفر'; badge.style.background='#fef9c3'; badge.style.color='#a16207'; }
+  }
+}
+
+async function _loadWALogs() {
+  const el = document.getElementById('waLogsTable'); if(!el) return;
+  try {
+    const logs = await api('GET', '/api/notifications/whatsapp-logs');
+    if(!logs || !logs.length) { el.innerHTML='<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px">لا توجد رسائل مسجلة بعد</div>'; return; }
+    el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:#f1f5f9;text-align:right">
+        <th style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600">الوقت</th>
+        <th style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600">المستلم</th>
+        <th style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600">الرقم</th>
+        <th style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600">الرسالة</th>
+        <th style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600;text-align:center">الحالة</th>
+        <th style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600">الخطأ</th>
+      </tr></thead>
+      <tbody>${logs.map(l=>`<tr style="background:${l.success?'white':'#fff5f5'}">
+        <td style="padding:6px 10px;border:1px solid #e2e8f0;white-space:nowrap;color:#64748b">${l.created_at?new Date(l.created_at).toLocaleString('ar-EG',{hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'}):'—'}</td>
+        <td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:600">${escH(l.recipient||'—')}</td>
+        <td style="padding:6px 10px;border:1px solid #e2e8f0;direction:ltr;text-align:left">${escH(l.phone||'—')}</td>
+        <td style="padding:6px 10px;border:1px solid #e2e8f0;color:#475569;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(l.message)}">${escH(l.message)}</td>
+        <td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center">${l.success?'<span style="color:#16a34a;font-weight:700">✅ نجح</span>':'<span style="color:#dc2626;font-weight:700">❌ فشل</span>'}</td>
+        <td style="padding:6px 10px;border:1px solid #e2e8f0;color:#dc2626;font-size:10px">${escH(l.error||'')}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch(e) { el.innerHTML=`<div style="color:#dc2626;font-size:11px;padding:10px">تعذّر تحميل السجل: ${e.message}</div>`; }
 }
 
 async function saveWhatsAppSettings() {
   const instanceId = document.getElementById('waInstanceId')?.value?.trim();
   const token = document.getElementById('waToken')?.value?.trim();
   const msgEl = document.getElementById('waSettingsMsg');
-  if (!instanceId || !token) { if(msgEl) msgEl.innerHTML = '<span style="color:#dc2626">⚠️ أدخل instanceId و token</span>'; return; }
+  if (!instanceId || !token) { if(msgEl) msgEl.innerHTML = '<span style="color:#dc2626;font-size:11px">⚠️ أدخل instanceId و token</span>'; return; }
   try {
     const r = await api('POST', '/api/notifications/whatsapp-settings', {instance_id: instanceId, token});
-    if(msgEl) msgEl.innerHTML = `<span style="color:#16a34a;font-weight:600">${r.message}</span>`;
+    if(msgEl) msgEl.innerHTML = `<span style="color:#16a34a;font-size:11px;font-weight:600">${r.message}</span>`;
     _loadWhatsAppStatus();
-  } catch(e) { if(msgEl) msgEl.innerHTML = `<span style="color:#dc2626">${e.message}</span>`; }
+  } catch(e) { if(msgEl) msgEl.innerHTML = `<span style="color:#dc2626;font-size:11px">${e.message}</span>`; }
 }
 
 async function testWhatsApp() {
   const phone = document.getElementById('waTestPhone')?.value?.trim();
   const msg = document.getElementById('waTestMsg')?.value?.trim();
   const resultEl = document.getElementById('waTestResult');
-  if (!phone) { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626">⚠️ أدخل رقم الهاتف</span>'; return; }
-  if(resultEl) resultEl.innerHTML = '<span style="color:#64748b">⏳ جاري الإرسال...</span>';
+  if (!phone) { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626;font-size:11px">⚠️ أدخل رقم الهاتف</span>'; return; }
+  if(resultEl) resultEl.innerHTML = '<span style="color:#64748b;font-size:11px">⏳ جاري الإرسال المباشر...</span>';
   try {
     const r = await api('POST', '/api/notifications/whatsapp-test', {phone, message: msg || 'اختبار من MS Accounting'});
-    if(resultEl) resultEl.innerHTML = `<span style="color:#16a34a;font-weight:700">${r.message}</span>`;
-  } catch(e) { if(resultEl) resultEl.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`; }
+    if(resultEl) resultEl.innerHTML = `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:10px;font-size:12px;color:#15803d;font-weight:700">
+      ✅ تم الإرسال بنجاح إلى ${escH(phone)}<br>
+      <span style="font-size:10px;font-weight:400;color:#64748b">${new Date().toLocaleString('ar-EG')}</span>
+    </div>`;
+    setTimeout(_loadWALogs, 1000);
+  } catch(e) {
+    if(resultEl) resultEl.innerHTML = `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px;font-size:12px;color:#dc2626">
+      ❌ فشل الإرسال: ${escH(e.message)}<br>
+      <span style="font-size:10px">تحقق من instanceId و token وتأكد أن الرقم متصل بالإنترنت</span>
+    </div>`;
+    setTimeout(_loadWALogs, 1000);
+  }
 }
 
 async function _loadSettingsTeam() {
