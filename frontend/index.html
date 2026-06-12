@@ -539,12 +539,16 @@ function _rtSilentLoad(fn) {
 // Start realtime engine (called on app init)
 function initRealtime() {
   _rtConnect();
-  // Ping to keep WS alive every 25s (Railway kills idle connections)
+  // Ping WS every 25s to keep Railway connection alive
   setInterval(() => {
     if (_rt_ws && _rt_ws.readyState === WebSocket.OPEN) {
       _rt_ws.send('ping');
     }
   }, 25000);
+  // HTTP keep-alive: hit /health every 4 min so Railway never cold-starts
+  setInterval(() => {
+    fetch(API + '/health', {method:'GET', signal: AbortSignal.timeout(5000)}).catch(()=>{});
+  }, 240000);
   // Dashboard background refresh every 60s (catches anything missed)
   setInterval(() => {
     if (currentPage === 'dashboard') loadDashboard(true);
@@ -3572,13 +3576,34 @@ window._addEmpTask = async function(uid) {
   const inp=document.getElementById('newt_'+uid);
   if(!inp||!inp.value.trim()) return;
   const txt=inp.value.trim();
-  inp.value=''; inp.disabled=true;
+  inp.value='';
+
+  // Optimistic: add task locally right now, don't wait for server
+  const tempId = 'tmp_' + Date.now();
+  const tempTask = {
+    id: tempId, title: txt, assigned_to: uid, status: 'todo',
+    priority: 'medium', category: 'other',
+    created_at: new Date().toISOString(), due_date: null,
+    carry_over_days: 0, client_name: null, _optimistic: true
+  };
+  tasksData.push(tempTask);
+  renderDailySheet();
+  setTimeout(()=>{const el=document.getElementById('newt_'+uid);if(el)el.focus();},50);
+
+  // Then sync with server in background
   try {
     const res=await api('POST','/api/tasks',{title:txt,assigned_to:uid,status:'todo',priority:'medium',category:'other'},{useCache:false});
+    // Replace temp with real task
+    const idx=tasksData.findIndex(t=>t.id===tempId);
+    if(idx>=0) tasksData[idx]={...tempTask,...res,id:res.id,_optimistic:false};
     _AC.invalidate('/api/tasks');
-    await loadTasks(true);
-    setTimeout(()=>{const el=document.getElementById('newt_'+uid);if(el){el.disabled=false;el.focus();}},100);
-  } catch(e){toast(e.message,'error');inp.disabled=false;}
+    renderDailySheet();
+  } catch(e){
+    // Rollback
+    tasksData=tasksData.filter(t=>t.id!==tempId);
+    renderDailySheet();
+    toast('فشل حفظ المهمة — '+e.message,'error');
+  }
 };
 
 window._empWA = function(uid) {
