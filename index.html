@@ -3358,6 +3358,8 @@ let _taskViewMode  = 'daily';
 let _taskEmpFilter = null;
 let _taskFilter    = 'all';
 
+let _tasksAutoRefresh=null;
+
 async function loadTasks(silent=false) {
   const main=document.getElementById('main');
   main.className='page';
@@ -3373,8 +3375,21 @@ async function loadTasks(silent=false) {
     else if(_taskViewMode==='kanban') renderKanban();
     else if(_taskEmpFilter)           renderEmployeeTasks();
     else                              renderTaskFolders();
+    // start auto-refresh every 60s when on tasks page
+    if(!_tasksAutoRefresh) {
+      _tasksAutoRefresh=setInterval(()=>{
+        if(document.getElementById('main')?.closest('body')) loadTasks(true);
+      },60000);
+    }
   } catch(e){toast(e.message,'error');}
 }
+
+// stop auto-refresh when navigating away
+const _origNavigate=window.navigate;
+window.navigate=function(page,...args){
+  if(page!=='tasks'&&_tasksAutoRefresh){clearInterval(_tasksAutoRefresh);_tasksAutoRefresh=null;}
+  return _origNavigate?.(page,...args);
+};
 
 // ── Daily Sheet (نظام التشغيل اليومي) ─────────────────────────────────
 function renderDailySheet() {
@@ -3566,6 +3581,9 @@ function renderDailySheet() {
         style="padding:6px 13px;border-radius:8px;background:white;color:#1a2472;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">+ مهمة جديدة</button>
       <button onclick="_genWAMessage()"
         style="padding:6px 13px;border-radius:8px;background:#25D366;color:white;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📱 واتساب الغد</button>
+      <button onclick="loadTasks(true);this.textContent='✓';setTimeout(()=>this.textContent='🔄 تحديث',1500)"
+        title="تحديث البيانات الآن"
+        style="padding:6px 13px;border-radius:8px;background:rgba(255,255,255,.2);color:white;border:1px solid rgba(255,255,255,.4);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 تحديث</button>
     </div>
   </div>
 
