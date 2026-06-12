@@ -3351,81 +3351,322 @@ function showPaymentModal(invId, remaining, invNum) {
 
 
 // ══════════════════════════════════════════════
-//   المهام اليومية — Daily Task Sheet v3
-// ══════════════════════════════════════════════
-let tasksData = [];
+// ── TASKS — Daily Sheet v4 ─────────────────────────────────────────────
+let tasksData      = [];
 let tasksUsersData = [];
-let _dailyDate = new Date().toISOString().slice(0, 10);
-let _taskTab = 'table';
-let _archiveTasks = [];
-
-// Legacy compat vars
-let _taskViewMode = 'table', _taskEmpFilter = null, _taskSearch = '';
-let _taskStatusFilter = '', _taskPrioFilter = '', _taskEmpFilt2 = '';
-let _taskSortCol = 'due_date', _taskSortDir = 'asc';
-
-const TASK_STATUS_LABEL = {todo:'جديدة',in_progress:'جارية',waiting_docs:'انتظار',done:'مكتملة',cancelled:'ملغاة'};
-const TASK_STATUS_COLOR = {todo:'#64748b',in_progress:'#2563eb',waiting_docs:'#d97706',done:'#16a34a',cancelled:'#94a3b8'};
-const TASK_STATUS_BG   = {todo:'#f1f5f9',in_progress:'#eff6ff',waiting_docs:'#fefce8',done:'#f0fdf4',cancelled:'#f8fafc'};
-
-function _isoToAr(iso) {
-  if (!iso) return '';
-  const d = new Date(iso + 'T00:00:00');
-  const days=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
-  const months=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-}
-function _addDays(iso,n){const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
-window._addDays=_addDays;
+let _taskViewMode  = 'daily';
+let _taskEmpFilter = null;
+let _taskFilter    = 'all';
 
 async function loadTasks(silent=false) {
   const main=document.getElementById('main');
   main.className='page';
-  if(!silent) main.innerHTML='<div style="display:flex;justify-content:center;padding:80px"><div class="spinner"></div></div>';
+  if(!silent) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   try {
-    const [allRes, userRes] = await Promise.all([
+    const [taskRes,userRes]=await Promise.all([
       api('GET','/api/tasks?page_size=500'),
       api('GET','/api/users').catch(()=>[]),
     ]);
-    const all = allRes?.items||[];
-    tasksUsersData = Array.isArray(userRes)?userRes:(userRes?.items||[]);
-
-    const target = _dailyDate;
-    const owned = all.filter(t=>(t.task_date||t.created_at?.slice(0,10))===target);
-    const carried = all.filter(t=>{
-      const td=t.task_date||t.created_at?.slice(0,10);
-      return td&&td<target&&t.status!=='done'&&t.status!=='cancelled';
-    });
-    const ownedIds=new Set(owned.map(t=>t.id));
-    tasksData=[...owned,...carried.filter(t=>!ownedIds.has(t.id))].map(t=>{
-      const td=t.task_date||t.created_at?.slice(0,10)||target;
-      const carry=(td<target&&t.status!=='done'&&t.status!=='cancelled')?Math.round((new Date(target)-new Date(td))/86400000):0;
-      return {...t,carry_over_days:carry};
-    });
-    window.tasksData=tasksData;
-    renderDailyTasks();
+    tasksData     =taskRes?.items||[];
+    tasksUsersData=Array.isArray(userRes)?userRes:(userRes?.items||[]);
+    if(_taskViewMode==='daily')       renderDailySheet();
+    else if(_taskViewMode==='kanban') renderKanban();
+    else if(_taskEmpFilter)           renderEmployeeTasks();
+    else                              renderTaskFolders();
   } catch(e){toast(e.message,'error');}
 }
 
-function renderDailyTasks() {
+// ── Daily Sheet (نظام التشغيل اليومي) ─────────────────────────────────
+function renderDailySheet() {
   const main=document.getElementById('main');
-  const today=new Date().toISOString().slice(0,10);
+  main.className='page';
 
-  // Active employees for columns (max 6)
-  const empMap={};
-  tasksData.forEach(t=>{if(t.assigned_to)empMap[t.assigned_to]=t.assigned_to_name||'?';});
-  tasksUsersData.forEach(u=>{if(!empMap[u.id])empMap[u.id]=u.name;});
-  const empCols=Object.entries(empMap).slice(0,6).map(([id,name])=>({id:parseInt(id),name}));
+  const today=new Date(); today.setHours(0,0,0,0);
+  const todayStr=today.toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-  const done=tasksData.filter(t=>t.status==='done').length;
-  const carried=tasksData.filter(t=>t.carry_over_days>0&&t.status!=='done').length;
+  const isLate =t=>t.due_date&&new Date(t.due_date)<today&&t.status!=='done'&&t.status!=='cancelled';
+  const isCarry=t=>(t.carry_over_days>0)&&!isLate(t)&&t.status!=='done'&&t.status!=='cancelled';
+  const isDone =t=>t.status==='done'||t.status==='cancelled';
 
-  // Week nav (last 5 days + today + tomorrow)
-  const days=[];
-  for(let i=-5;i<=1;i++) days.push(_addDays(today,i));
+  const emps=tasksUsersData;
 
-  const _isMob = window.innerWidth <= 768;
+  // apply filter
+  let filtered=[...tasksData];
+  if(_taskFilter==='done')      filtered=filtered.filter(t=>isDone(t));
+  else if(_taskFilter==='late') filtered=filtered.filter(t=>isLate(t));
+  else if(_taskFilter==='today') filtered=filtered.filter(t=>!isDone(t));
+  else if(_taskFilter!=='all'){
+    const uid=parseInt(_taskFilter);
+    filtered=filtered.filter(t=>t.assigned_to===uid);
+  }
+
+  const lateT  =filtered.filter(t=>isLate(t));
+  const carryT =filtered.filter(t=>isCarry(t));
+  const activeT=filtered.filter(t=>!isDone(t)&&!isLate(t)&&!isCarry(t));
+  const doneT  =filtered.filter(t=>isDone(t));
+
+  // ── Performance cards ──────────────────────────────
+  const perfHTML=emps.slice(0,6).map(u=>{
+    const mine  =tasksData.filter(t=>t.assigned_to===u.id);
+    const mDone =mine.filter(t=>isDone(t)).length;
+    const mLate =mine.filter(t=>isLate(t)).length;
+    const mAct  =mine.filter(t=>!isDone(t)).length;
+    const init  =(u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `<div style="background:white;border:0.5px solid #e8edf3;border-radius:12px;padding:10px 12px;flex:1;min-width:130px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+        <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#1a2472,#2563eb);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${init}</div>
+        <span style="font-size:13px;font-weight:700;color:#1e293b">${escH(u.name)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center">
+        <div style="background:#eff6ff;border-radius:7px;padding:5px 2px">
+          <div style="font-size:15px;font-weight:800;color:#1d4ed8">${mAct}</div>
+          <div style="font-size:9px;color:#1d4ed8">نشطة</div>
+        </div>
+        <div style="background:#f0fdf4;border-radius:7px;padding:5px 2px">
+          <div style="font-size:15px;font-weight:800;color:#15803d">${mDone}</div>
+          <div style="font-size:9px;color:#15803d">منجزة</div>
+        </div>
+        <div style="background:#fff5f5;border-radius:7px;padding:5px 2px">
+          <div style="font-size:15px;font-weight:800;color:#dc2626">${mLate}</div>
+          <div style="font-size:9px;color:#dc2626">متأخرة</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── Filter buttons ─────────────────────────────────
+  const filterDefs=[
+    {k:'all',label:'الكل'},
+    ...emps.slice(0,6).map(u=>({k:String(u.id),label:u.name})),
+    {k:'late',label:'⚠ المتأخرة'},
+    {k:'today',label:'اليوم'},
+    {k:'done',label:'المكتملة'},
+  ];
+  const filtersHTML=filterDefs.map(f=>`<button onclick="_taskFilter='${f.k}';renderDailySheet()"
+    style="padding:5px 12px;border-radius:99px;border:1px solid ${_taskFilter===f.k?'#1a2472':'#e2e8f0'};
+    background:${_taskFilter===f.k?'#1a2472':'white'};color:${_taskFilter===f.k?'white':'#64748b'};
+    font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">${escH(f.label)}</button>`).join('');
+
+  // ── Table header ───────────────────────────────────
+  const empColWidth=emps.length?Math.min(10,Math.floor(50/emps.length)):0;
+  const empThs=emps.slice(0,6).map(u=>`<th style="width:${empColWidth}%;background:#374151;color:white;font-size:10px;font-weight:700;padding:7px 3px;text-align:center;white-space:nowrap">
+    ${escH(u.name)}<br><span style="font-size:8px;opacity:.65">واتساب</span></th>`).join('');
+
+  const thead=`<thead><tr>
+    <th style="width:4%;background:#0d1540;color:white;padding:7px 4px;font-size:10px">#</th>
+    <th style="width:26%;background:#0d1540;color:white;padding:7px 10px;text-align:right;font-size:11px">المهمة</th>
+    <th style="width:11%;background:#0d1540;color:white;padding:7px 4px;font-size:10px">الشركة</th>
+    <th style="width:8%;background:#0d1540;color:white;padding:7px 4px;font-size:10px">الاستحقاق</th>
+    <th style="width:9%;background:#0d1540;color:white;padding:7px 4px;font-size:10px">الحالة</th>
+    <th style="width:12%;background:#0d1540;color:white;padding:7px 6px;font-size:10px;text-align:right">ملاحظات</th>
+    ${empThs}
+    <th style="width:7%;background:#374151;color:white;padding:7px 4px;font-size:10px">تعديل</th>
+  </tr></thead>`;
+
+  // ── Row builder ────────────────────────────────────
+  const ST_LBL={todo:'لم تبدأ',in_progress:'جاري',done:'تم ✓',cancelled:'ملغى'};
+  const ST_CLR={todo:'#f1f5f9|#475569',in_progress:'#dbeafe|#1d4ed8',done:'#dcfce7|#15803d',cancelled:'#fee2e2|#991b1b'};
+
+  const buildRows=(arr,isDoneSec=false)=>{
+    if(!arr.length) return `<tr><td colspan="${6+emps.slice(0,6).length}" style="text-align:center;padding:14px;font-size:12px;color:#94a3b8">لا توجد مهام</td></tr>`;
+    return arr.map((t,i)=>{
+      const late =isLate(t);
+      const carry=isCarry(t);
+      const [scBg,scFg]=(ST_CLR[t.status]||'#f1f5f9|#475569').split('|');
+      const dueDt=t.due_date?new Date(t.due_date):null;
+      if(dueDt) dueDt.setHours(0,0,0,0);
+      const diff=dueDt?Math.round((dueDt-today)/86400000):null;
+      const dueColor=diff===null?'':diff<0?'#dc2626':diff<=1?'#d97706':'#15803d';
+      const dueLbl=diff===null?'':`<div style="font-size:9px;color:${dueColor};font-weight:${diff<0?700:400}">
+        ${diff<0?'⚠ متأخر '+Math.abs(diff)+' يوم':diff===0?'📅 اليوم':diff===1?'📅 غداً':'📅 '+t.due_date}</div>`;
+
+      const lateBdg =late ?`<span style="background:#fee2e2;color:#dc2626;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700;margin-left:3px">متأخرة</span>`:'';
+      const carryBdg=carry?`<span style="background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700;margin-left:3px">مرحّلة</span>`:'';
+      const recurBdg=t.is_recurring?`<span style="background:#ede9fe;color:#6d28d9;padding:1px 5px;border-radius:99px;font-size:9px;font-weight:700;margin-left:3px">🔁</span>`:'';
+
+      const accentColor=late?'#fca5a5':carry?'#fde047':t.assigned_to?'#1d4ed8':'#e2e8f0';
+      const rowBg=isDoneSec?'':late?'#fff5f5':carry?'#fffde7':'white';
+
+      const empCells=emps.slice(0,6).map(u=>{
+        const on=t.assigned_to===u.id;
+        if(isDoneSec) return `<td style="text-align:center;padding:5px;font-size:12px;color:#94a3b8">${on?'✓':''}</td>`;
+        return `<td style="text-align:center;padding:4px;background:${on?'#eff6ff':'transparent'}">
+          <button onclick="_assignTask(${t.id},${u.id},${on?'false':'true'})"
+            title="${on?'إلغاء تعيين '+escH(u.name):'تعيين '+escH(u.name)+' وإرسال واتساب'}"
+            style="width:28px;height:28px;border-radius:7px;border:${on?'none':'1px solid #e2e8f0'};
+            background:${on?'#25D366':'#f8fafc'};cursor:pointer;font-size:13px;
+            display:inline-flex;align-items:center;justify-content:center;transition:transform .1s"
+            onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform=''">
+            ${on?'✅':'💬'}
+          </button>
+        </td>`;
+      }).join('');
+
+      const editBtn=isDoneSec
+        ?`<button onclick="_restoreTask(${t.id})" title="إعادة" style="background:none;border:none;cursor:pointer;font-size:12px;color:#94a3b8;padding:3px 5px">↩</button>`
+        :`<button onclick="showTaskModal(${t.id})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:3px 5px;border-radius:5px;color:#64748b">✏️</button>`;
+
+      return `<tr style="border-bottom:0.5px solid #e8edf3;background:${rowBg}">
+        <td style="text-align:center;font-size:10px;color:#94a3b8;padding:6px 3px">${i+1}</td>
+        <td style="padding:7px 10px;border-right:3px solid ${accentColor}">
+          <div style="font-size:12px;font-weight:600;color:${isDoneSec?'#94a3b8':'#1e293b'};${isDoneSec?'text-decoration:line-through':''}">
+            ${lateBdg}${carryBdg}${recurBdg}${escH(t.title)}
+          </div>${dueLbl}
+        </td>
+        <td style="text-align:center;font-size:10.5px;color:#64748b;padding:5px 3px">${escH(t.client_name||'—')}</td>
+        <td style="text-align:center;font-size:10px;padding:5px 3px;color:#64748b">${t.due_date?t.due_date:'—'}</td>
+        <td style="text-align:center;padding:5px 3px">
+          <span style="background:${scBg};color:${scFg};padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700">${ST_LBL[t.status]||t.status}</span>
+        </td>
+        <td style="font-size:10px;color:#64748b;padding:5px 7px;text-align:right;word-break:break-word">${escH(t.notes||t.inline_notes||'—')}</td>
+        ${empCells}
+        <td style="text-align:center;padding:4px">${editBtn}</td>
+      </tr>`;
+    }).join('');
+  };
+
+  // ── Section wrapper ────────────────────────────────
+  const section=(label,arr,key,isDoneSec=false)=>{
+    if(!arr.length&&_taskFilter==='all'&&key!=='active') return '';
+    const colors={late:'#fef2f2|#991b1b',carry:'#fefce8|#854d0e',active:'#f8fafc|#1e293b',done:'#f0fdf4|#14532d'};
+    const [bg,fg]=(colors[key]||colors.active).split('|');
+    return `<div style="background:white;border-radius:12px;border:0.5px solid #e8edf3;overflow:hidden;margin-bottom:8px">
+      <div style="background:${bg};padding:8px 14px;display:flex;align-items:center;gap:8px;border-bottom:0.5px solid #e8edf3">
+        <span style="font-size:12px;font-weight:700;color:${fg}">${label}</span>
+        <span style="background:${fg};color:white;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:700">${arr.length}</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:580px">
+          ${thead}<tbody>${buildRows(arr,isDoneSec)}</tbody>
+        </table>
+      </div>
+    </div>`;
+  };
+
   main.innerHTML=`
+  <div style="background:linear-gradient(135deg,#0d1540,#1a2472);border-radius:14px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="color:white;font-size:16px;font-weight:800">📋 المهام اليومية — نظام التشغيل</div>
+      <div style="color:rgba(255,255,255,.65);font-size:11px;margin-top:2px">${todayStr}</div>
+    </div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">
+      <button onclick="_taskViewMode='kanban';renderKanban()"
+        style="padding:6px 13px;border-radius:8px;background:rgba(255,255,255,.15);color:white;border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 كانبان</button>
+      <button onclick="_taskViewMode='folders';_taskEmpFilter=null;renderTaskFolders()"
+        style="padding:6px 13px;border-radius:8px;background:rgba(255,255,255,.15);color:white;border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">👥 فولدرات</button>
+      <button onclick="_showBulkAddModal()"
+        style="padding:6px 13px;border-radius:8px;background:rgba(255,255,255,.15);color:white;border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">➕ إضافة عدة مهام</button>
+      <button onclick="showTaskModal()"
+        style="padding:6px 13px;border-radius:8px;background:white;color:#1a2472;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">+ مهمة جديدة</button>
+      <button onclick="_genWAMessage()"
+        style="padding:6px 13px;border-radius:8px;background:#25D366;color:white;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📱 واتساب الغد</button>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${perfHTML||'<div style="color:#94a3b8;font-size:12px;padding:4px">لا يوجد موظفون في النظام</div>'}</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${filtersHTML}</div>
+
+  ${section('🔴 مهام متأخرة — تجاوزت تاريخ الاستحقاق',lateT,'late')}
+  ${section('⏩ مهام مرحّلة من يوم سابق',carryT,'carry')}
+  ${section('📋 مهام اليوم',activeT,'active')}
+  ${section('✅ المهام المكتملة',doneT,'done',true)}
+  `;
+}
+
+// ── Assign task + WhatsApp ─────────────────────────────────────────────
+async function _assignTask(taskId, userId, assign) {
+  try {
+    const newAssignee=assign?userId:null;
+    await api('PUT',`/api/tasks/${taskId}`,{assigned_to:newAssignee});
+    const emp=tasksUsersData.find(u=>u.id===userId);
+    tasksData=tasksData.map(t=>t.id===taskId?{...t,assigned_to:newAssignee,assigned_to_name:assign?(emp?.name||null):null}:t);
+    if(assign&&emp) {
+      const t=tasksData.find(t=>t.id===taskId);
+      const due=t?.due_date?new Date(t.due_date).toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'}):'غير محدد';
+      const msg=`📋 مهمة جديدة موكلة إليك:\n\n*${t?.title||''}*\n🏢 الشركة: ${t?.client_name||'—'}\n📅 الموعد: ${due}\n📝 ملاحظات: ${t?.notes||t?.inline_notes||'—'}\n\n— MS Accounting`;
+      const phone=String(emp.phone||emp.mobile||'').replace(/\D/g,'');
+      if(phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
+      else { navigator.clipboard.writeText(msg).catch(()=>{}); toast(`📋 تم نسخ رسالة واتساب لـ ${emp.name}`); }
+    }
+    renderDailySheet();
+    toast(assign?`✅ تم تعيين المهمة لـ ${emp?.name||''}`:' تم إلغاء التعيين');
+  } catch(e){toast(e.message,'error');}
+}
+
+async function _restoreTask(id) {
+  try {
+    await api('PUT',`/api/tasks/${id}`,{status:'todo'});
+    tasksData=tasksData.map(t=>t.id===id?{...t,status:'todo'}:t);
+    renderDailySheet(); toast('تمت إعادة المهمة');
+  } catch(e){toast(e.message,'error');}
+}
+
+function _showBulkAddModal() {
+  const ov=document.createElement('div');
+  ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal" style="max-width:420px">
+    <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+      <h2 style="font-size:15px;font-weight:700;margin:0;color:#1e293b">➕ إضافة عدة مهام</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:16px 20px">
+      <p style="font-size:12px;color:#64748b;margin-bottom:10px">اكتب كل مهمة في سطر منفصل:</p>
+      <textarea id="bulkTasksInp" class="input" rows="8" style="resize:none;line-height:1.9;direction:rtl"
+        placeholder="مراجعة إقرار ضريبة القيمة المضافة - شركة النيل&#10;تسليم الميزانية - مصنع الأهرام&#10;رد على استفسار العميل"></textarea>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button id="saveBulkBtn" class="btn btn-primary">إضافة الكل</button>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick=e=>{if(e.target===ov)ov.remove()};
+  document.getElementById('saveBulkBtn').onclick=async()=>{
+    const lines=document.getElementById('bulkTasksInp').value.split('\n').map(l=>l.trim()).filter(Boolean);
+    if(!lines.length) return;
+    const btn=document.getElementById('saveBulkBtn');
+    btn.disabled=true; btn.textContent='جاري الإضافة...';
+    try {
+      for(const title of lines) await api('POST','/api/tasks',{title,status:'todo',priority:'medium',category:'other'});
+      toast(`✅ تمت إضافة ${lines.length} مهمة`);
+      ov.remove(); loadTasks(true);
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='إضافة الكل';}
+  };
+}
+
+function _genWAMessage() {
+  const tmr=new Date(); tmr.setDate(tmr.getDate()+1);
+  const dateStr=tmr.toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const active=tasksData.filter(t=>t.status!=='done'&&t.status!=='cancelled');
+  const lines=[`📋 *مهام يوم ${dateStr}*\n`];
+  tasksUsersData.forEach(u=>{
+    const mine=active.filter(t=>t.assigned_to===u.id);
+    if(mine.length){
+      lines.push(`\n*${u.name}:*`);
+      mine.forEach((t,i)=>lines.push(`${i+1}. ${t.title}${t.client_name?' ('+t.client_name+')':''}${(t.notes||t.inline_notes)?' — '+(t.notes||t.inline_notes):''}`));
+    }
+  });
+  const unassigned=active.filter(t=>!t.assigned_to);
+  if(unassigned.length){lines.push('\n*غير مكلف:*');unassigned.forEach((t,i)=>lines.push(`${i+1}. ${t.title}`));}
+  const msg=lines.join('\n');
+  const ov=document.createElement('div');
+  ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal" style="max-width:400px">
+    <div style="padding:14px 18px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+      <h2 style="font-size:15px;font-weight:700;margin:0;color:#1e293b">📱 رسالة واتساب الغد</h2>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:14px 18px">
+      <div style="background:#e9f5e1;border-radius:10px;padding:12px;font-size:12px;color:#1a3c00;line-height:1.9;white-space:pre-wrap;margin-bottom:12px;max-height:260px;overflow-y:auto;direction:rtl">${escH(msg)}</div>
+      <button id="copyWABtn" style="width:100%;background:#25D366;color:white;border:none;padding:9px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📋 نسخ الرسالة</button>
+    </div>
+  </div>`;
+  document.body.append(ov);
+  ov.onclick=e=>{if(e.target===ov)ov.remove()};
+  document.getElementById('copyWABtn').onclick=()=>{
+    navigator.clipboard.writeText(msg).then(()=>toast('📋 تم نسخ الرسالة'));
+  };
+}
 <div style="display:${_isMob?'block':'flex'};height:${_isMob?'auto':'calc(100vh - 60px)'};${_isMob?'':'overflow:hidden'}">
 
   <!-- ─── Sidebar ─── -->
