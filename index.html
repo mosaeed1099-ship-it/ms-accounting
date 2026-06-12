@@ -3666,26 +3666,32 @@ window._showBulkAddModal = function _showBulkAddModal() {
     const assigneeName = users.find(u=>u.id===assigneeId)?.name||null;
     const btn = sendWA ? document.getElementById('bulkWABtn') : document.getElementById('saveBulkBtn');
     const orig = btn.textContent;
-    btn.disabled=true; btn.textContent='جاري الإضافة...';
+    btn.disabled=true;
     try {
       const tasks = rawLines.map(line => {
         const parts = line.split(/\s*[-–]\s*/);
         return { title: parts[0].trim(), client_name: parts[1]?.trim()||null };
       });
-      for(const t of tasks) {
+      // حفظ المهام واحدة واحدة مع إظهار التقدم
+      for(let i=0; i<tasks.length; i++) {
+        btn.textContent=`جاري الإضافة ${i+1}/${tasks.length}...`;
         await api('POST','/api/tasks',{
-          title: t.title,
-          client_name: t.client_name||null,
+          title: tasks[i].title,
+          client_name: tasks[i].client_name||null,
           assigned_to: assigneeId,
           status:'todo', priority:'medium', category:'other'
-        });
+        },{retries:1, retryDelay:1000});
       }
+      // إغلاق المودال فوراً ثم إرسال واتساب
+      ov.remove();
+      _AC.invalidate('/api/tasks');
+      loadTasks(false);
       toast(`✅ تمت إضافة ${tasks.length} مهمة`);
       if(sendWA && assigneeName) {
         const emp = users.find(u=>u.id===assigneeId);
         const phone = emp?.whatsapp_phone || emp?.phone;
         const dateStr = new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-        const lines = [`📋 *مهام ${escH(assigneeName)} — ${dateStr}*\n`];
+        const lines = [`📋 *مهام ${assigneeName} — ${dateStr}*\n`];
         tasks.forEach((t,i) => lines.push(`${i+1}. ${t.title}${t.client_name?' — '+t.client_name:''}`));
         const msg = lines.join('\n');
         if(phone) {
@@ -3697,8 +3703,7 @@ window._showBulkAddModal = function _showBulkAddModal() {
       } else if(sendWA && !assigneeName) {
         toast('اختر موظفاً لإرسال واتساب','warning');
       }
-      ov.remove(); loadTasks(true);
-    } catch(e){ toast(e.message||'فشل الإضافة','error'); btn.disabled=false; btn.textContent=orig; }
+    } catch(e){ toast(e.message||'فشل الإضافة — السيرفر لم يرد، حاول مرة أخرى','error'); btn.disabled=false; btn.textContent=orig; }
   }
 
   document.getElementById('saveBulkBtn').onclick = ()=>_doSave(false);
