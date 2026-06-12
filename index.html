@@ -7502,12 +7502,14 @@ async function sendLeadQuoteEmail(id, defaultEmail) {
   } catch(e){ toast(e.message,'error'); }
 }
 
+function _parseAmt(v){return parseFloat(String(v||'').replace(/[,،٬]/g,''))||0;}
+
 function _buildLeadMessage(lead, st) {
   // Deliverables & required docs from state
   const delivers = (st.deliverables||[]).filter(i=>i.checked).map(i=>`• ${i.text}`).join('\n');
   const reqDocs  = (st.reqDocs||[]).filter(i=>i.checked).map(i=>`• ${i.text}`).join('\n');
-  const capital  = parseFloat(st.capital) || lead.quote_capital || lead.estimated_capital || 0;
-  const total    = parseFloat(st.total_fees) || lead.quote_total_fees || lead.quote_expenses_total || 0;
+  const capital  = _parseAmt(st.capital) || _parseAmt(lead.quote_capital) || _parseAmt(lead.estimated_capital);
+  const total    = _parseAmt(st.total_fees) || _parseAmt(lead.quote_total_fees) || _parseAmt(lead.quote_expenses_total);
   const legal    = st.legal_entity || lead.quote_legal_entity || '';
   const activity = st.activity || lead.quote_activity || lead.company_activities || '';
   const location = st.location || lead.quote_location || '';
@@ -7593,10 +7595,10 @@ async function previewLeadQuotePDF(id) {
   const legalEntity = document.getElementById('qq-legal_entity')?.value || lead?.quote_legal_entity || '';
   const activity    = document.getElementById('qq-activity')?.value    || lead?.quote_activity    || lead?.company_activities || '';
   const location    = document.getElementById('qq-location')?.value    || lead?.quote_location    || lead?.governorate        || '';
-  const capital     = parseFloat(document.getElementById('qq-capital')?.value) || lead?.quote_capital || lead?.estimated_capital || 0;
-  const fees        = parseFloat(document.getElementById('qq-total_fees')?.value) || lead?.quote_total_fees || 0;
-  const gov         = parseFloat(document.getElementById('qq-government_fees')?.value) || lead?.quote_government_fees || 0;
-  const svcTotal    = (window._qsServices||[]).reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+  const capital     = _parseAmt(document.getElementById('qq-capital')?.value) || _parseAmt(lead?.quote_capital) || _parseAmt(lead?.estimated_capital);
+  const fees        = _parseAmt(document.getElementById('qq-total_fees')?.value) || _parseAmt(lead?.quote_total_fees);
+  const gov         = _parseAmt(document.getElementById('qq-government_fees')?.value) || _parseAmt(lead?.quote_government_fees);
+  const svcTotal    = (window._qsServices||[]).reduce((s,r)=>s+(_parseAmt(r.price)),0);
   const total       = fees + gov + svcTotal;
   const notes       = document.getElementById('qq-notes')?.value || lead?.quote_notes || '';
   const services    = (window._qsServices||[]).filter(s=>s.name);
