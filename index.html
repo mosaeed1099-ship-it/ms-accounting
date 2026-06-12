@@ -3359,6 +3359,8 @@ let _taskViewMode  = 'daily';
 let _taskEmpFilter = null;
 let _taskFilter    = 'all';
 
+const TASK_EMPS = ['عمرو شعبان', 'محمد مصطفي', 'صلاح'];
+
 let _tasksAutoRefresh=null;
 
 async function loadTasks(silent=false) {
@@ -3409,7 +3411,6 @@ function renderDailySheet() {
   const isDone =t=>t.status==='done'||t.status==='cancelled';
 
   // show only the 3 designated task employees
-  const TASK_EMPS=['عمرو شعبان','محمد مصطفي','صلاح'];
   const emps=TASK_EMPS.map(name=>tasksUsersData.find(u=>(u.name||'').trim()===name)).filter(Boolean);
 
   // apply filter
