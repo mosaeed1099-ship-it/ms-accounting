@@ -1847,6 +1847,7 @@ window.addEventListener('unhandledrejection', function(e) {
 
 function navigate(page) {
   currentPage = page;
+  document.dispatchEvent(new CustomEvent('_navigateTo',{detail:page}));
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
@@ -2550,7 +2551,7 @@ function renderClients() {
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div style="position:relative">
         <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:15px">🔍</span>
-        <input id="clientSearchInput" class="input" style="padding-right:34px;width:240px" placeholder="بحث بالاسم أو الرقم الضريبي..." value="${clientSearch}"/>
+        <input id="clientSearchInput" class="input" style="padding-right:34px;width:240px" placeholder="بحث بالاسم أو الرقم الضريبي..." value="${escH(clientSearch)}"/>
       </div>
       <select id="clientFilterSelect" class="input" style="width:150px">
         <option value="all" ${clientFilter==='all'?'selected':''}>كل الحالات</option>
@@ -3369,7 +3370,13 @@ async function loadTasks(silent=false) {
       api('GET','/api/tasks?page_size=500'),
       api('GET','/api/users').catch(()=>[]),
     ]);
-    tasksData     =taskRes?.items||[];
+    const todayStr=new Date().toISOString().slice(0,10);
+    tasksData=(taskRes?.items||[]).map(t=>{
+      const td=t.task_date||t.created_at?.slice(0,10);
+      const carry=(td&&td<todayStr&&t.status!=='done'&&t.status!=='cancelled')
+        ?Math.round((new Date(todayStr)-new Date(td))/86400000):0;
+      return {...t,carry_over_days:carry};
+    });
     tasksUsersData=Array.isArray(userRes)?userRes:(userRes?.items||[]);
     if(_taskViewMode==='daily')       renderDailySheet();
     else if(_taskViewMode==='kanban') renderKanban();
@@ -3378,18 +3385,16 @@ async function loadTasks(silent=false) {
     // start auto-refresh every 60s when on tasks page
     if(!_tasksAutoRefresh) {
       _tasksAutoRefresh=setInterval(()=>{
-        if(document.getElementById('main')?.closest('body')) loadTasks(true);
+        if(currentPage==='tasks') loadTasks(true);
       },60000);
     }
   } catch(e){toast(e.message,'error');}
 }
 
-// stop auto-refresh when navigating away
-const _origNavigate=window.navigate;
-window.navigate=function(page,...args){
-  if(page!=='tasks'&&_tasksAutoRefresh){clearInterval(_tasksAutoRefresh);_tasksAutoRefresh=null;}
-  return _origNavigate?.(page,...args);
-};
+// stop auto-refresh when navigating away — patched after module init via window.navigate
+document.addEventListener('_navigateTo', e=>{
+  if(e.detail!=='tasks'&&_tasksAutoRefresh){clearInterval(_tasksAutoRefresh);_tasksAutoRefresh=null;}
+});
 
 // ── Daily Sheet (نظام التشغيل اليومي) ─────────────────────────────────
 function renderDailySheet() {
@@ -3485,8 +3490,8 @@ function renderDailySheet() {
   </tr></thead>`;
 
   // ── Row builder ────────────────────────────────────
-  const ST_LBL={todo:'لم تبدأ',in_progress:'جاري',done:'تم ✓',cancelled:'ملغى'};
-  const ST_CLR={todo:'#f1f5f9|#475569',in_progress:'#dbeafe|#1d4ed8',done:'#dcfce7|#15803d',cancelled:'#fee2e2|#991b1b'};
+  const ST_LBL={todo:'لم تبدأ',in_progress:'جاري',waiting_docs:'انتظار',done:'تم ✓',cancelled:'ملغى'};
+  const ST_CLR={todo:'#f1f5f9|#475569',in_progress:'#dbeafe|#1d4ed8',waiting_docs:'#fef9c3|#a16207',done:'#dcfce7|#15803d',cancelled:'#fee2e2|#991b1b'};
 
   const buildRows=(arr,isDoneSec=false)=>{
     if(!arr.length) return `<tr><td colspan="${6+emps.slice(0,6).length}" style="text-align:center;padding:14px;font-size:12px;color:#94a3b8">لا توجد مهام</td></tr>`;
@@ -3954,9 +3959,10 @@ async function showTaskModal(id=null) {
           <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">الحالة</label>
           <select id="tStatus" class="input">
             <option value="todo"        ${!t||t?.status==='todo'       ?'selected':''}>⏳ لم تبدأ</option>
-            <option value="in_progress" ${t?.status==='in_progress'    ?'selected':''}>🔄 جاري العمل</option>
-            <option value="done"        ${t?.status==='done'           ?'selected':''}>✅ تم التنفيذ</option>
-            <option value="cancelled"   ${t?.status==='cancelled'      ?'selected':''}>❌ ملغى</option>
+            <option value="in_progress"  ${t?.status==='in_progress'   ?'selected':''}>🔄 جاري العمل</option>
+            <option value="waiting_docs" ${t?.status==='waiting_docs'  ?'selected':''}>📎 انتظار مستندات</option>
+            <option value="done"         ${t?.status==='done'          ?'selected':''}>✅ تم التنفيذ</option>
+            <option value="cancelled"    ${t?.status==='cancelled'     ?'selected':''}>❌ ملغى</option>
           </select>
         </div>
       </div>
