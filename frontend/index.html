@@ -104,6 +104,8 @@
     .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:190;backdrop-filter:blur(2px)}
 
     @media(max-width:768px){
+      /* Prevent page-level horizontal scroll (iOS Safari shifts fixed elements when page scrolls) */
+      #app{overflow-x:hidden}
       /* Sidebar becomes a slide-in drawer */
       .app-sidebar{
         position:fixed;right:-250px;top:0;width:250px;height:100vh;
