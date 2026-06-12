@@ -3408,13 +3408,9 @@ function renderDailySheet() {
   const isCarry=t=>(t.carry_over_days>0)&&!isLate(t)&&t.status!=='done'&&t.status!=='cancelled';
   const isDone =t=>t.status==='done'||t.status==='cancelled';
 
-  // dedup by normalized name (removes duplicate users with same name)
-  const _seen=new Set();
-  const emps=tasksUsersData.filter(u=>{
-    const key=(u.name||'').trim().replace(/\s+/g,' ').toLowerCase();
-    if(_seen.has(key)) return false;
-    _seen.add(key); return true;
-  });
+  // show only the 3 designated task employees
+  const TASK_EMPS=['عمرو شعبان','محمد مصطفي','صلاح'];
+  const emps=TASK_EMPS.map(name=>tasksUsersData.find(u=>(u.name||'').trim()===name)).filter(Boolean);
 
   // apply filter
   let filtered=[...tasksData];
