@@ -1231,8 +1231,9 @@ const navItems = [
   {id:'finance_center',icon:'💰',label:'المالية', adminOnly: true},
   {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
-  {id:'system_logs'  ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
-  {id:'backup'       ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
+  {id:'system_logs'       ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
+  {id:'backup'            ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
+  {id:'migration_dashboard',icon:'🚀',label:'تقدم الـ Migration', adminOnly: true},
 ];
 // Grouped navigation for sidebar display
 const navGroups = [
@@ -1243,7 +1244,7 @@ const navGroups = [
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
   {label:'المكتب المالي', items:['finance_center','owner']},
-  {label:'النظام', items:['system_logs','backup']},
+  {label:'النظام', items:['system_logs','backup','migration_dashboard']},
 ];
 
 // ── Client Portal Mode ─────────────────────────────
@@ -1946,7 +1947,7 @@ function navigate(page) {
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,system_logs:loadSystemLogs,backup:loadBackup};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard};
   if(pages[page]) pages[page]();
 }
 
@@ -20453,6 +20454,288 @@ window._bkDoRestore = async function() {
 };
 
 window.loadBackup = loadBackup;
+
+// ─── Migration Dashboard ───────────────────────────────────────────────────
+const MIGRATION_MODULES = [
+  // Phase 0 – Setup
+  {id:'setup_infra',    label:'إعداد البنية (Vite + CI)',   phase:0, status:'pending'},
+  {id:'setup_ws',       label:'WebSocket Zustand Store',     phase:0, status:'pending'},
+  {id:'setup_rq',       label:'React Query + useApi()',      phase:0, status:'pending'},
+  // Phase 1 – Auth
+  {id:'login',          label:'Login + Auth',                phase:1, status:'pending'},
+  {id:'shell',          label:'Sidebar / Nav Shell',         phase:1, status:'pending'},
+  // Phase 2 – Dashboard
+  {id:'dashboard',      label:'Dashboard',                   phase:2, status:'pending'},
+  // Phase 3 – Clients
+  {id:'clients',        label:'Clients',                     phase:3, status:'pending'},
+  // Phase 4 – Leads
+  {id:'leads',          label:'Leads',                       phase:4, status:'pending'},
+  // Phase 5 – Tasks
+  {id:'tasks',          label:'Tasks (Kanban)',               phase:5, status:'pending'},
+  // Phase 6 – Obligations
+  {id:'obligations',    label:'Obligations',                  phase:6, status:'pending'},
+  {id:'establishment',  label:'Establishment',                phase:6, status:'pending'},
+  // Phase 7 – Finance
+  {id:'collections',    label:'Collections (الإيرادات)',     phase:7, status:'pending'},
+  {id:'monthly_fees',   label:'Monthly Fees (الرسوم)',       phase:7, status:'pending'},
+  // Phase 8 – Finance Center
+  {id:'finance_center', label:'Finance Center',               phase:8, status:'pending'},
+  // Phase 9 – Tax + Invoices
+  {id:'tax',            label:'Tax Center',                   phase:9, status:'pending'},
+  {id:'invoices',       label:'Invoices + PDF',               phase:9, status:'pending'},
+  // Phase 10 – HR
+  {id:'employees',      label:'Employees',                   phase:10, status:'pending'},
+  {id:'payroll',        label:'Payroll',                     phase:10, status:'pending'},
+  {id:'settlements',    label:'Settlements',                 phase:10, status:'pending'},
+  // Phase 11 – Documents
+  {id:'documents',      label:'Documents',                   phase:11, status:'pending'},
+  {id:'archive',        label:'Archive',                     phase:11, status:'pending'},
+  // Phase 12 – Permissions + Portal
+  {id:'permissions',    label:'Permissions (RBAC)',           phase:12, status:'pending'},
+  {id:'portal',         label:'Client Portal',               phase:12, status:'pending'},
+  {id:'settings',       label:'Settings',                    phase:12, status:'pending'},
+  // Phase 13 – System
+  {id:'mail',           label:'Mail',                        phase:13, status:'pending'},
+  {id:'backup_ui',      label:'Backup UI',                   phase:13, status:'pending'},
+  {id:'system_logs_ui', label:'System Logs UI',              phase:13, status:'pending'},
+];
+
+const _MGKEY = 'ms_migration_progress';
+
+function _mgLoad() {
+  try { return JSON.parse(localStorage.getItem(_MGKEY) || '{}'); } catch { return {}; }
+}
+function _mgSave(data) {
+  localStorage.setItem(_MGKEY, JSON.stringify(data));
+}
+function _mgGetStatus(id) {
+  return _mgLoad()[id] || 'pending';
+}
+window.mgSetStatus = function(id, status) {
+  const d = _mgLoad();
+  d[id] = status;
+  _mgSave(d);
+  loadMigrationDashboard();
+};
+
+async function loadMigrationDashboard() {
+  const pg = document.getElementById('page-content');
+  if (!pg) return;
+
+  const saved = _mgLoad();
+  const modules = MIGRATION_MODULES.map(m => ({...m, status: saved[m.id] || m.status}));
+
+  const done   = modules.filter(m => m.status === 'done').length;
+  const inprog = modules.filter(m => m.status === 'in_progress').length;
+  const total  = modules.length;
+  const pct    = Math.round((done / total) * 100);
+
+  const currentPhase = modules.find(m => m.status === 'in_progress')?.phase
+    ?? modules.find(m => m.status === 'pending')?.phase ?? 14;
+  const nextModule   = modules.find(m => m.status === 'pending');
+
+  const openIssues = [
+    {text:'GitHub Actions يحتاج PAT + RAILWAY_TOKEN', severity:'high'},
+    {text:'Vite config للـ GitHub Pages لم يُعدّ بعد', severity:'high'},
+    {text:'WebSocket Zustand store لم يُبنَ بعد', severity:'high'},
+    {text:'Desktop App تعتمد على index.html القديم', severity:'medium'},
+    {text:'Railway filesystem ephemeral — uploads تُفقد عند deploy', severity:'medium'},
+  ];
+
+  const statusColor = {done:'#22c55e', in_progress:'#f59e0b', pending:'#94a3b8'};
+  const statusLabel = {done:'✅ مكتمل', in_progress:'🔄 جارٍ', pending:'⏳ قادم'};
+
+  const phaseNames = {
+    0:'إعداد البنية', 1:'Login + Shell', 2:'Dashboard', 3:'Clients',
+    4:'Leads', 5:'Tasks', 6:'Obligations', 7:'Collections + Fees',
+    8:'Finance Center', 9:'Tax + Invoices', 10:'HR (Employees/Payroll)',
+    11:'Documents + Archive', 12:'Permissions + Portal', 13:'System Modules',
+    14:'اكتمل!'
+  };
+
+  const rowsHtml = modules.map(m => `
+    <tr>
+      <td style="padding:10px 12px;font-weight:600">${m.label}</td>
+      <td style="padding:10px 12px;color:#64748b">المرحلة ${m.phase}</td>
+      <td style="padding:10px 12px">
+        <span style="background:${statusColor[m.status]}22;color:${statusColor[m.status]};padding:3px 10px;border-radius:20px;font-size:13px;font-weight:600">
+          ${statusLabel[m.status]}
+        </span>
+      </td>
+      <td style="padding:10px 12px">
+        <select onchange="mgSetStatus('${m.id}', this.value)"
+          style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">
+          <option value="pending"   ${m.status==='pending'   ?'selected':''}>⏳ قادم</option>
+          <option value="in_progress" ${m.status==='in_progress'?'selected':''}>🔄 جارٍ</option>
+          <option value="done"      ${m.status==='done'      ?'selected':''}>✅ مكتمل</option>
+        </select>
+      </td>
+    </tr>`).join('');
+
+  const issuesHtml = openIssues.map(i => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${i.severity==='high'?'#fef2f2':'#fffbeb'};border-right:3px solid ${i.severity==='high'?'#ef4444':'#f59e0b'};border-radius:8px;margin-bottom:8px">
+      <span>${i.severity==='high'?'🔴':'🟡'}</span>
+      <span style="font-size:14px">${i.text}</span>
+    </div>`).join('');
+
+  // Fetch live baseline metrics
+  let metricsHtml = '<p style="color:#94a3b8;font-size:13px">جارٍ تحميل البيانات...</p>';
+  try {
+    const resp = await api('GET', '/api/admin/metrics/baseline');
+    if (resp) {
+      metricsHtml = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+          ${[
+            ['👥 العملاء',       resp.clients.total],
+            ['🏢 الشركات',       resp.clients.companies],
+            ['👤 الأفراد',       resp.clients.individuals],
+            ['🎯 الـ Leads',     resp.leads.total],
+            ['👨‍💼 الموظفين',   resp.employees.total],
+            ['📋 المهام',        resp.tasks.total],
+            ['⚖️ الالتزامات',   resp.obligations.templates],
+            ['📄 المستندات',    resp.documents.total],
+            ['🏗️ المنشآت',     resp.establishments.total],
+            ['📁 الملفات',       resp.files.count],
+          ].map(([label, val]) => `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:#1e293b">${val ?? 0}</div>
+              <div style="font-size:12px;color:#64748b;margin-top:4px">${label}</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;font-size:13px">
+            🗄️ حجم قاعدة البيانات: <strong>${resp.database.size_human}</strong>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;font-size:13px">
+            📦 حجم الملفات: <strong>${resp.files.size_human}</strong>
+          </div>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;font-size:13px;color:#64748b">
+            🕐 ${new Date(resp.generated_at).toLocaleString('ar-EG')}
+          </div>
+        </div>`;
+    }
+  } catch {}
+
+  pg.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;padding:24px 16px" dir="rtl">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <h2 style="font-size:22px;font-weight:700;color:#1e293b;margin:0">🚀 لوحة تقدم React Migration</h2>
+        <button onclick="loadMigrationDashboard()" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer">🔄 تحديث</button>
+      </div>
+
+      <!-- Progress Bar -->
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px;margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:15px;font-weight:600;color:#374151">نسبة الإنجاز</span>
+          <span style="font-size:28px;font-weight:700;color:#6366f1">${pct}%</span>
+        </div>
+        <div style="background:#e2e8f0;border-radius:999px;height:12px;overflow:hidden">
+          <div style="background:linear-gradient(90deg,#6366f1,#8b5cf6);height:100%;width:${pct}%;transition:width 0.5s;border-radius:999px"></div>
+        </div>
+        <div style="display:flex;gap:20px;margin-top:14px;font-size:13px;color:#64748b">
+          <span>✅ مكتمل: <strong style="color:#22c55e">${done}</strong></span>
+          <span>🔄 جارٍ: <strong style="color:#f59e0b">${inprog}</strong></span>
+          <span>⏳ قادم: <strong>${total - done - inprog}</strong></span>
+          <span>📦 الإجمالي: <strong>${total}</strong></span>
+        </div>
+      </div>
+
+      <!-- Current / Next -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:18px">
+          <div style="font-size:12px;font-weight:600;color:#3b82f6;margin-bottom:6px">المرحلة الحالية</div>
+          <div style="font-size:16px;font-weight:700;color:#1e40af">المرحلة ${currentPhase}: ${phaseNames[currentPhase]}</div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:18px">
+          <div style="font-size:12px;font-weight:600;color:#16a34a;margin-bottom:6px">الـ Module القادم</div>
+          <div style="font-size:16px;font-weight:700;color:#166534">${nextModule ? nextModule.label : '🎉 اكتمل كل شيء!'}</div>
+        </div>
+      </div>
+
+      <!-- Open Issues -->
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin-bottom:20px">
+        <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 14px">🔴 المشاكل المفتوحة</h3>
+        ${issuesHtml}
+      </div>
+
+      <!-- Baseline Metrics -->
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin-bottom:20px">
+        <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 14px">📊 إحصائيات النظام (PRE_REACT_MIGRATION)</h3>
+        ${metricsHtml}
+      </div>
+
+      <!-- Modules Table -->
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">
+        <div style="padding:18px 20px;border-bottom:1px solid #f1f5f9">
+          <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0">📋 تفاصيل الـ Modules</h3>
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#f8fafc">
+              <th style="padding:10px 12px;text-align:right;font-size:13px;color:#64748b;font-weight:600">الـ Module</th>
+              <th style="padding:10px 12px;text-align:right;font-size:13px;color:#64748b;font-weight:600">المرحلة</th>
+              <th style="padding:10px 12px;text-align:right;font-size:13px;color:#64748b;font-weight:600">الحالة</th>
+              <th style="padding:10px 12px;text-align:right;font-size:13px;color:#64748b;font-weight:600">تحديث</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+window.loadMigrationDashboard = loadMigrationDashboard;
+
+// ─── Baseline Metrics Report (saved to file) ──────────────────────────────
+window.downloadBaselineReport = async function() {
+  const resp = await api('GET', '/api/admin/metrics/baseline');
+  if (!resp) return toast('فشل تحميل التقرير', 'error');
+  const report = [
+    `# Baseline Metrics Report — PRE_REACT_MIGRATION`,
+    `Generated: ${new Date(resp.generated_at).toLocaleString('ar-EG')}`,
+    ``,
+    `## Clients`,
+    `  Total:       ${resp.clients.total}`,
+    `  Individuals: ${resp.clients.individuals}`,
+    `  Companies:   ${resp.clients.companies}`,
+    `  Active:      ${resp.clients.active}`,
+    `  Inactive:    ${resp.clients.inactive}`,
+    ``,
+    `## Leads`,
+    `  Total: ${resp.leads.total}`,
+    ``,
+    `## Employees`,
+    `  Total: ${resp.employees.total}`,
+    ``,
+    `## Tasks`,
+    `  Total: ${resp.tasks.total}`,
+    ``,
+    `## Obligations`,
+    `  Templates:  ${resp.obligations.templates}`,
+    `  Instances:  ${resp.obligations.instances}`,
+    ``,
+    `## Documents`,
+    `  Total: ${resp.documents.total}`,
+    ``,
+    `## Establishments`,
+    `  Total: ${resp.establishments.total}`,
+    ``,
+    `## Uploaded Files`,
+    `  Count: ${resp.files.count}`,
+    `  Size:  ${resp.files.size_human}`,
+    ``,
+    `## Database`,
+    `  Size: ${resp.database.size_human}`,
+  ].join('\n');
+  const blob = new Blob([report], {type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `BASELINE_METRICS_${new Date().toISOString().split('T')[0]}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('تم تنزيل التقرير', 'success');
+};
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {

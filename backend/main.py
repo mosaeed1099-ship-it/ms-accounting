@@ -43,6 +43,7 @@ from app.routers import portal_credentials as portal_credentials_router
 from app.routers.finance_center import router as finance_center_router
 from app.routers.monthly_fees import router as monthly_fees_router
 from app.routers.backup import router as backup_router
+from app.routers.admin_metrics import router as admin_metrics_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -626,6 +627,7 @@ app.include_router(realtime_router)
 app.include_router(finance_center_router)
 app.include_router(monthly_fees_router)
 app.include_router(backup_router)
+app.include_router(admin_metrics_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
