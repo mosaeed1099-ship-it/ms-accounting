@@ -19151,6 +19151,7 @@ window.deleteOwnerRevenue = async function(id) {
 
 // ── Add/Edit Expense Modal ────────────────────────────
 window.showAddExpenseModal = function(existing) {
+  document.getElementById('addExpModal')?.remove();
   const isEdit = !!existing;
   const catOptions = {rent:'إيجار',electricity:'كهرباء',internet:'إنترنت',salaries:'رواتب',advertising:'إعلانات',marketing:'تسويق',software:'برامج',transport:'مواصلات',hospitality:'ضيافة',other:'أخرى'};
   const html = `
