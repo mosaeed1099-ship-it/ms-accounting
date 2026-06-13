@@ -1156,6 +1156,7 @@ const navItems = [
   {id:'mail'         ,icon:'📧',label:'البريد الإلكتروني'},
   {id:'client_portal' ,icon:'🔑',label:'بوابة العملاء'},
   {id:'permissions'   ,icon:'🛡️',label:'الصلاحيات'},
+  {id:'monthly_fees'  ,icon:'📋',label:'المدفوعات الشهرية', adminOnly: true},
   {id:'finance_center',icon:'💰',label:'المالية', adminOnly: true},
   {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
@@ -19663,6 +19664,226 @@ async function fcRenderGrid(el) {
     <div style="padding:8px 14px;font-size:11px;color:#94a3b8">✓ = محصّل &nbsp;|&nbsp; ✕ = غير محصّل &nbsp;|&nbsp; رقم = جزئي</div>
   </div>`;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION: المدفوعات الشهرية — Monthly Fees
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MF_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+let mfCurrentYear = new Date().getFullYear();
+let mfCurrentMonth = new Date().getMonth() + 1;
+
+async function loadMonthlyFees() {
+  if(currentUser?.role !== 'admin') {
+    document.getElementById('main').innerHTML = `<div style="text-align:center;padding:80px;color:#dc2626;font-size:18px">🔒 للمسؤول فقط</div>`;
+    return;
+  }
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = `<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>`;
+  await renderMFPage();
+}
+
+async function renderMFPage() {
+  const main = document.getElementById('main');
+  const [dash, records] = await Promise.all([
+    api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
+    api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
+  ]);
+
+  const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
+  const s = dash?.summary || {};
+  const cl = dash?.clients || {};
+
+  main.innerHTML = `
+  <!-- Header -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin:0">📋 المدفوعات الشهرية</h2>
+      <div style="font-size:13px;color:#64748b;margin-top:2px">تتبع الأتعاب الشهرية — بناءً على منطق الأتعاب المؤجلة</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="mfYear" class="input" style="width:90px" onchange="mfFilterChange()">
+        ${[2025,2026,2027].map(y=>`<option value="${y}" ${y===mfCurrentYear?'selected':''}>${y}</option>`).join('')}
+      </select>
+      <select id="mfMonth" class="input" style="width:100px" onchange="mfFilterChange()">
+        ${MF_MONTHS.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===mfCurrentMonth?'selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+
+  <!-- KPI Dashboard -->
+  ${dash ? `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
+    ${[
+      {l:'إجمالي المستحقات', v:fmt(s.total_due), c:'#3b82f6', bg:'#eff6ff'},
+      {l:'إجمالي المحصّل',   v:fmt(s.total_paid), c:'#10b981', bg:'#ecfdf5'},
+      {l:'إجمالي المتبقي',  v:fmt(s.total_remaining), c:'#ef4444', bg:'#fef2f2'},
+      {l:'نسبة التحصيل',    v:(s.collection_pct||0).toFixed(1)+'%', c:'#8b5cf6', bg:'#f5f3ff'},
+      {l:'عملاء نشطون',    v:cl.active||0, c:'#1e293b', bg:'#f1f5f9'},
+      {l:'دفعوا هذا الشهر', v:cl.paid_this_month||0, c:'#10b981', bg:'#ecfdf5'},
+      {l:'لم يدفعوا',       v:cl.unpaid_this_month||0, c:'#ef4444', bg:'#fef2f2'},
+    ].map(k=>`
+      <div style="background:${k.bg};border-radius:12px;padding:14px 16px;border:1px solid ${k.c}22">
+        <div style="font-size:11px;color:#64748b;margin-bottom:4px">${k.l}</div>
+        <div style="font-size:20px;font-weight:700;color:${k.c}">${k.v}</div>
+      </div>`).join('')}
+  </div>
+  ${dash.top_debtors?.length ? `
+  <div style="background:#fff7ed;border-radius:12px;padding:14px 16px;border:1px solid #f59e0b44;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:8px">⚠️ أعلى العملاء متأخرين</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${dash.top_debtors.map(d=>`<span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">${d.name} — ${(d.remaining||0).toLocaleString('ar-EG')} ج.م</span>`).join('')}
+    </div>
+  </div>` : ''}` : `<div style="background:#fef2f2;padding:14px;border-radius:10px;color:#dc2626;margin-bottom:20px">⚠️ تعذّر تحميل لوحة التحكم — تأكد من تشغيل الـ import أولاً</div>`}
+
+  <!-- Progress Bar -->
+  ${s.total_due > 0 ? `
+  <div style="background:white;border-radius:12px;padding:16px;border:1px solid #e8edf3;margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:6px">
+      <span>نسبة التحصيل — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</span>
+      <span style="font-weight:700;color:#10b981">${(s.collection_pct||0).toFixed(1)}%</span>
+    </div>
+    <div style="background:#f1f5f9;border-radius:20px;height:10px;overflow:hidden">
+      <div style="background:linear-gradient(90deg,#10b981,#059669);height:100%;border-radius:20px;width:${Math.min(100,s.collection_pct||0)}%;transition:width .5s"></div>
+    </div>
+  </div>` : ''}
+
+  <!-- Clients Table -->
+  <div style="background:white;border-radius:16px;border:1px solid #e8edf3;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:14px;font-weight:700;color:#1e293b">جدول العملاء — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</div>
+      <div style="font-size:12px;color:#64748b">${records.length} عميل</div>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="data-table" style="width:100%">
+      <thead><tr>
+        <th>#</th>
+        <th>اسم الشركة</th>
+        <th>الأتعاب الشهرية</th>
+        <th>رصيد سابق</th>
+        <th>إجمالي المطلوب</th>
+        <th>المدفوع</th>
+        <th>المتبقي</th>
+        <th>آخر دفعة</th>
+        <th>الحالة</th>
+        <th>إجراء</th>
+      </tr></thead>
+      <tbody>
+        ${records.length ? records.map((r,i)=>`
+          <tr style="cursor:pointer" onclick="mfShowClientHistory(${r.client_id},'${(r.client_name||'').replace(/'/g,"\\'")}')">
+            <td style="color:#94a3b8">${i+1}</td>
+            <td style="font-weight:600">${r.client_name||'—'}</td>
+            <td>${(r.fee_amount||0).toLocaleString('ar-EG')} ج.م</td>
+            <td style="color:${r.balance_carried>0?'#ef4444':'#94a3b8'}">${r.balance_carried>0?(r.balance_carried||0).toLocaleString('ar-EG')+' ج.م':'—'}</td>
+            <td style="font-weight:700">${(r.total_due||0).toLocaleString('ar-EG')} ج.م</td>
+            <td style="color:#10b981">${(r.paid_amount||0).toLocaleString('ar-EG')} ج.م</td>
+            <td style="color:${r.remaining>0?'#ef4444':'#10b981'};font-weight:600">${(r.remaining||0).toLocaleString('ar-EG')} ج.م</td>
+            <td style="font-size:12px;color:#64748b">${r.paid_date||'—'}</td>
+            <td>
+              ${r.paid
+                ? `<span style="background:#ecfdf5;color:#10b981;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✓ مدفوع</span>`
+                : `<span style="background:#fef2f2;color:#ef4444;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✗ غير مدفوع</span>`}
+            </td>
+            <td onclick="event.stopPropagation()">
+              ${!r.paid ? `<button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining})" class="btn btn-sm" style="font-size:12px;padding:4px 10px;background:#3b82f6;color:white;border:none">💳 تسجيل دفعة</button>` : ''}
+            </td>
+          </tr>`).join('')
+          : `<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات لهذا الشهر — تأكد من تشغيل الـ import</td></tr>`}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+}
+
+window.mfFilterChange = function() {
+  mfCurrentYear  = parseInt(document.getElementById('mfYear').value);
+  mfCurrentMonth = parseInt(document.getElementById('mfMonth').value);
+  renderMFPage();
+};
+
+window.mfPayModal = function(recordId, totalDue, clientName, remaining) {
+  document.getElementById('mfPayModalEl')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfPayModalEl">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header"><h3>💳 تسجيل دفعة — ${clientName}</h3><button onclick="document.getElementById('mfPayModalEl').remove()" class="modal-close">✕</button></div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#eff6ff;border-radius:10px;padding:12px;font-size:13px;color:#1e40af">
+          إجمالي المطلوب: <strong>${(totalDue||0).toLocaleString('ar-EG')} ج.م</strong> | المتبقي: <strong>${(remaining||0).toLocaleString('ar-EG')} ج.م</strong>
+        </div>
+        <div><label class="label">المبلغ المدفوع (ج.م)</label><input id="mfPayAmount" class="input" type="number" min="0" step="0.01" value="${remaining||totalDue||''}"/></div>
+        <div><label class="label">تاريخ الدفع</label><input id="mfPayDate" class="input" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
+        <div><label class="label">البيان</label><input id="mfPayBayan" class="input" value="تم دفع"/></div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSavePay(${recordId})" class="btn btn-primary">💾 حفظ الدفعة</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfSavePay = async function(recordId) {
+  const amount = parseFloat(document.getElementById('mfPayAmount').value||0);
+  const pdate  = document.getElementById('mfPayDate').value;
+  const bayan  = document.getElementById('mfPayBayan').value;
+  if(!amount){ toast('ادخل المبلغ','error'); return; }
+  await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:amount, paid_date:pdate, bayan});
+  document.getElementById('mfPayModalEl')?.remove();
+  toast('✅ تم تسجيل الدفعة');
+  await renderMFPage();
+};
+
+window.mfShowClientHistory = async function(clientId, clientName) {
+  const data = await api('GET', `/api/monthly-fees/clients/${clientId}/history`).catch(()=>null);
+  if(!data){ toast('تعذّر تحميل التفاصيل','error'); return; }
+
+  const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
+  const s = data.summary || {};
+  const records = data.records || [];
+
+  const html = `
+  <div class="modal-backdrop" id="mfHistoryModal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:680px;max-height:85vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <h3>🏢 ${clientName}</h3>
+        <button onclick="document.getElementById('mfHistoryModal').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y:auto;flex:1">
+        <!-- Summary Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+          ${[
+            {l:'إجمالي المدفوع', v:fmt(s.total_paid), c:'#10b981', bg:'#ecfdf5'},
+            {l:'إجمالي المطلوب', v:fmt(s.total_due), c:'#3b82f6', bg:'#eff6ff'},
+            {l:'إجمالي المتأخرات', v:fmt(s.total_remaining), c:'#ef4444', bg:'#fef2f2'},
+            {l:'آخر دفعة', v:s.last_paid_date||'—', c:'#64748b', bg:'#f8fafc'},
+          ].map(k=>`<div style="background:${k.bg};border-radius:10px;padding:12px;border:1px solid ${k.c}22"><div style="font-size:11px;color:#64748b;margin-bottom:2px">${k.l}</div><div style="font-size:16px;font-weight:700;color:${k.c}">${k.v}</div></div>`).join('')}
+        </div>
+
+        <!-- Payment History -->
+        <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px">سجل الشهور</div>
+        ${records.map(r=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:10px;margin-bottom:6px;background:${r.paid?'#f0fdf4':'#fff7ed'};border:1px solid ${r.paid?'#bbf7d0':'#fed7aa'}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:18px">${r.paid?'✅':'⏳'}</div>
+            <div>
+              <div style="font-weight:600;font-size:13px">${r.month_label} ${r.year}</div>
+              <div style="font-size:11px;color:#64748b">${r.bayan||''}</div>
+            </div>
+          </div>
+          <div style="text-align:left;font-size:12px">
+            <div>أتعاب: <strong>${fmt(r.fee_amount)}</strong></div>
+            ${r.balance_carried>0?`<div style="color:#ef4444">رصيد سابق: +${fmt(r.balance_carried)}</div>`:''}
+            <div>مدفوع: <strong style="color:${r.paid_amount>0?'#10b981':'#94a3b8'}">${fmt(r.paid_amount)}</strong></div>
+            ${r.remaining>0?`<div style="color:#ef4444">متبقي: ${fmt(r.remaining)}</div>`:''}
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
 
 // Apply saved language on load
 window.addEventListener('ms-app-ready', ()=>{
