@@ -7,6 +7,17 @@
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script>
+    // Force reload if served from cache (no v= param)
+    (function(){
+      const V = '1781366931';
+      const u = new URL(location.href);
+      if(u.searchParams.get('v') !== V){
+        u.searchParams.set('v', V);
+        location.replace(u.toString());
+      }
+    })();
+  </script>
   <title>MS Accounting — نظام إدارة مكتب المحاسبة</title>
   <script src="config.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
