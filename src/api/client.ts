@@ -27,11 +27,10 @@ api.interceptors.response.use(
       localStorage.removeItem('user')
       sessionStorage.removeItem('token')
       sessionStorage.removeItem('user')
-      // Redirect to login within this app's base path
-      const loginPath = import.meta.env.BASE_URL + 'login'
-      if (!window.location.pathname.endsWith('/login')) {
-        logAuth('redirect_error', `redirecting to ${loginPath}`)
-        window.location.href = loginPath
+      // With HashRouter: redirect to /#/login (no server request)
+      if (!window.location.hash.includes('/login')) {
+        logAuth('redirect_error', 'token invalid → redirecting to #/login')
+        window.location.hash = '#/login'
       }
     }
     const message = error.response?.data?.detail || 'حدث خطأ غير متوقع'

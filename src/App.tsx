@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { Layout } from './components/layout/Layout'
 import { ToastContainer } from './components/ui/Toast'
@@ -17,10 +17,6 @@ import Settings from './pages/Settings'
 import Leads from './pages/Leads'
 import Establishment from './pages/Establishment'
 import Obligations from './pages/Obligations'
-
-// In prod: basename = '/ms-accounting/app' (gh-pages subpath)
-// In dev:  basename = '' (localhost:5173/)
-const basename = import.meta.env.PROD ? '/ms-accounting/app' : ''
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -45,7 +41,7 @@ export default function App() {
   }, [addToast])
 
   return (
-    <BrowserRouter basename={basename}>
+    <HashRouter>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       <Routes>
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
@@ -64,6 +60,6 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
