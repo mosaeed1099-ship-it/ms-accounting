@@ -412,8 +412,8 @@
 // ── API URL detection ─────────────────────────────────────────────────────────
 // Priority: 1) Electron desktop injection  2) localhost dev  3) production subdomain
 const API = (() => {
-  // 1) config.js sets window.MS_API_BASE — always wins on production
-  if (window.MS_API_BASE) return window.MS_API_BASE;
+  // 1) config.js sets window.MS_API — always wins on production
+  if (window.MS_API) return window.MS_API;
   // 2) Electron desktop mode: preload exposes window.__msDesktop
   if (window.__msDesktop?.isDesktop) return window.__msDesktop.getApiUrl();
   // 3) Direct file:// open or MS_DESKTOP_PORT injected by Electron main process
@@ -5560,7 +5560,7 @@ window.tcVatDoSubmit = async function(id) {
     fd.append('category', 'TAX');
     fd.append('description', window._vatPdfFile.name);
     const token = localStorage.getItem('token');
-    const uploadRes = await fetch(API_BASE + '/api/documents/upload', {
+    const uploadRes = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
     if (!uploadRes.ok) { const err=await uploadRes.json(); throw new Error(err.detail||'فشل رفع الملف'); }
@@ -5742,7 +5742,7 @@ window.tcVatExcelUpload = async function() {
     fd.append('year', year);
     fd.append('month', month);
     const token = localStorage.getItem('token');
-    const res = await fetch(API_BASE + '/api/documents/upload', {
+    const res = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
     if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'فشل الرفع'); }
@@ -8148,7 +8148,7 @@ window._fmShowAttachModal = function(caseId, companyName, stageKey, clientId) {
       fd.append('description', document.getElementById('fmAttachDesc')?.value || window._fmAttachFile.name);
       fd.append('tags', `formation,stage:${stageKey},case:${caseId}`);
       const token = localStorage.getItem('token');
-      const res = await fetch(API_BASE + '/api/documents/upload', {
+      const res = await fetch(API + '/api/documents/upload', {
         method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
       });
       if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'فشل الرفع'); }
@@ -18047,7 +18047,7 @@ async function deleteCompanyDoc(id) {
 
 // Helper for multipart fetch
 function fetchWithAuth(url, opts={}) {
-  const base = API; // Uses the module-level API constant (which checks window.MS_API_BASE first)
+  const base = API; // Uses the module-level API constant (which checks window.MS_API first)
   const headers = {'Authorization':`Bearer ${token}`};
   if(opts.body instanceof FormData) { /* let browser set content-type */ }
   else { headers['Content-Type']='application/json'; }
@@ -18983,7 +18983,7 @@ async function renderOwnerSnapshots(el) {
     toast('جاري إعداد التقرير...');
     try {
       const token = localStorage.getItem('ms_token');
-      const url = `${API_BASE}/api/office/report-pdf?year=${year}&month=${month}`;
+      const url = `${API}/api/office/report-pdf?year=${year}&month=${month}`;
       const resp = await fetch(url, {headers:{'Authorization':`Bearer ${token}`}});
       if(!resp.ok) throw new Error('فشل تحميل التقرير');
       const blob = await resp.blob();
@@ -19082,7 +19082,7 @@ async function renderOwnerAnnual(el) {
   window.exportOwnerAnnualPDF = async function() {
     toast('جاري إعداد التقرير...');
     const token = localStorage.getItem('ms_token');
-    const url = `${API_BASE}/api/office/report-pdf?year=${yr}`;
+    const url = `${API}/api/office/report-pdf?year=${yr}`;
     try {
       const resp = await fetch(url, {headers:{'Authorization':`Bearer ${token}`}});
       if(!resp.ok) throw new Error('فشل');
@@ -19151,6 +19151,7 @@ window.deleteOwnerRevenue = async function(id) {
 
 // ── Add/Edit Expense Modal ────────────────────────────
 window.showAddExpenseModal = function(existing) {
+  document.getElementById('addExpModal')?.remove();
   const isEdit = !!existing;
   const catOptions = {rent:'إيجار',electricity:'كهرباء',internet:'إنترنت',salaries:'رواتب',advertising:'إعلانات',marketing:'تسويق',software:'برامج',transport:'مواصلات',hospitality:'ضيافة',other:'أخرى'};
   const html = `
