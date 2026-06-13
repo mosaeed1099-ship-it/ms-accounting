@@ -19066,12 +19066,7 @@ async function loadFinanceCenter() {
 
   if (!_fcTab) _fcTab = isOwner ? 'expenses' : 'collections';
 
-  // جلب العملاء مرة واحدة
-  if (!_fcClients.length) {
-    const res = await api('GET', '/api/clients?limit=2000').catch(() => ({items:[]}));
-    _fcClients = (res.items || res || []).filter(c => c.status === 'active');
-  }
-
+  // عرض الصفحة فوراً — جلب العملاء في الخلفية
   const tabs = isOwner
     ? [{id:'expenses',label:'المصروفات'},{id:'collections',label:'التحصيل'},{id:'summary',label:'ملخص الشهر'},{id:'grid',label:'جريد الأتعاب'}]
     : [{id:'collections',label:'التحصيل'}];
@@ -19121,7 +19116,16 @@ async function loadFinanceCenter() {
     else if (tab === 'grid') fcRenderGrid(body);
   };
 
-  window.fcSwitchTab(_fcTab);
+  // جلب العملاء في الخلفية ثم عرض التبويب
+  (async () => {
+    if (!_fcClients.length) {
+      try {
+        const res = await api('GET', '/api/clients?limit=2000');
+        _fcClients = (res.items || res || []).filter(c => c.status === 'active');
+      } catch(e) { _fcClients = []; }
+    }
+    window.fcSwitchTab(_fcTab);
+  })();
 }
 
 // ── التحصيل ──────────────────────────────────────────────────────────────────
