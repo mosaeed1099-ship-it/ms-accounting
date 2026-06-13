@@ -19905,6 +19905,15 @@ window.addEventListener('ms-app-ready', ()=>{
 
 window.toggleLanguage = toggleLanguage;
 window.t = t;
+
+// Register service worker for cache control
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/ms-accounting/frontend/sw.js', {scope: '/ms-accounting/frontend/'})
+    .catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'RELOAD') location.reload(true);
+  });
+}
 </script>
 
 </body>
