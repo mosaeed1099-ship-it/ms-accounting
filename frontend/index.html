@@ -19061,7 +19061,7 @@ let _fcMonth = new Date().getMonth() + 1;
 let _fcYear = new Date().getFullYear();
 
 async function loadFinanceCenter() {
-  const el = document.getElementById('pageContent');
+  const el = document.getElementById('main');
   const isOwner = fcIsOwner();
 
   if (!_fcTab) _fcTab = isOwner ? 'expenses' : 'collections';
