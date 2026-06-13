@@ -19697,16 +19697,39 @@ async function loadMonthlyFees() {
   await renderMFPage();
 }
 
+let mfTableFilter = 'all'; // 'all' | 'paid' | 'unpaid'
+let _mfAllRecords = [];
+
 async function renderMFPage() {
   const main = document.getElementById('main');
   const [dash, records] = await Promise.all([
     api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
     api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
   ]);
+  _mfAllRecords = records;
+  window._mfLastDash = dash;
+  mfRenderPage(dash, records);
+}
 
+function mfRenderPage(dash, records) {
+  const main = document.getElementById('main');
   const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
   const s = dash?.summary || {};
   const cl = dash?.clients || {};
+
+  const filtered = mfTableFilter === 'paid'   ? records.filter(r=>r.paid)
+                 : mfTableFilter === 'unpaid' ? records.filter(r=>!r.paid)
+                 : records;
+
+  const kpis = [
+    {l:'إجمالي المستحقات', v:fmt(s.total_due),              c:'#3b82f6', bg:'#eff6ff', filter:null},
+    {l:'إجمالي المحصّل',   v:fmt(s.total_paid),             c:'#10b981', bg:'#ecfdf5', filter:null},
+    {l:'إجمالي المتبقي',   v:fmt(s.total_remaining),        c:'#ef4444', bg:'#fef2f2', filter:null},
+    {l:'نسبة التحصيل',     v:(s.collection_pct||0).toFixed(1)+'%', c:'#8b5cf6', bg:'#f5f3ff', filter:null},
+    {l:'عملاء نشطون',      v:cl.active||0,                  c:'#1e293b', bg:'#f1f5f9', filter:'all'},
+    {l:'دفعوا هذا الشهر',  v:cl.paid_this_month||0,         c:'#10b981', bg:'#ecfdf5', filter:'paid'},
+    {l:'لم يدفعوا',        v:cl.unpaid_this_month||0,       c:'#ef4444', bg:'#fef2f2', filter:'unpaid'},
+  ];
 
   main.innerHTML = `
   <!-- Header -->
@@ -19725,30 +19748,23 @@ async function renderMFPage() {
     </div>
   </div>
 
-  <!-- KPI Dashboard -->
+  <!-- KPI Cards (clickable) -->
   ${dash ? `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
-    ${[
-      {l:'إجمالي المستحقات', v:fmt(s.total_due), c:'#3b82f6', bg:'#eff6ff'},
-      {l:'إجمالي المحصّل',   v:fmt(s.total_paid), c:'#10b981', bg:'#ecfdf5'},
-      {l:'إجمالي المتبقي',  v:fmt(s.total_remaining), c:'#ef4444', bg:'#fef2f2'},
-      {l:'نسبة التحصيل',    v:(s.collection_pct||0).toFixed(1)+'%', c:'#8b5cf6', bg:'#f5f3ff'},
-      {l:'عملاء نشطون',    v:cl.active||0, c:'#1e293b', bg:'#f1f5f9'},
-      {l:'دفعوا هذا الشهر', v:cl.paid_this_month||0, c:'#10b981', bg:'#ecfdf5'},
-      {l:'لم يدفعوا',       v:cl.unpaid_this_month||0, c:'#ef4444', bg:'#fef2f2'},
-    ].map(k=>`
-      <div style="background:${k.bg};border-radius:12px;padding:14px 16px;border:1px solid ${k.c}22">
-        <div style="font-size:11px;color:#64748b;margin-bottom:4px">${k.l}</div>
+    ${kpis.map(k=>`
+      <div onclick="${k.filter!==null ? `mfSetFilter('${k.filter}')` : ''}"
+           style="background:${k.bg};border-radius:12px;padding:14px 16px;border:2px solid ${mfTableFilter===k.filter&&k.filter!==null?k.c:k.c+'22'};${k.filter!==null?'cursor:pointer;':''}transition:border .2s">
+        <div style="font-size:11px;color:#64748b;margin-bottom:4px">${k.l}${k.filter!==null?` <span style="font-size:10px;opacity:.6">اضغط للفلترة</span>`:''}</div>
         <div style="font-size:20px;font-weight:700;color:${k.c}">${k.v}</div>
       </div>`).join('')}
   </div>
   ${dash.top_debtors?.length ? `
   <div style="background:#fff7ed;border-radius:12px;padding:14px 16px;border:1px solid #f59e0b44;margin-bottom:20px">
-    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:8px">⚠️ أعلى العملاء متأخرين</div>
+    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:8px">⚠️ أعلى المتأخرين</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
       ${dash.top_debtors.map(d=>`<span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">${d.name} — ${(d.remaining||0).toLocaleString('ar-EG')} ج.م</span>`).join('')}
     </div>
-  </div>` : ''}` : `<div style="background:#fef2f2;padding:14px;border-radius:10px;color:#dc2626;margin-bottom:20px">⚠️ تعذّر تحميل لوحة التحكم — تأكد من تشغيل الـ import أولاً</div>`}
+  </div>` : ''}` : `<div style="background:#fef2f2;padding:14px;border-radius:10px;color:#dc2626;margin-bottom:20px">⚠️ تعذّر تحميل البيانات</div>`}
 
   <!-- Progress Bar -->
   ${s.total_due > 0 ? `
@@ -19764,27 +19780,32 @@ async function renderMFPage() {
 
   <!-- Clients Table -->
   <div style="background:white;border-radius:16px;border:1px solid #e8edf3;overflow:hidden">
-    <div style="padding:14px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center">
-      <div style="font-size:14px;font-weight:700;color:#1e293b">جدول العملاء — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</div>
-      <div style="font-size:12px;color:#64748b">${records.length} عميل</div>
+    <div style="padding:14px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div style="font-size:14px;font-weight:700;color:#1e293b">
+        ${mfTableFilter==='paid'?'✅ دفعوا':mfTableFilter==='unpaid'?'❌ لم يدفعوا':'جدول العملاء'} — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${mfTableFilter!=='all'?`<button onclick="mfSetFilter('all')" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;color:#64748b">✕ إلغاء الفلتر</button>`:''}
+        <div style="font-size:12px;color:#64748b">${filtered.length} عميل</div>
+      </div>
     </div>
     <div style="overflow-x:auto">
     <table class="data-table" style="width:100%">
       <thead><tr>
         <th>#</th>
         <th>اسم الشركة</th>
-        <th>الأتعاب الشهرية</th>
+        <th>الأتعاب</th>
         <th>رصيد سابق</th>
         <th>إجمالي المطلوب</th>
         <th>المدفوع</th>
         <th>المتبقي</th>
-        <th>آخر دفعة</th>
+        <th>تاريخ الدفع</th>
         <th>الحالة</th>
-        <th>إجراء</th>
+        <th>إجراءات</th>
       </tr></thead>
       <tbody>
-        ${records.length ? records.map((r,i)=>`
-          <tr style="cursor:pointer" onclick="mfShowClientHistory(${r.client_id},'${(r.client_name||'').replace(/'/g,"\\'")}')">
+        ${filtered.length ? filtered.map((r,i)=>`
+          <tr style="cursor:pointer;background:${r.paid?'#f0fdf4':'white'}" onclick="mfShowClientHistory(${r.client_id},'${(r.client_name||'').replace(/'/g,"\\'")}')">
             <td style="color:#94a3b8">${i+1}</td>
             <td style="font-weight:600">${r.client_name||'—'}</td>
             <td>${(r.fee_amount||0).toLocaleString('ar-EG')} ج.م</td>
@@ -19798,43 +19819,72 @@ async function renderMFPage() {
                 ? `<span style="background:#ecfdf5;color:#10b981;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✓ مدفوع</span>`
                 : `<span style="background:#fef2f2;color:#ef4444;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✗ غير مدفوع</span>`}
             </td>
-            <td onclick="event.stopPropagation()">
-              ${!r.paid ? `<button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining})" class="btn btn-sm" style="font-size:12px;padding:4px 10px;background:#3b82f6;color:white;border:none">💳 تسجيل دفعة</button>` : ''}
+            <td onclick="event.stopPropagation()" style="white-space:nowrap">
+              <button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining},${r.paid_amount})"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#3b82f6;color:white;margin-left:4px">
+                ${r.paid?'✏️ تعديل':'💳 دفع'}
+              </button>
+              ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${(r.client_name||'').replace(/'/g,"\\'")}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">
+                🗑️
+              </button>`:''}
             </td>
           </tr>`).join('')
-          : `<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات لهذا الشهر — تأكد من تشغيل الـ import</td></tr>`}
+          : `<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
       </tbody>
     </table>
     </div>
   </div>`;
 }
 
+window.mfSetFilter = function(f) {
+  mfTableFilter = f;
+  mfRenderPage(window._mfLastDash, _mfAllRecords);
+};
+
 window.mfFilterChange = function() {
   mfCurrentYear  = parseInt(document.getElementById('mfYear').value);
   mfCurrentMonth = parseInt(document.getElementById('mfMonth').value);
+  mfTableFilter  = 'all';
   renderMFPage();
 };
 
-window.mfPayModal = function(recordId, totalDue, clientName, remaining) {
+window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
   document.getElementById('mfPayModalEl')?.remove();
+  const isEdit = (currentPaid||0) > 0;
   const html = `
-  <div class="modal-backdrop" id="mfPayModalEl">
+  <div class="modal-backdrop" id="mfPayModalEl" onclick="if(event.target===this)this.remove()">
     <div class="modal" style="max-width:420px">
-      <div class="modal-header"><h3>💳 تسجيل دفعة — ${clientName}</h3><button onclick="document.getElementById('mfPayModalEl').remove()" class="modal-close">✕</button></div>
+      <div class="modal-header">
+        <h3>${isEdit?'✏️ تعديل الدفعة':'💳 تسجيل دفعة'} — ${clientName}</h3>
+        <button onclick="document.getElementById('mfPayModalEl').remove()" class="modal-close">✕</button>
+      </div>
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
         <div style="background:#eff6ff;border-radius:10px;padding:12px;font-size:13px;color:#1e40af">
-          إجمالي المطلوب: <strong>${(totalDue||0).toLocaleString('ar-EG')} ج.م</strong> | المتبقي: <strong>${(remaining||0).toLocaleString('ar-EG')} ج.م</strong>
+          إجمالي المطلوب: <strong>${(totalDue||0).toLocaleString('ar-EG')} ج.م</strong>
+          ${isEdit?`<br>مدفوع حالياً: <strong style="color:#10b981">${(currentPaid||0).toLocaleString('ar-EG')} ج.م</strong>`:''}
         </div>
-        <div><label class="label">المبلغ المدفوع (ج.م)</label><input id="mfPayAmount" class="input" type="number" min="0" step="0.01" value="${remaining||totalDue||''}"/></div>
-        <div><label class="label">تاريخ الدفع</label><input id="mfPayDate" class="input" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
-        <div><label class="label">البيان</label><input id="mfPayBayan" class="input" value="تم دفع"/></div>
+        <div><label class="label">المبلغ المدفوع (ج.م)</label>
+          <input id="mfPayAmount" class="input" type="number" min="0" step="0.01" value="${currentPaid||remaining||totalDue||''}"/></div>
+        <div><label class="label">تاريخ الدفع</label>
+          <input id="mfPayDate" class="input" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
+        <div><label class="label">البيان</label>
+          <input id="mfPayBayan" class="input" value="تم دفع"/></div>
       </div>
       <div class="modal-footer">
-        <button onclick="mfSavePay(${recordId})" class="btn btn-primary">💾 حفظ الدفعة</button>
+        <button onclick="mfSavePay(${recordId})" class="btn btn-primary">💾 حفظ</button>
+        <button onclick="document.getElementById('mfPayModalEl').remove()" class="btn">إلغاء</button>
       </div>
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfResetPay = async function(recordId, clientName) {
+  if(!confirm(`هل تريد حذف الدفعة لـ ${clientName}؟`)) return;
+  await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'});
+  toast('تم حذف الدفعة','success');
+  await renderMFPage();
 };
 
 window.mfSavePay = async function(recordId) {
