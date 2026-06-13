@@ -128,4 +128,5 @@ class Client(Base):
     collections = relationship("CollectionContract", back_populates="client", cascade="all, delete-orphan")
     company_documents = relationship("CompanyDocument", back_populates="client", cascade="all, delete-orphan")
     office_services   = relationship("OfficeService", back_populates="client", cascade="all, delete-orphan")
-    portal_user       = relationship("ClientPortalUser", back_populates="client", uselist=False, cascade="all, delete-orphan")
+    portal_user        = relationship("ClientPortalUser", back_populates="client", uselist=False, cascade="all, delete-orphan")
+    portal_credentials = relationship("PortalCredential", back_populates="client", uselist=False, cascade="all, delete-orphan")

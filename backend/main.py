@@ -39,6 +39,7 @@ from app.routers import formation as formation_router
 from app.routers.service_templates import router as service_templates_router
 from app.routers.formation_obligations import router as formation_obligations_router
 from app.routers.realtime import router as realtime_router, manager as realtime_manager, ENTITY_MAP, SKIP_ENTITIES, DASHBOARD_ENTITIES
+from app.routers import portal_credentials as portal_credentials_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -55,6 +56,7 @@ import app.models.office_service      # noqa: F401
 import app.models.tax_center          # noqa: F401
 import app.models.establishment       # noqa: F401
 import app.models.service_template    # noqa: F401
+import app.models.portal_credentials  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -637,6 +639,7 @@ app.include_router(tax_center_router.router)
 app.include_router(formation_router.router)
 app.include_router(service_templates_router, prefix="/api/service-templates", tags=["service_templates"])
 app.include_router(formation_obligations_router, prefix="/api/formation-obligations", tags=["formation_obligations"])
+app.include_router(portal_credentials_router.router)
 app.include_router(realtime_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
