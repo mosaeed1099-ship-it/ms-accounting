@@ -2471,7 +2471,7 @@ async function loadDashboard(silent=false) {
 
 
 // ── CLIENTS ────────────────────────────────────────
-let clientsData=[], clientSearch='', clientFilter='all';
+let clientsData=[], clientSearch='', clientFilter='all', clientTypeFilter='all';
 
 async function loadClients(silent=false) {
   const main=document.getElementById('main');
@@ -2518,6 +2518,7 @@ function _clientsTableRows() {
   const q = clientSearch.toLowerCase();
   const filtered = clientsData.filter(c=>{
     if(clientFilter!=='all' && c.status!==clientFilter) return false;
+    if(clientTypeFilter!=='all' && c.client_type!==clientTypeFilter) return false;
     if(q) return (c.name||'').toLowerCase().includes(q)||(c.tax_number||'').includes(q)||(c.code||'').toLowerCase().includes(q);
     return true;
   });
@@ -2561,11 +2562,23 @@ function renderClients() {
         <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:15px">🔍</span>
         <input id="clientSearchInput" class="input" style="padding-right:34px;width:240px" placeholder="بحث بالاسم أو الرقم الضريبي..." value="${escH(clientSearch)}"/>
       </div>
-      <select id="clientFilterSelect" class="input" style="width:150px">
+      <select id="clientFilterSelect" class="input" style="width:140px">
         <option value="all" ${clientFilter==='all'?'selected':''}>كل الحالات</option>
         <option value="active" ${clientFilter==='active'?'selected':''}>نشط</option>
         <option value="prospect" ${clientFilter==='prospect'?'selected':''}>محتمل</option>
         <option value="inactive" ${clientFilter==='inactive'?'selected':''}>غير نشط</option>
+      </select>
+      <select id="clientTypeFilterSelect" class="input" style="width:160px">
+        <option value="all" ${clientTypeFilter==='all'?'selected':''}>كل الأنواع</option>
+        <option value="llc" ${clientTypeFilter==='llc'?'selected':''}>ش.م.م</option>
+        <option value="one_person" ${clientTypeFilter==='one_person'?'selected':''}>شخص واحد</option>
+        <option value="sole" ${clientTypeFilter==='sole'?'selected':''}>فردية</option>
+        <option value="limited_partnership" ${clientTypeFilter==='limited_partnership'?'selected':''}>توصية بسيطة</option>
+        <option value="joint_stock" ${clientTypeFilter==='joint_stock'?'selected':''}>مساهمة</option>
+        <option value="partnership" ${clientTypeFilter==='partnership'?'selected':''}>تضامن</option>
+        <option value="foreign_branch" ${clientTypeFilter==='foreign_branch'?'selected':''}>فرع أجنبي</option>
+        <option value="association" ${clientTypeFilter==='association'?'selected':''}>جمعية</option>
+        <option value="foundation" ${clientTypeFilter==='foundation'?'selected':''}>مؤسسة</option>
       </select>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
@@ -2583,6 +2596,7 @@ function renderClients() {
   </div>`;
   document.getElementById('clientSearchInput').oninput=e=>{clientSearch=e.target.value;renderClients()};
   document.getElementById('clientFilterSelect').onchange=e=>{clientFilter=e.target.value;renderClients()};
+  document.getElementById('clientTypeFilterSelect').onchange=e=>{clientTypeFilter=e.target.value;renderClients()};
 }
 
 async function showClientDetail(id) {
