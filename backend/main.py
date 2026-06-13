@@ -52,6 +52,7 @@ import app.models.folder              # noqa: F401
 import app.models.client_portal       # noqa: F401
 import app.models.client_required_doc # noqa: F401
 import app.models.office_finance      # noqa: F401
+import app.models.finance_center      # noqa: F401
 import app.models.office_service      # noqa: F401
 import app.models.tax_center          # noqa: F401
 import app.models.establishment       # noqa: F401
@@ -641,6 +642,9 @@ app.include_router(service_templates_router, prefix="/api/service-templates", ta
 app.include_router(formation_obligations_router, prefix="/api/formation-obligations", tags=["formation_obligations"])
 app.include_router(portal_credentials_router.router)
 app.include_router(realtime_router)
+
+from app.routers.finance_center import router as finance_center_router
+app.include_router(finance_center_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

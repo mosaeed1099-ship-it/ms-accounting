@@ -1155,6 +1155,7 @@ const navItems = [
   {id:'mail'         ,icon:'📧',label:'البريد الإلكتروني'},
   {id:'client_portal' ,icon:'🔑',label:'بوابة العملاء'},
   {id:'permissions'   ,icon:'🛡️',label:'الصلاحيات'},
+  {id:'finance_center',icon:'💰',label:'المالية'},
   {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
 ];
@@ -1166,7 +1167,7 @@ const navGroups = [
   {label:'التشغيل', items:['tasks','documents']},
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
-  {label:'المكتب المالي', items:['owner']},
+  {label:'المكتب المالي', items:['finance_center','owner']},
 ];
 
 // ── Client Portal Mode ─────────────────────────────
@@ -1861,13 +1862,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية'};
+  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter};
   if(pages[page]) pages[page]();
 }
 
@@ -19039,6 +19040,476 @@ window.deleteOwnerExpense = async function(id) {
   toast('تم الحذف');
   await renderOwnerExpenses(document.getElementById('ownerContent'));
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION: المركز المالي — Finance Center
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OWNER_EMAIL_FC = 'ms.owner@mshq.io';
+const FC_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const FC_PAY_LABELS = {cash:'كاش',transfer:'تحويل بنكي',instapay:'إنستاباي',check:'شيك'};
+const FC_EXP_CATS = ['rent','electricity','internet','marketing','supplies','transport','other'];
+const FC_EXP_CAT_AR = {rent:'إيجار',electricity:'كهرباء ومياه',internet:'إنترنت',marketing:'تسويق وإعلان',supplies:'مشتريات ومستلزمات',transport:'نقل',other:'أخرى'};
+
+function fcIsOwner() {
+  return currentUser?.email === OWNER_EMAIL_FC || currentUser?.role === 'admin';
+}
+
+let _fcTab = null; // active tab: 'expenses'|'collections'|'summary'|'grid'
+let _fcClients = [];
+let _fcMonth = new Date().getMonth() + 1;
+let _fcYear = new Date().getFullYear();
+
+async function loadFinanceCenter() {
+  const el = document.getElementById('pageContent');
+  const isOwner = fcIsOwner();
+
+  if (!_fcTab) _fcTab = isOwner ? 'expenses' : 'collections';
+
+  // جلب العملاء مرة واحدة
+  if (!_fcClients.length) {
+    const res = await api('GET', '/api/clients?limit=2000').catch(() => ({items:[]}));
+    _fcClients = (res.items || res || []).filter(c => c.status === 'active');
+  }
+
+  const tabs = isOwner
+    ? [{id:'expenses',label:'المصروفات'},{id:'collections',label:'التحصيل'},{id:'summary',label:'ملخص الشهر'},{id:'grid',label:'جريد الأتعاب'}]
+    : [{id:'collections',label:'التحصيل'}];
+
+  el.innerHTML = `
+  <div style="padding:16px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:17px;font-weight:700;color:#1e293b">💰 المالية</div>
+      ${isOwner ? `<div style="display:flex;gap:6px;align-items:center">
+        <select id="fcMonthSel" onchange="window.fcChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+          ${FC_MONTHS.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===_fcMonth?'selected':''}>${m}</option>`).join('')}
+        </select>
+        <select id="fcYearSel" onchange="window.fcChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+          ${[2024,2025,2026].map(y=>`<option ${y===_fcYear?'selected':''}>${y}</option>`).join('')}
+        </select>
+      </div>` : ''}
+    </div>
+
+    <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:14px;gap:0" id="fcTabs">
+      ${tabs.map(t=>`<button onclick="window.fcSwitchTab('${t.id}')" id="fcTab_${t.id}"
+        style="padding:8px 18px;font-size:13px;border:none;background:none;cursor:pointer;border-bottom:2px solid ${_fcTab===t.id?'#1d9e75':'transparent'};color:${_fcTab===t.id?'#0f6e56':'#64748b'};font-weight:${_fcTab===t.id?'700':'400'};margin-bottom:-2px;white-space:nowrap">
+        ${t.label}</button>`).join('')}
+    </div>
+
+    <div id="fcBody"></div>
+  </div>`;
+
+  window.fcChangeMonth = () => {
+    _fcMonth = +document.getElementById('fcMonthSel').value;
+    _fcYear = +document.getElementById('fcYearSel').value;
+    window.fcSwitchTab(_fcTab);
+  };
+
+  window.fcSwitchTab = (tab) => {
+    _fcTab = tab;
+    document.querySelectorAll('#fcTabs button').forEach(b => {
+      const active = b.id === `fcTab_${tab}`;
+      b.style.borderBottomColor = active ? '#1d9e75' : 'transparent';
+      b.style.color = active ? '#0f6e56' : '#64748b';
+      b.style.fontWeight = active ? '700' : '400';
+    });
+    const body = document.getElementById('fcBody');
+    if (!body) return;
+    if (tab === 'collections') fcRenderCollections(body);
+    else if (tab === 'expenses') fcRenderExpenses(body);
+    else if (tab === 'summary') fcRenderSummary(body);
+    else if (tab === 'grid') fcRenderGrid(body);
+  };
+
+  window.fcSwitchTab(_fcTab);
+}
+
+// ── التحصيل ──────────────────────────────────────────────────────────────────
+
+async function fcRenderCollections(el) {
+  const isOwner = fcIsOwner();
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0,10);
+
+  const clientOpts = _fcClients.map(c => `<option value="${c.id}" data-name="${escH(c.name)}">${escH(c.name)}</option>`).join('');
+
+  el.innerHTML = `
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #f1f5f9">
+      <div style="font-weight:600;font-size:14px;color:#1e293b">سجل التحصيل${isOwner?'':' — اليوم فقط'}</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-end;padding:10px 14px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;background:#f8fafc">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:10px;color:#64748b">التاريخ</div>
+        <input id="fcCDate" type="date" value="${todayStr}" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:120px"/>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:140px">
+        <div style="font-size:10px;color:#64748b">العميل</div>
+        <select id="fcCClient" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+          <option value="">اختر العميل...</option>${clientOpts}
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:10px;color:#64748b">الشهر المسدَّد</div>
+        <select id="fcCMonth" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:110px">
+          ${FC_MONTHS.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===_fcMonth?'selected':''}>${m} ${_fcYear}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:10px;color:#64748b">المبلغ (ج.م)</div>
+        <input id="fcCAmount" type="number" placeholder="0" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:90px"/>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:10px;color:#64748b">الطريقة</div>
+        <select id="fcCMethod" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:110px">
+          <option value="cash">كاش</option>
+          <option value="transfer">تحويل بنكي</option>
+          <option value="instapay">إنستاباي</option>
+          <option value="check">شيك</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px">
+        <div style="font-size:10px;color:#64748b">ملاحظة</div>
+        <input id="fcCNote" type="text" placeholder="اختياري" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+      </div>
+      <button onclick="window.fcAddCollection()" style="height:32px;padding:0 16px;background:#1d9e75;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;white-space:nowrap;font-weight:600">إضافة</button>
+    </div>
+    <div id="fcCollTable" style="overflow-x:auto">
+      <div style="padding:20px;text-align:center;color:#94a3b8">⏳ جاري التحميل...</div>
+    </div>
+  </div>`;
+
+  await fcLoadCollections();
+}
+
+async function fcLoadCollections() {
+  const isOwner = fcIsOwner();
+  const params = isOwner ? `?month=${_fcMonth}&year=${_fcYear}` : '';
+  const rows = await api('GET', `/api/finance/collections${params}`).catch(() => []);
+  const el = document.getElementById('fcCollTable');
+  if (!el) return;
+
+  if (!rows.length) {
+    el.innerHTML = `<div style="padding:24px;text-align:center;color:#94a3b8">لا توجد تحصيلات${isOwner?` في ${FC_MONTHS[_fcMonth]} ${_fcYear}`:' اليوم'}</div>`;
+    return;
+  }
+
+  const total = rows.reduce((s,r)=>s+r.amount,0);
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr style="background:#f8fafc">
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">التاريخ</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">العميل</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">الشهر</th>
+      <th style="padding:8px 12px;text-align:center;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">المبلغ</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">الطريقة</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0">ملاحظة</th>
+      <th style="padding:8px 12px;border-bottom:1px solid #e2e8f0"></th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r=>`<tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:8px 12px;font-size:12px;color:#64748b">${r.date}</td>
+        <td style="padding:8px 12px;font-size:12px;font-weight:600;color:#1e293b">${escH(r.client_name)}</td>
+        <td style="padding:8px 12px;font-size:12px;color:#64748b">${r.billing_month_label} ${r.billing_year}</td>
+        <td style="padding:8px 12px;font-size:13px;font-weight:700;color:#0f6e56;text-align:center">${(r.amount||0).toLocaleString('ar-EG')}</td>
+        <td style="padding:8px 12px;font-size:12px"><span style="background:#e6f1fb;color:#0c447c;padding:2px 8px;border-radius:8px;font-size:10px">${r.payment_method_label}</span></td>
+        <td style="padding:8px 12px;font-size:11px;color:#94a3b8">${escH(r.note||'—')}</td>
+        <td style="padding:8px 12px"><button onclick="window.fcDelCollection(${r.id})" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:12px">حذف</button></td>
+      </tr>`).join('')}
+    </tbody>
+    <tfoot><tr style="background:#f0fdf4">
+      <td colspan="3" style="padding:8px 12px;font-weight:700;font-size:13px;color:#1e293b">الإجمالي</td>
+      <td style="padding:8px 12px;font-weight:700;font-size:14px;color:#0f6e56;text-align:center">${total.toLocaleString('ar-EG')}</td>
+      <td colspan="3"></td>
+    </tr></tfoot>
+  </table>`;
+}
+
+window.fcAddCollection = async function() {
+  const clientSel = document.getElementById('fcCClient');
+  const clientName = clientSel.options[clientSel.selectedIndex]?.dataset?.name || clientSel.value;
+  const clientId = +clientSel.value || null;
+  const date = document.getElementById('fcCDate').value;
+  const billingMonth = +document.getElementById('fcCMonth').value;
+  const amount = +document.getElementById('fcCAmount').value;
+  const method = document.getElementById('fcCMethod').value;
+  const note = document.getElementById('fcCNote').value;
+
+  if (!clientName || !clientId) return toast('اختر العميل', 'error');
+  if (!amount || amount <= 0) return toast('أدخل المبلغ', 'error');
+
+  await api('POST', '/api/finance/collections', {
+    date, client_id: clientId, client_name: clientName,
+    billing_month: billingMonth, billing_year: _fcYear,
+    amount, payment_method: method, note: note || null,
+  });
+  document.getElementById('fcCAmount').value = '';
+  document.getElementById('fcCNote').value = '';
+  toast('تم الحفظ ✓');
+  _AC.invalidate('/api/finance/collections');
+  await fcLoadCollections();
+};
+
+window.fcDelCollection = async function(id) {
+  if (!confirm('حذف هذا التحصيل؟')) return;
+  await api('DELETE', `/api/finance/collections/${id}`);
+  toast('تم الحذف');
+  _AC.invalidate('/api/finance/collections');
+  await fcLoadCollections();
+};
+
+// ── المصروفات (أدمن فقط) ─────────────────────────────────────────────────────
+
+async function fcRenderExpenses(el) {
+  const today = new Date().toISOString().slice(0,10);
+
+  el.innerHTML = `
+  <div style="display:flex;flex-direction:column;gap:12px">
+
+    <!-- تسويات الموظفين -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:8px">
+        <div style="font-weight:600;font-size:14px;color:#1e293b">تسويات الموظفين</div>
+        <span style="font-size:10px;background:#e6f1fb;color:#0c447c;padding:2px 8px;border-radius:8px">تلقائي من نظام الرواتب</span>
+      </div>
+      <div id="fcSettlements" style="padding:12px 16px"><div style="color:#94a3b8;font-size:13px">⏳</div></div>
+    </div>
+
+    <!-- مصاريف يدوية -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:8px">
+        <div style="font-weight:600;font-size:14px;color:#1e293b">مصاريف خاصة</div>
+        <span style="font-size:10px;background:#faeeda;color:#633806;padding:2px 8px;border-radius:8px">🔒 مدير فقط</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:flex-end;padding:10px 14px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;background:#fafafa">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-size:10px;color:#64748b">التاريخ</div>
+          <input id="fcEDate" type="date" value="${today}" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:120px"/>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:130px">
+          <div style="font-size:10px;color:#64748b">البند</div>
+          <input id="fcEDesc" type="text" placeholder="وصف المصروف" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-size:10px;color:#64748b">التصنيف</div>
+          <select id="fcECat" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:130px">
+            ${FC_EXP_CATS.map(c=>`<option value="${c}">${FC_EXP_CAT_AR[c]}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-size:10px;color:#64748b">المبلغ</div>
+          <input id="fcEAmount" type="number" placeholder="0" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:90px"/>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-size:10px;color:#64748b">طريقة الدفع</div>
+          <select id="fcEMethod" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;width:110px">
+            <option value="cash">كاش</option>
+            <option value="transfer">تحويل بنكي</option>
+            <option value="check">شيك</option>
+          </select>
+        </div>
+        <button onclick="window.fcAddManualExpense()" style="height:32px;padding:0 16px;background:#1d9e75;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;white-space:nowrap;font-weight:600">إضافة</button>
+      </div>
+      <div id="fcManualExp" style="overflow-x:auto"><div style="padding:12px 16px;color:#94a3b8;font-size:13px">⏳</div></div>
+    </div>
+  </div>`;
+
+  await fcLoadExpenses();
+}
+
+async function fcLoadExpenses() {
+  const data = await api('GET', `/api/finance/expenses?month=${_fcMonth}&year=${_fcYear}`).catch(() => null);
+  if (!data) return;
+
+  // تسويات
+  const sEl = document.getElementById('fcSettlements');
+  if (sEl) {
+    if (!data.auto_expenses.length) {
+      sEl.innerHTML = `<div style="color:#94a3b8;font-size:13px">لا توجد تسويات في ${FC_MONTHS[_fcMonth]} ${_fcYear}</div>`;
+    } else {
+      sEl.innerHTML = data.auto_expenses.map(s=>`
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-weight:600;font-size:13px;color:#1e293b">${escH(s.description)}</div>
+            <div style="font-weight:700;color:#993c1d;font-size:14px">${(s.amount||0).toLocaleString('ar-EG')} ج.م</div>
+          </div>
+          ${s.items?.length ? `<div style="font-size:11px;color:#64748b">${s.items.map(i=>`${escH(i.description||'')} — ${(i.amount||0).toLocaleString('ar-EG')}`).join(' | ')}</div>` : ''}
+        </div>`).join('')
+      + `<div style="text-align:left;padding-top:6px;border-top:1px solid #f1f5f9;font-weight:700;color:#993c1d;font-size:13px">الإجمالي: ${data.total_auto.toLocaleString('ar-EG')} ج.م</div>`;
+    }
+  }
+
+  // يدوية
+  const mEl = document.getElementById('fcManualExp');
+  if (mEl) {
+    if (!data.manual_expenses.length) {
+      mEl.innerHTML = `<div style="padding:12px 16px;color:#94a3b8;font-size:13px">لا توجد مصاريف خاصة مضافة</div>`;
+    } else {
+      mEl.innerHTML = `<table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f8fafc">
+          <th style="padding:7px 12px;text-align:right;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0">التاريخ</th>
+          <th style="padding:7px 12px;text-align:right;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0">البند</th>
+          <th style="padding:7px 12px;text-align:right;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0">التصنيف</th>
+          <th style="padding:7px 12px;text-align:center;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0">المبلغ</th>
+          <th style="padding:7px 12px;text-align:right;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0">الطريقة</th>
+          <th style="padding:7px 12px;border-bottom:1px solid #e2e8f0"></th>
+        </tr></thead>
+        <tbody>
+          ${data.manual_expenses.map(e=>`<tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:7px 12px;font-size:12px;color:#64748b">${e.date}</td>
+            <td style="padding:7px 12px;font-size:12px;font-weight:600;color:#1e293b">${escH(e.description)}</td>
+            <td style="padding:7px 12px;font-size:12px"><span style="background:#faeeda;color:#633806;padding:2px 7px;border-radius:8px;font-size:10px">${escH(e.category_label)}</span></td>
+            <td style="padding:7px 12px;font-size:13px;font-weight:700;color:#993c1d;text-align:center">${(e.amount||0).toLocaleString('ar-EG')}</td>
+            <td style="padding:7px 12px;font-size:12px;color:#64748b">${escH(e.payment_method_label)}</td>
+            <td style="padding:7px 12px"><button onclick="window.fcDelManualExpense(${e.id})" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:12px">حذف</button></td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot><tr style="background:#fef2f2">
+          <td colspan="3" style="padding:7px 12px;font-weight:700;color:#1e293b">الإجمالي</td>
+          <td style="padding:7px 12px;font-weight:700;color:#993c1d;text-align:center">${data.total_manual.toLocaleString('ar-EG')}</td>
+          <td colspan="2"></td>
+        </tr></tfoot>
+      </table>`;
+    }
+  }
+}
+
+window.fcAddManualExpense = async function() {
+  const desc = document.getElementById('fcEDesc').value.trim();
+  const amount = +document.getElementById('fcEAmount').value;
+  if (!desc) return toast('أدخل وصف المصروف', 'error');
+  if (!amount || amount <= 0) return toast('أدخل المبلغ', 'error');
+  await api('POST', '/api/finance/expenses/manual', {
+    date: document.getElementById('fcEDate').value,
+    description: desc,
+    category: document.getElementById('fcECat').value,
+    amount,
+    payment_method: document.getElementById('fcEMethod').value,
+  });
+  document.getElementById('fcEDesc').value = '';
+  document.getElementById('fcEAmount').value = '';
+  toast('تم الحفظ ✓');
+  await fcLoadExpenses();
+};
+
+window.fcDelManualExpense = async function(id) {
+  if (!confirm('حذف هذا المصروف؟')) return;
+  await api('DELETE', `/api/finance/expenses/manual/${id}`);
+  toast('تم الحذف');
+  await fcLoadExpenses();
+};
+
+// ── ملخص الشهر (أدمن فقط) ────────────────────────────────────────────────────
+
+async function fcRenderSummary(el) {
+  el.innerHTML = `<div style="padding:20px;text-align:center;color:#94a3b8">⏳ جاري التحميل...</div>`;
+  const [summary, expData] = await Promise.all([
+    api('GET', `/api/finance/summary?month=${_fcMonth}&year=${_fcYear}`).catch(()=>null),
+    api('GET', `/api/finance/expenses?month=${_fcMonth}&year=${_fcYear}`).catch(()=>null),
+  ]);
+  if (!summary) { el.innerHTML = `<div style="color:#ef4444;padding:20px">فشل التحميل</div>`; return; }
+
+  const monthLabel = `${FC_MONTHS[_fcMonth]} ${_fcYear}`;
+  el.innerHTML = `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <!-- الإيرادات -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px">
+      <div style="font-weight:700;font-size:13px;color:#1e293b;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f1f5f9">الإيرادات (التحصيل) — ${monthLabel}</div>
+      ${(summary.collections_by_employee||[]).map(e=>`
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-bottom:1px solid #f8fafc">
+          <span style="color:#475569">${escH(e.name)}</span>
+          <span style="font-weight:600;color:#0f6e56">${(e.amount||0).toLocaleString('ar-EG')}</span>
+        </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:10px 0 0;font-weight:700;font-size:14px">
+        <span>إجمالي التحصيل</span>
+        <span style="color:#0f6e56">${(summary.total_collected||0).toLocaleString('ar-EG')} ج.م</span>
+      </div>
+    </div>
+
+    <!-- المصروفات -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px">
+      <div style="font-weight:700;font-size:13px;color:#1e293b;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f1f5f9">المصروفات — ${monthLabel}</div>
+      ${(expData?.auto_expenses||[]).map(s=>`
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-bottom:1px solid #f8fafc">
+          <span style="color:#475569">${escH(s.description)}</span>
+          <span style="font-weight:600;color:#993c1d">${(s.amount||0).toLocaleString('ar-EG')}</span>
+        </div>`).join('')}
+      ${(expData?.manual_expenses||[]).map(e=>`
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-bottom:1px solid #f8fafc">
+          <span style="color:#475569">${escH(e.description)} <span style="font-size:9px;background:#faeeda;color:#633806;padding:1px 5px;border-radius:6px">خاص</span></span>
+          <span style="font-weight:600;color:#993c1d">${(e.amount||0).toLocaleString('ar-EG')}</span>
+        </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:10px 0 0;font-weight:700;font-size:14px">
+        <span>إجمالي المصروفات</span>
+        <span style="color:#993c1d">${(summary.total_expenses||0).toLocaleString('ar-EG')} ج.م</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- الصافي -->
+  <div style="margin-top:12px;background:${summary.net_profit>=0?'#f0fdf4':'#fef2f2'};border:1px solid ${summary.net_profit>=0?'#bbf7d0':'#fecaca'};border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-weight:700;font-size:15px;color:#1e293b">صافي الشهر — ${monthLabel}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px">هامش الربح: ${summary.profit_margin_pct||0}٪</div>
+    </div>
+    <div style="font-size:22px;font-weight:700;color:${summary.net_profit>=0?'#0f6e56':'#993c1d'}">${(summary.net_profit||0).toLocaleString('ar-EG')} ج.م</div>
+  </div>`;
+}
+
+// ── جريد الأتعاب (أدمن فقط) ──────────────────────────────────────────────────
+
+async function fcRenderGrid(el) {
+  el.innerHTML = `<div style="padding:20px;text-align:center;color:#94a3b8">⏳ جاري التحميل...</div>`;
+  const data = await api('GET', `/api/finance/fees-grid?year=${_fcYear}`).catch(()=>null);
+  if (!data) { el.innerHTML = `<div style="color:#ef4444;padding:20px">فشل التحميل</div>`; return; }
+
+  const clients = data.clients || [];
+  if (!clients.length) { el.innerHTML = `<div style="padding:20px;color:#94a3b8">لا توجد بيانات — تأكد من إضافة الأتعاب الشهرية للعملاء</div>`; return; }
+
+  const curMonth = new Date().getMonth() + 1;
+  el.innerHTML = `
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;min-width:900px">
+        <thead>
+          <tr style="background:#f8fafc">
+            <th style="padding:8px 12px;text-align:right;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0;position:sticky;right:0;background:#f8fafc;min-width:140px">العميل</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0;min-width:60px">الأتعاب</th>
+            ${FC_MONTHS.slice(1).map((m,i)=>`<th style="padding:8px 8px;text-align:center;font-size:11px;border-bottom:1px solid #e2e8f0;min-width:52px;${i+1<curMonth?'background:#f0fdf4;color:#085041':i+1===curMonth?'background:#faeeda;color:#633806':'color:#94a3b8'}">${m}</th>`).join('')}
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0">الإجمالي</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0">النسبة</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${clients.map(c=>`<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <td style="padding:7px 12px;font-size:12px;font-weight:600;color:#1e293b;position:sticky;right:0;background:#fff">${escH(c.client_name)}</td>
+            <td style="padding:7px 10px;text-align:center;font-size:11px;color:#64748b">${(c.monthly_fee||0).toLocaleString('ar-EG')}</td>
+            ${c.months.map(m=>{
+              if(m.status==='paid') return `<td style="background:#e1f5ee;color:#085041;text-align:center;padding:7px 6px;font-size:13px;font-weight:700">✓</td>`;
+              if(m.status==='partial') return `<td style="background:#faeeda;color:#633806;text-align:center;padding:7px 6px;font-size:11px;font-weight:600">${(m.collected||0).toLocaleString('ar-EG')}</td>`;
+              if(m.month>curMonth) return `<td style="color:#94a3b8;text-align:center;padding:7px 6px;font-size:12px">—</td>`;
+              return `<td style="background:#fef2f2;color:#993c1d;text-align:center;padding:7px 6px;font-size:13px">✕</td>`;
+            }).join('')}
+            <td style="padding:7px 10px;text-align:center;font-size:12px;font-weight:700;color:#0f6e56">${(c.total_collected||0).toLocaleString('ar-EG')}</td>
+            <td style="padding:7px 10px;text-align:center;font-size:12px;font-weight:700;color:${c.collection_pct>=80?'#0f6e56':c.collection_pct>=50?'#854f0b':'#993c1d'}">${c.collection_pct}٪</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f8fafc;border-top:2px solid #e2e8f0">
+            <td colspan="2" style="padding:8px 12px;font-weight:700;font-size:13px;color:#1e293b">الإجمالي الشهري</td>
+            ${Array.from({length:12},(_,i)=>{
+              const total = clients.reduce((s,c)=>s+(c.months[i]?.collected||0),0);
+              const m = i+1;
+              return `<td style="padding:8px 6px;text-align:center;font-size:11px;font-weight:700;color:${m<curMonth?'#0f6e56':m===curMonth?'#854f0b':'#94a3b8'}">${total>0?total.toLocaleString('ar-EG'):'—'}</td>`;
+            }).join('')}
+            <td style="padding:8px 10px;text-align:center;font-weight:700;color:#0f6e56">${clients.reduce((s,c)=>s+c.total_collected,0).toLocaleString('ar-EG')}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div style="padding:8px 14px;font-size:11px;color:#94a3b8">✓ = محصّل &nbsp;|&nbsp; ✕ = غير محصّل &nbsp;|&nbsp; رقم = جزئي</div>
+  </div>`;
+}
 
 // Apply saved language on load
 window.addEventListener('ms-app-ready', ()=>{
