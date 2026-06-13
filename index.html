@@ -19683,8 +19683,8 @@ async function fcRenderGrid(el) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MF_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-let mfCurrentYear = new Date().getFullYear();
-let mfCurrentMonth = new Date().getMonth() + 1;
+let mfCurrentYear = 2026;
+let mfCurrentMonth = 5; // مايو — آخر شهر فيه بيانات
 
 async function loadMonthlyFees() {
   if(currentUser?.role !== 'admin') {
