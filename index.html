@@ -12438,8 +12438,6 @@ window.showCollectionPaymentModal=showCollectionPaymentModal;
 window.showCollectionDetail=showCollectionDetail;
 window.showCollectionEditModal=showCollectionEditModal;
 window.deleteCollectionContract=deleteCollectionContract;
-window.renderCollections=renderCollections;
-window.switchCollTab=function(tab){collectionsTab=tab;renderCollections(window._collSummaryCache||null);};
 // ── Search/filter bridge functions (inline handlers cannot access module-level vars) ──
 window.renderObligations=renderObligations;
 window.renderDocuments=renderDocuments;
@@ -12447,7 +12445,6 @@ window.setOblSearch=v=>{oblSearchQ=v;renderObligations();};
 window.setOblTypeFilter=v=>{oblTypeFilter=v;renderObligations();};
 window.setOblStatusFilter=v=>{const kv=v==='overdue'?'overdue_kpi':v;oblStatusFilter=(oblStatusFilter===kv?'':kv);renderObligations();};
 window.clearOblFilters=()=>{oblSearchQ='';oblTypeFilter='';oblStatusFilter='';renderObligations();};
-window.setCollSearch=v=>{collectionsSearch=v;renderCollections(window._collSummaryCache||null);};
 // ── focus-preserving render wrapper (fixes search input losing focus on re-render)
 function _renderKeepFocus(fn) {
   const el = document.activeElement;
