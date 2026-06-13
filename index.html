@@ -1926,10 +1926,11 @@ async function loadDashboard(silent=false) {
 
     // ── Obligation breakdown by type ─────────────────
     const _oblList = Array.isArray(oblAll) ? oblAll : (oblAll?.items||[]);
-    const _vatClients = new Set(_oblList.filter(o=>o.obligation_type==='vat_monthly').map(o=>o.client_id)).size;
-    const _payrollClients = new Set(_oblList.filter(o=>o.obligation_type==='payroll_monthly').map(o=>o.client_id)).size;
     const _withholdingClients = new Set(_oblList.filter(o=>o.obligation_type==='withholding_monthly').map(o=>o.client_id)).size;
-    const _incomeClients = new Set(_oblList.filter(o=>o.obligation_type==='income_annual').map(o=>o.client_id)).size;
+    // Use stats from API (based on tax_obligations field — accurate count)
+    const _incomeClients  = stats.clients.income_declaration  ?? new Set(_oblList.filter(o=>o.obligation_type==='income_annual').map(o=>o.client_id)).size;
+    const _vatClients     = stats.clients.vat_declaration     ?? new Set(_oblList.filter(o=>o.obligation_type==='vat_monthly').map(o=>o.client_id)).size;
+    const _payrollClients = stats.clients.payroll_declaration ?? new Set(_oblList.filter(o=>o.obligation_type==='payroll_monthly').map(o=>o.client_id)).size;
     // Use active clients count (excludes soft-deleted/inactive)
     const _totalClients = stats.clients.active||stats.clients.total||0;
 
