@@ -50,7 +50,7 @@ class Lead(Base):
     governorate = Column(String)
 
     # حالة ومصدر
-    status = Column(String, default=LeadStatus.NEW)
+    status = Column(String, default="not_answered")
     source = Column(String, default=LeadSource.OTHER)
 
     # الخدمة المطلوبة
