@@ -40,6 +40,7 @@ from app.routers.service_templates import router as service_templates_router
 from app.routers.formation_obligations import router as formation_obligations_router
 from app.routers.realtime import router as realtime_router, manager as realtime_manager, ENTITY_MAP, SKIP_ENTITIES, DASHBOARD_ENTITIES
 from app.routers import portal_credentials as portal_credentials_router
+from app.routers.finance_center import router as finance_center_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -643,7 +644,6 @@ app.include_router(formation_obligations_router, prefix="/api/formation-obligati
 app.include_router(portal_credentials_router.router)
 app.include_router(realtime_router)
 
-from app.routers.finance_center import router as finance_center_router
 app.include_router(finance_center_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
