@@ -290,8 +290,9 @@ def bulk_import(
             db.commit()
             records_saved += 1
 
-    # Recalculate carry-forward balances
-    _recalc_carry_forward(db, name_to_id)
+    # Recalculate carry-forward only if records were provided
+    if data.records:
+        _recalc_carry_forward(db, name_to_id)
 
     return {"clients_imported": len(name_to_id), "records_saved": records_saved}
 
@@ -302,20 +303,24 @@ def _recalc_carry_forward(db: Session, name_to_id: dict):
         (2025, 10), (2025, 11), (2025, 12),
         (2026, 1), (2026, 2), (2026, 3), (2026, 4), (2026, 5), (2026, 6),
     ]
-    for cid in name_to_id.values():
+    client_ids = list(name_to_id.values())
+    # Load all records for these clients in one query
+    all_records = db.query(MonthlyFeeRecord).filter(
+        MonthlyFeeRecord.client_id.in_(client_ids)
+    ).all()
+    # Index by (client_id, year, month)
+    rec_map = {(r.client_id, r.year, r.month): r for r in all_records}
+
+    for cid in client_ids:
         carry = 0.0
         for yr, mo in MONTHS_ORDER:
-            r = db.query(MonthlyFeeRecord).filter(
-                MonthlyFeeRecord.client_id == cid,
-                MonthlyFeeRecord.year == yr,
-                MonthlyFeeRecord.month == mo,
-            ).first()
+            r = rec_map.get((cid, yr, mo))
             if not r:
-                carry = 0.0  # no record = no carry for this month
+                carry = 0.0
                 continue
             r.balance_carried = carry
             r.total_due = r.fee_amount + carry
             r.remaining = max(0, r.total_due - r.paid_amount)
             r.paid = r.remaining == 0
             carry = r.remaining
-        db.commit()
+    db.commit()
