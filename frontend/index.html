@@ -2195,9 +2195,11 @@ async function loadDashboard(silent=false) {
           ${[
             {l:'إجمالي العملاء',v:stats.clients.active||stats.clients.total,c:'#1a2472'},
             {l:'جدد هذا الشهر',v:'+'+stats.clients.new_this_month,c:'#059669'},
-            {l:'نشطون',v:stats.clients.active,c:'#0ea5e9'},
+            {l:'إقرارات دخل',v:stats.clients.income_declaration??'—',c:'#7c3aed'},
+            {l:'قيمة مضافة',v:stats.clients.vat_declaration??'—',c:'#0ea5e9'},
+            {l:'توحيد مرتبات',v:stats.clients.payroll_declaration??'—',c:'#059669'},
           ].map((x,i)=>`
-            ${i>0?'<div style="width:1px;background:#f1f5f9;margin:0 16px"></div>':''}
+            ${i>0?'<div style="width:1px;background:#f1f5f9;margin:0 12px"></div>':''}
             <div>
               <div style="font-size:20px;font-weight:900;color:${x.c}">${x.v}</div>
               <div style="font-size:10px;color:#94a3b8;font-weight:600;margin-top:2px">${x.l}</div>

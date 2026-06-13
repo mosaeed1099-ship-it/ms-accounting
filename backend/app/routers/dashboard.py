@@ -28,6 +28,12 @@ async def dashboard_stats(db: Session = Depends(get_db), current_user: User = De
         func.date(Client.created_at) >= month_start
     ).scalar() or 0
 
+    # Clients by obligation type
+    all_active = db.query(Client).filter(Client.status == ClientStatus.ACTIVE).all()
+    income_clients  = sum(1 for c in all_active if c.tax_obligations and 'income_annual'  in c.tax_obligations)
+    vat_clients     = sum(1 for c in all_active if c.tax_obligations and 'vat_monthly'    in c.tax_obligations)
+    payroll_clients = sum(1 for c in all_active if c.tax_obligations and 'payroll_monthly' in c.tax_obligations)
+
     # Invoices
     total_invoiced = db.query(func.sum(Invoice.total)).filter(
         Invoice.status != InvoiceStatus.CANCELLED
@@ -66,6 +72,9 @@ async def dashboard_stats(db: Session = Depends(get_db), current_user: User = De
             "total": total_clients,
             "active": active_clients,
             "new_this_month": new_clients_month,
+            "income_declaration": income_clients,
+            "vat_declaration": vat_clients,
+            "payroll_declaration": payroll_clients,
         },
         "financial": {
             "total_invoiced": total_invoiced,
