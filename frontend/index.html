@@ -2646,6 +2646,7 @@ async function showClientDetail(id) {
     </div>`:''}
     ${c.notes?`<div style="padding:0 24px 14px"><div style="font-size:11px;color:#94a3b8;font-weight:700;margin-bottom:5px">ملاحظات</div><div style="font-size:13px;color:#374151;background:#f8fafc;padding:10px;border-radius:8px">${escH(c.notes)}</div></div>`:''}
     ${c.email?`<div style="padding:0 24px 12px;display:flex;align-items:center;gap:8px;font-size:13px;color:#1a2472"><span>📧</span><span>${escH(c.email)}</span></div>`:''}
+    ${currentUser?.role==='admin'?`<div id="portalCredInline" style="padding:0 24px 14px;border-top:1px solid #f1f5f9"><div style="font-size:10px;color:#94a3b8;font-weight:700;margin:12px 0 8px;text-transform:uppercase;letter-spacing:.3px">🔐 بيانات البوابات</div><div id="portalCredInlineBody" style="font-size:12px;color:#64748b">⏳</div></div>`:''}
     <div style="padding:14px 24px 20px;border-top:1px solid #f1f5f9;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary btn-sm" onclick="this.closest('.modal-overlay').remove();showClientModal(${c.id})">✏️ تعديل</button>
       <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove();addInvoiceForClient(${c.id},'${escH(c.name)}')">💳 فاتورة</button>
@@ -2697,6 +2698,30 @@ async function showClientDetail(id) {
       ].join('');
     }
   }).catch(()=>{});
+
+  // Load portal credentials inline (admin only)
+  if (currentUser?.role === 'admin') {
+    api('GET', `/api/portal-credentials/${c.id}`).then(pc => {
+      const el = document.getElementById('portalCredInlineBody');
+      if (!el) return;
+      if (!pc || !pc.client_id) { el.textContent = '—'; return; }
+      const rows = [
+        pc.contact_person && ['👤 اسم العميل', pc.contact_person],
+        pc.national_id    && ['🪪 الرقم القومي', pc.national_id],
+        pc.portal_system  && ['🏛️ المنظومة', pc.portal_system + (pc.declaration_type ? ' — ' + pc.declaration_type : '')],
+        pc.portal_username && ['👤 يوزر ساب', pc.portal_username],
+        pc.portal_password && ['🔑 باسورد ساب', `<span style="filter:blur(4px);cursor:pointer" onclick="this.style.filter=''" title="اضغط للإظهار">${escH(pc.portal_password)}</span>`],
+        pc.einvoice_email  && ['🧾 إيميل فاتورة', pc.einvoice_email],
+        pc.einvoice_password && ['🔑 باسورد فاتورة', `<span style="filter:blur(4px);cursor:pointer" onclick="this.style.filter=''" title="اضغط للإظهار">${escH(pc.einvoice_password)}</span>`],
+        pc.email_address  && ['📧 الإيميل', pc.email_address],
+        pc.email_password && ['🔑 باسورد إيميل', `<span style="filter:blur(4px);cursor:pointer" onclick="this.style.filter=''" title="اضغط للإظهار">${escH(pc.email_password)}</span>`],
+        pc.payroll_username && ['💼 مرتبات يوزر', pc.payroll_username + (pc.payroll_type ? ' (' + pc.payroll_type + ')' : '')],
+        pc.payroll_password && ['🔑 باسورد مرتبات', `<span style="filter:blur(4px);cursor:pointer" onclick="this.style.filter=''" title="اضغط للإظهار">${escH(pc.payroll_password)}</span>`],
+      ].filter(Boolean);
+      if (!rows.length) { el.textContent = '—'; return; }
+      el.innerHTML = `<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center">${rows.map(([k,v])=>`<span style="color:#94a3b8;font-weight:700;white-space:nowrap">${k}</span><span style="color:#1e293b;font-weight:600">${v}</span>`).join('')}</div>`;
+    }).catch(()=>{ const el=document.getElementById('portalCredInlineBody'); if(el) el.textContent='—'; });
+  }
 
   // Load health score async
   try {
