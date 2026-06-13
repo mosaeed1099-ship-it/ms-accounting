@@ -19,6 +19,8 @@ class Employee(Base):
     department       = Column(String(100))
     hire_date        = Column(Date)
     base_salary      = Column(Float, default=0)
+    variable_pay     = Column(Float, default=0)   # متغيرات / حوافز
+    allowances       = Column(Float, default=0)   # بدلات معفاة من الضريبة
     insurance_number = Column(String(50))
     insurance_share  = Column(Float, default=0)   # نسبة تأمين الموظف %
     company_insurance= Column(Float, default=0)   # نسبة تأمين الشركة %

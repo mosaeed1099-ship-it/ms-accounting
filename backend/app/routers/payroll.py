@@ -96,6 +96,8 @@ def list_employees(
     q = db.query(Employee)
     if status:
         q = q.filter(Employee.status == status)
+    else:
+        q = q.filter(Employee.status != "terminated")
     if client_id is not None:
         q = q.filter(Employee.client_id == client_id)
     else:
@@ -149,7 +151,7 @@ def delete_employee(
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "موظف غير موجود")
-    emp.status = "terminated"
+    db.delete(emp)
     db.commit()
     return {"ok": True}
 
