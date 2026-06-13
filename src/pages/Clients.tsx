@@ -103,7 +103,7 @@ export default function Clients() {
               <tr>
                 <td colSpan={9}>
                   <EmptyState
-                    icon={Users}
+                    icon={User}
                     title="لا توجد عملاء"
                     description="ابدأ بإضافة أول عميل"
                     action={<button className="btn-primary btn-sm" onClick={openAdd}><Plus className="w-3 h-3" />إضافة عميل</button>}

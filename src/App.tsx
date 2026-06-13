@@ -4,6 +4,7 @@ import { Layout } from './components/layout/Layout'
 import { ToastContainer } from './components/ui/Toast'
 import { useAuthStore } from './store/authStore'
 import { useToastState, setToastFn } from './hooks/useToast'
+import { logAuth } from './utils/authLogger'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Clients from './pages/Clients'
@@ -17,9 +18,16 @@ import Leads from './pages/Leads'
 import Establishment from './pages/Establishment'
 import Obligations from './pages/Obligations'
 
+// In prod: basename = '/ms-accounting/app' (gh-pages subpath)
+// In dev:  basename = '' (localhost:5173/)
+const basename = import.meta.env.PROD ? '/ms-accounting/app' : ''
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!isAuthenticated) {
+    logAuth('redirect_error', 'unauthenticated access → redirecting to login')
+    return <Navigate to="/login" replace />
+  }
   return <>{children}</>
 }
 
@@ -37,7 +45,7 @@ export default function App() {
   }, [addToast])
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       <Routes>
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
