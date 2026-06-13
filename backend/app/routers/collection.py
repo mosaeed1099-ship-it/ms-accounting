@@ -370,12 +370,14 @@ def add_payment(
             elif due.amount_paid > 0:
                 due.status = PaymentStatus.PARTIAL
 
+    # resolve client name once for both auto-captures
+    from app.models.client import Client as _Client
+    _client_obj = db.query(_Client).filter(_Client.id == contract.client_id).first() if contract.client_id else None
+    client_display = _client_obj.name if _client_obj else (contract.client_name_free or str(contract.client_id or ''))
+
     # Auto-capture → Office Revenue
     try:
         from app.routers.office_finance import auto_capture_revenue
-        from app.models.client import Client
-        client = db.query(Client).filter(Client.id == contract.client_id).first() if contract.client_id else None
-        client_display = client.name if client else (contract.client_name_free or str(contract.client_id or ''))
         auto_capture_revenue(
             db, amount=data.amount, category="accounting",
             tx_date=data.payment_date,
@@ -384,6 +386,24 @@ def add_payment(
             source_type="collection", source_id=payment.id,
             created_by=current_user.id,
         )
+    except Exception:
+        pass  # never break the main flow
+
+    # Auto-feed → Finance Center collections
+    try:
+        from app.models.finance_center import FinanceCollection
+        fc = FinanceCollection(
+            date=data.payment_date,
+            client_id=contract.client_id,
+            client_name=client_display,
+            billing_month=data.period_month or data.payment_date.month,
+            billing_year=data.period_year or data.payment_date.year,
+            amount=data.amount,
+            payment_method=pm_val,
+            note=data.reference or None,
+            created_by=current_user.id,
+        )
+        db.add(fc)
     except Exception:
         pass  # never break the main flow
     db.commit()
