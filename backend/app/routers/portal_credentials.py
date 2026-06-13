@@ -101,3 +101,4 @@ async def delete_credentials(
         db.delete(cred)
         db.commit()
     return {"ok": True}
+
