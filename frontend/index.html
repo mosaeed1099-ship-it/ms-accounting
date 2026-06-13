@@ -19959,7 +19959,7 @@ window.t = t;
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/ms-accounting/frontend/sw.js', {scope: '/ms-accounting/frontend/'})
+  navigator.serviceWorker.register('/ms-accounting/sw.js', {scope: '/ms-accounting/'})
     .catch(() => {});
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data?.type === 'RELOAD') location.reload(true);
