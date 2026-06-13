@@ -9386,88 +9386,239 @@ async function showEmployeeTasks(userId, userName) {
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
 }
 
-// ── COLLECTIONS ────────────────────────────────────
-var collectionsData=[], collectionsTab='establishment', collectionsSearch='';
+// ── COLLECTIONS (Sheet Style) ───────────────────────────────────────────────
+let _collMode = 'acc'; // acc | est
+let _collMonth = new Date().getMonth() + 1;
+let _collYear  = new Date().getFullYear();
+let _collRows  = [];   // loaded rows from server
+const _COLL_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const _COLL_PAY = {cash:'كاش',transfer:'تحويل بنكي',instapay:'إنستاباي',check:'شيك'};
+const _COLL_PAY_BADGE = {cash:'background:#f1f5f9;color:#475569',transfer:'background:#faeeda;color:#854f0b',instapay:'background:#eeedfe;color:#534ab7',check:'background:#f1f5f9;color:#475569'};
 
 async function loadCollections(silent=false) {
-  try {
-    const [summary, data] = await Promise.all([
-      api('GET','/api/collections/summary'),
-      api('GET',`/api/collections?page_size=100`),
-    ]);
-    if(!data) return;
-    collectionsData=data.items||[];
-    renderCollections(summary);
-  } catch(e){toast(e.message,'error')}
-}
+  const main = document.getElementById('main');
+  main.className = 'page';
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0,10);
 
-function renderCollections(summary) {
-  if (summary) window._collSummaryCache = summary;
-  const main=document.getElementById('main');
-  main.className='page';
-  const statusBadge={unpaid:'badge-red',partial:'badge-yellow',paid:'badge-green',overdue:'badge-red'};
-  const statusLabel={unpaid:'غير مدفوع',partial:'جزئي',paid:'مدفوع',overdue:'متأخر'};
-  const typeBadge={establishment:'badge-blue',monthly_fee:'badge-purple'};
-  const typeLabel={establishment:'تأسيس',monthly_fee:'أتعاب شهرية'};
-
-  const _cq = collectionsSearch.toLowerCase();
-  const estData=collectionsData.filter(c=>c.collection_type==='establishment'&&(!_cq||(c.client_name||'').toLowerCase().includes(_cq)||(c.title||'').toLowerCase().includes(_cq)));
-  const monthlyData=collectionsData.filter(c=>c.collection_type==='monthly_fee'&&(!_cq||(c.client_name||'').toLowerCase().includes(_cq)||(c.title||'').toLowerCase().includes(_cq)));
-
-  main.innerHTML=`
-  <!-- Summary Cards -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px">
-    ${summary?`
-    <div class="stat-card stat-blue"><div style="font-size:22px;font-weight:800;color:#1e293b">${money(summary.total_agreed)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي المتفق عليه</div></div>
-    <div class="stat-card stat-green"><div style="font-size:22px;font-weight:800;color:#16a34a">${money(summary.total_collected)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">إجمالي المحصّل</div></div>
-    <div class="stat-card stat-red"><div style="font-size:22px;font-weight:800;color:#dc2626">${money(summary.total_remaining)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">المتبقي</div></div>
-    <div class="stat-card"><div style="font-size:22px;font-weight:800;color:#d97706">${money(summary.current_month_due)}</div><div style="font-size:12px;color:#64748b;margin-top:4px">أتعاب الشهر الحالي</div><div style="font-size:11px;color:#16a34a;margin-top:3px">محصّل: ${money(summary.current_month_paid)}</div></div>
-    `:''}
-  </div>
-
-  <!-- Tabs -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button onclick="switchCollTab('establishment')" class="btn btn-sm ${collectionsTab==='establishment'?'btn-primary':'btn-secondary'}">🏢 تحصيلات التأسيس (${estData.length})</button>
-      <button onclick="switchCollTab('monthly_fee')" class="btn btn-sm ${collectionsTab==='monthly_fee'?'btn-primary':'btn-secondary'}">🔄 الأتعاب الشهرية (${monthlyData.length})</button>
-      <input class="input" style="font-size:12px;padding:5px 10px;width:180px" placeholder="🔍 بحث باسم الشركة..." value="${escH(collectionsSearch)}" oninput="setCollSearch(this.value)"/>
+  main.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:16px;font-weight:700;color:#1e293b">💵 الأتعاب والتحصيلات</div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="cMonthSel" onchange="window._collChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+        ${_COLL_MONTHS.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===_collMonth?'selected':''}>${m}</option>`).join('')}
+      </select>
+      <select id="cYearSel" onchange="window._collChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+        ${[2024,2025,2026].map(y=>`<option ${y===_collYear?'selected':''}>${y}</option>`).join('')}
+      </select>
+      <button onclick="window._collExport()" style="height:32px;padding:0 12px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#475569;cursor:pointer">📤 تصدير</button>
     </div>
-    <button class="btn btn-primary" onclick="showCollectionModal('${collectionsTab}')">+ إضافة</button>
   </div>
 
-  <!-- Table -->
-  <div class="card" style="overflow:hidden">
-    <table>
-      <thead><tr>
-        <th>العميل</th><th>العنوان</th><th>المبلغ المتفق عليه</th><th>المدفوع</th><th>المتبقي</th>
-        ${collectionsTab==='monthly_fee'?'<th>الشهري</th>':''}
-        <th>الحالة</th><th>إجراءات</th>
-      </tr></thead>
-      <tbody>
-        ${(collectionsTab==='establishment'?estData:monthlyData).length===0
-          ?`<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد عقود</td></tr>`
-          :(collectionsTab==='establishment'?estData:monthlyData).map(c=>`
-          <tr>
-            <td style="font-weight:600;color:#1e293b">${escH(c.client_name||'—')}</td>
-            <td style="font-size:12px;color:#374151;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(c.title)}</td>
-            <td style="font-weight:700;color:#1a2472">${money(c.agreed_amount)}</td>
-            <td style="color:#16a34a;font-weight:600">${money(c.total_paid)}</td>
-            <td style="color:${c.total_remaining>0?'#dc2626':'#16a34a'};font-weight:600">${money(c.total_remaining)}</td>
-            ${collectionsTab==='monthly_fee'?`<td style="color:#5b8ec4;font-weight:600">${c.monthly_amount?money(c.monthly_amount)+'/شهر':'—'}</td>`:''}
-            <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
-            <td>
-              <div style="display:flex;gap:5px">
-                ${c.total_remaining>0?`<button class="btn btn-success btn-sm" onclick="showCollectionPaymentModal(${c.id},${c.total_remaining},'${escH(c.title)}',${c.collection_type==='monthly_fee'})">💵 دفعة</button>`:''}
-                <button class="btn btn-secondary btn-sm" onclick="showCollectionDetail(${c.id})" title="تفاصيل">👁</button>
-                <button class="btn btn-secondary btn-sm" onclick="showCollectionEditModal(${c.id})" title="تعديل">✏️</button>
-                <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="deleteCollectionContract(${c.id},'${escH(c.title)}')" title="حذف">🗑</button>
-              </div>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
+  <div style="display:flex;gap:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:3px;width:fit-content;margin-bottom:12px" id="collTabs">
+    <button onclick="window._collSwitch('acc')" id="cTab_acc" style="padding:7px 20px;font-size:13px;border-radius:8px;border:none;cursor:pointer;font-weight:700;background:#1a2472;color:#fff;white-space:nowrap">💼 تحصيل حسابات</button>
+    <button onclick="window._collSwitch('est')" id="cTab_est" style="padding:7px 20px;font-size:13px;border-radius:8px;border:none;cursor:pointer;font-weight:500;background:none;color:#64748b;white-space:nowrap">🏢 تحصيل تأسيس</button>
+  </div>
+
+  <div id="collKpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px"></div>
+
+  <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+      <div id="collSheetTitle" style="font-size:13px;font-weight:700;color:#1e293b">سجل تحصيل الحسابات</div>
+      <div style="font-size:11px;color:#94a3b8">اكتب في السطر الأخضر واضغط <span style="background:#1d9e75;color:#fff;padding:1px 7px;border-radius:4px;font-weight:700;font-size:10px">Enter</span> للحفظ الفوري</div>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;min-width:620px">
+        <thead id="collThead"></thead>
+        <tbody id="collTbody"></tbody>
+        <tfoot id="collTfoot"></tfoot>
+      </table>
+    </div>
   </div>`;
+
+  window._collChangeMonth = () => {
+    _collMonth = +document.getElementById('cMonthSel').value;
+    _collYear  = +document.getElementById('cYearSel').value;
+    _collFetch();
+  };
+
+  window._collSwitch = (mode) => {
+    _collMode = mode;
+    ['acc','est'].forEach(m => {
+      const b = document.getElementById(`cTab_${m}`);
+      if (!b) return;
+      if (m === mode) { b.style.background='#1a2472'; b.style.color='#fff'; b.style.fontWeight='700'; }
+      else            { b.style.background='none';    b.style.color='#64748b'; b.style.fontWeight='500'; }
+    });
+    _collRender();
+    setTimeout(()=>document.getElementById('nr-client')?.focus(), 50);
+  };
+
+  window._collExport = () => {
+    const rows = _collRows.filter(r=>r.collection_type===_collMode);
+    let csv = 'التاريخ,العميل,' + (_collMode==='acc'?'الشهر':'الخدمة') + ',المبلغ,الطريقة,ملاحظة\n';
+    rows.forEach(r=>{ csv += `${r.date},${r.client_name},${r.billing_month_label||r.note||''},${r.amount},${_COLL_PAY[r.payment_method]||r.payment_method},${r.note||''}\n`; });
+    const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`تحصيل_${_collMode==='acc'?'حسابات':'تأسيس'}_${_COLL_MONTHS[_collMonth]}_${_collYear}.csv`;
+    a.click();
+  };
+
+  await _collFetch();
 }
+
+async function _collFetch() {
+  try {
+    const data = await api('GET', `/api/finance/collections?month=${_collMonth}&year=${_collYear}`);
+    _collRows = data || [];
+  } catch(e) { _collRows = []; }
+  _collRender();
+}
+
+function _collRender() {
+  const mode = _collMode;
+  const rows = _collRows.filter(r => r.collection_type === mode);
+  const total = rows.reduce((s,r)=>s+r.amount,0);
+  const avg   = rows.length ? Math.round(total/rows.length) : 0;
+  const color = mode==='acc'?'#0f6e56':'#185fa5';
+
+  // title
+  const tEl = document.getElementById('collSheetTitle');
+  if (tEl) tEl.textContent = mode==='acc'?'سجل تحصيل الحسابات':'سجل تحصيل التأسيس';
+
+  // kpis
+  const kEl = document.getElementById('collKpis');
+  if (kEl) kEl.innerHTML = `
+    <div style="background:#fff;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0">
+      <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">إجمالي التحصيل</div>
+      <div style="font-size:20px;font-weight:700;color:${color}">${total.toLocaleString('ar-EG')} <span style="font-size:11px;font-weight:400;color:#94a3b8">ج.م</span></div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0">
+      <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">عدد التحصيلات</div>
+      <div style="font-size:20px;font-weight:700;color:${color}">${rows.length}</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0">
+      <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">متوسط التحصيل</div>
+      <div style="font-size:20px;font-weight:700;color:${color}">${avg.toLocaleString('ar-EG')} <span style="font-size:11px;font-weight:400;color:#94a3b8">ج.م</span></div>
+    </div>`;
+
+  // thead
+  const col3 = mode==='acc'?'عن شهر':'نوع الخدمة';
+  const thEl = document.getElementById('collThead');
+  if (thEl) thEl.innerHTML = `<tr style="background:#f8fafc">
+    <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:95px">التاريخ</th>
+    <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0">اسم العميل</th>
+    <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:120px">${col3}</th>
+    <th style="padding:8px 10px;text-align:center;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:100px">المبلغ (ج.م)</th>
+    <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:105px">الطريقة</th>
+    <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0">ملاحظة</th>
+    <th style="width:32px;border-bottom:2px solid #e2e8f0"></th>
+  </tr>`;
+
+  // tbody — saved rows + new row
+  const tbEl = document.getElementById('collTbody');
+  if (!tbEl) return;
+  const today = new Date().toISOString().slice(0,10);
+  const rowsHTML = rows.map((r,i) => `<tr style="border-bottom:1px solid #f8fafc" id="crow_${r.id}">
+    <td style="padding:0"><input value="${r.date}" onchange="window._collUpdate(${r.id},'date',this.value)" style="width:100%;height:36px;padding:0 8px;font-size:12px;border:none;background:transparent;outline:none;color:#64748b" /></td>
+    <td style="padding:0"><input value="${escH(r.client_name)}" onchange="window._collUpdate(${r.id},'client_name',this.value)" style="width:100%;height:36px;padding:0 10px;font-size:12px;border:none;background:transparent;outline:none;font-weight:600;color:#1e293b" /></td>
+    <td style="padding:0"><input value="${r.billing_month_label||''}" style="width:100%;height:36px;padding:0 8px;font-size:12px;border:none;background:transparent;outline:none;color:#475569" /></td>
+    <td style="padding:0"><input value="${r.amount}" onchange="window._collUpdate(${r.id},'amount',this.value)" style="width:100%;height:36px;padding:0 8px;font-size:13px;font-weight:700;color:#0f6e56;border:none;background:transparent;outline:none;text-align:center" /></td>
+    <td style="padding:4px 8px"><span style="font-size:10px;padding:3px 8px;border-radius:8px;font-weight:600;${_COLL_PAY_BADGE[r.payment_method]||'background:#f1f5f9;color:#475569'}">${_COLL_PAY[r.payment_method]||r.payment_method}</span></td>
+    <td style="padding:0"><input value="${escH(r.note||'')}" style="width:100%;height:36px;padding:0 8px;font-size:11px;border:none;background:transparent;outline:none;color:#94a3b8" /></td>
+    <td style="padding:0;text-align:center"><button onclick="window._collDel(${r.id})" style="background:none;border:none;color:#e2e8f0;cursor:pointer;font-size:14px;padding:4px" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#e2e8f0'">✕</button></td>
+  </tr>`).join('');
+
+  // new row (green)
+  const newRowHTML = `<tr style="background:#f0fdf4" id="new-coll-row">
+    <td style="padding:0"><input id="nr-date" value="${today.slice(8,10)}/${today.slice(5,7)}" style="width:100%;height:36px;padding:0 8px;font-size:12px;border:none;background:transparent;outline:none;color:#64748b" /></td>
+    <td style="padding:0"><input id="nr-client" placeholder="اكتب اسم العميل..." onkeydown="window._collNewKey(event)" style="width:100%;height:36px;padding:0 10px;font-size:12px;border:none;background:transparent;outline:none;color:#1e293b;font-weight:600" /></td>
+    <td style="padding:0"><input id="nr-month" placeholder="${mode==='acc'?'مثال: يونيو 2025':'نوع الشركة'}" onkeydown="window._collNewKey(event)" style="width:100%;height:36px;padding:0 8px;font-size:12px;border:none;background:transparent;outline:none;color:#475569" /></td>
+    <td style="padding:0"><input id="nr-amt" type="number" placeholder="0" onkeydown="window._collNewKey(event)" style="width:100%;height:36px;padding:0 8px;font-size:13px;font-weight:700;color:#0f6e56;border:none;background:transparent;outline:none;text-align:center" /></td>
+    <td style="padding:4px 8px"><select id="nr-method" style="width:100%;height:28px;font-size:11px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#1e293b">
+      <option value="cash">كاش</option>
+      <option value="transfer">تحويل بنكي</option>
+      <option value="instapay">إنستاباي</option>
+      <option value="check">شيك</option>
+    </select></td>
+    <td style="padding:0"><input id="nr-note" placeholder="ملاحظة..." onkeydown="window._collNewKey(event)" style="width:100%;height:36px;padding:0 8px;font-size:11px;border:none;background:transparent;outline:none;color:#94a3b8" /></td>
+    <td></td>
+  </tr>`;
+
+  tbEl.innerHTML = rowsHTML + newRowHTML;
+
+  // tfoot
+  const tfEl = document.getElementById('collTfoot');
+  if (tfEl && rows.length) tfEl.innerHTML = `<tr style="background:#f0fdf4;border-top:2px solid #bbf7d0">
+    <td colspan="3" style="padding:8px 10px;font-weight:700;font-size:13px;color:#0f6e56">الإجمالي</td>
+    <td style="padding:8px 10px;font-weight:700;font-size:14px;color:#0f6e56;text-align:center">${total.toLocaleString('ar-EG')}</td>
+    <td colspan="3"></td>
+  </tr>`;
+  else if (tfEl) tfEl.innerHTML = '';
+
+  // focus inputs
+  setTimeout(()=>{
+    const inputs = document.querySelectorAll('#collTbody input, #collTbody select');
+    inputs.forEach(inp => {
+      inp.addEventListener('focus', ()=>{ inp.style.background='#fffbeb'; inp.style.boxShadow='inset 0 0 0 2px #1d9e75'; });
+      inp.addEventListener('blur',  ()=>{ inp.style.background='transparent'; inp.style.boxShadow='none'; });
+    });
+  }, 50);
+}
+
+window._collNewKey = async function(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const client = document.getElementById('nr-client')?.value.trim();
+  const amt    = parseFloat(document.getElementById('nr-amt')?.value || '0');
+  if (!client) { document.getElementById('nr-client')?.focus(); return; }
+  if (!amt || amt <= 0) { document.getElementById('nr-amt')?.focus(); return; }
+
+  const today = new Date();
+  const body = {
+    date: today.toISOString().slice(0,10),
+    client_name: client,
+    billing_month: _collMonth,
+    billing_year:  _collYear,
+    amount: amt,
+    collection_type: _collMode,
+    payment_method: document.getElementById('nr-method')?.value || 'cash',
+    note: document.getElementById('nr-note')?.value || null,
+  };
+
+  try {
+    const saved = await api('POST', '/api/finance/collections', body);
+    _collRows.unshift(saved);
+    _collRender();
+    // flash last added row
+    const row = document.getElementById(`crow_${saved.id}`);
+    if (row) {
+      row.querySelectorAll('td').forEach(td=>td.style.background='#d1fae5');
+      setTimeout(()=>row.querySelectorAll('td').forEach(td=>td.style.background=''),500);
+    }
+    document.getElementById('nr-client')?.focus();
+    toast('✓ تم الحفظ');
+  } catch(err) { toast(err.message||'خطأ في الحفظ','error'); }
+};
+
+window._collDel = async function(id) {
+  if (!confirm('حذف هذا التحصيل؟')) return;
+  await api('DELETE', `/api/finance/collections/${id}`).catch(()=>{});
+  _collRows = _collRows.filter(r=>r.id!==id);
+  _collRender();
+  toast('تم الحذف');
+};
+
+window._collUpdate = function(id, field, val) {
+  // local update only (no separate PUT endpoint needed for now)
+  const row = _collRows.find(r=>r.id===id);
+  if (row) row[field] = val;
+};
+
+// keep old refs working (modal functions still referenced elsewhere)
+var collectionsData=[], collectionsTab='establishment', collectionsSearch='';
+function switchCollTab(t){ collectionsTab=t; }
+function setCollSearch(v){ collectionsSearch=v; }
 
 async function showCollectionModal(type='establishment') {
   let clients=[];
