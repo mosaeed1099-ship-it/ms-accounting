@@ -58,6 +58,7 @@ def _coll_dict(c: FinanceCollection, user_id: int) -> dict:
         "billing_month": c.billing_month,
         "billing_year": c.billing_year,
         "billing_month_label": MONTH_AR[c.billing_month] if 1 <= c.billing_month <= 12 else "",
+        "collection_type": c.collection_type or "acc",
         "amount": c.amount,
         "payment_method": c.payment_method,
         "payment_method_label": PAYMENT_LABELS.get(c.payment_method, c.payment_method),
@@ -77,6 +78,7 @@ class CollectionIn(BaseModel):
     billing_month: int
     billing_year: int
     amount: float
+    collection_type: str = "acc"   # acc | est
     payment_method: str = "cash"
     note: Optional[str] = None
 
@@ -94,6 +96,7 @@ def add_collection(
         billing_month=body.billing_month,
         billing_year=body.billing_year,
         amount=body.amount,
+        collection_type=body.collection_type,
         payment_method=body.payment_method,
         note=body.note,
         created_by=current_user.id,
@@ -108,24 +111,27 @@ def add_collection(
 def get_collections(
     month: Optional[int] = None,
     year: Optional[int] = Query(None),
+    collection_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     q = db.query(FinanceCollection)
 
     if _is_owner(current_user):
-        # المدير: يشوف الكل
         if month:
             q = q.filter(FinanceCollection.billing_month == month)
         if year:
             q = q.filter(FinanceCollection.billing_year == year)
+        if collection_type:
+            q = q.filter(FinanceCollection.collection_type == collection_type)
     else:
-        # الموظف: يشوف بتاعه اليوم فقط
         today = date.today()
         q = q.filter(
             FinanceCollection.created_by == current_user.id,
             FinanceCollection.date == today,
         )
+        if collection_type:
+            q = q.filter(FinanceCollection.collection_type == collection_type)
 
     rows = q.order_by(FinanceCollection.date.desc(), FinanceCollection.created_at.desc()).all()
     return [_coll_dict(r, current_user.id) for r in rows]
@@ -339,7 +345,7 @@ def get_summary(
 def get_fees_grid(
     year: int = Query(default=2025),
     db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    current_user: User = Depends(get_current_user),
 ):
     clients = (
         db.query(Client)

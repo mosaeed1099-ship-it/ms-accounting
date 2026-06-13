@@ -18,6 +18,7 @@ class FinanceCollection(Base):
     billing_month   = Column(Integer, nullable=False)   # الشهر المسدَّد عنه
     billing_year    = Column(Integer, nullable=False)
     amount          = Column(Float, nullable=False)
+    collection_type = Column(String(20), default="acc", index=True)  # acc | est
     payment_method  = Column(String(50), default="cash")  # cash|transfer|instapay|check
     note            = Column(Text)
     created_by      = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
