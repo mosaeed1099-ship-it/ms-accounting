@@ -313,13 +313,13 @@ def get_summary(
 
     # تفصيل التحصيل حسب الموظف
     by_employee = (
-        db.query(User.full_name, func.sum(FinanceCollection.amount))
+        db.query(User.name, func.sum(FinanceCollection.amount))
         .join(FinanceCollection, User.id == FinanceCollection.created_by)
         .filter(
             FinanceCollection.billing_month == m,
             FinanceCollection.billing_year == y,
         )
-        .group_by(User.full_name)
+        .group_by(User.name)
         .all()
     )
 
@@ -334,7 +334,7 @@ def get_summary(
         "net_profit": net,
         "profit_margin_pct": round(net / total_collected * 100, 1) if total_collected else 0,
         "collections_by_employee": [
-            {"name": name, "amount": float(amt)} for name, amt in by_employee
+            {"name": name or "غير معروف", "amount": float(amt or 0)} for name, amt in by_employee
         ],
     }
 
