@@ -18726,10 +18726,10 @@ async function renderOwnerPartners(el) {
   window.saveNewPartner = async function() {
     const name = document.getElementById('newPartnerName').value.trim();
     const pct = parseFloat(document.getElementById('newPartnerPct').value||0);
-    if(!name||!pct){ showToast('ادخل الاسم والنسبة','error'); return; }
+    if(!name||!pct){ toast('ادخل الاسم والنسبة','error'); return; }
     await api('POST', '/api/office/partners', {partner_name:name, share_pct:pct});
     document.getElementById('addPartnerModal')?.remove();
-    showToast('تم إضافة الشريك');
+    toast('تم إضافة الشريك');
     await renderOwnerPartners(el);
   };
 
@@ -18753,7 +18753,7 @@ async function renderOwnerPartners(el) {
     const pct = parseFloat(document.getElementById('editPartnerPct').value||0);
     await api('PUT', `/api/office/partners/${id}`, {partner_name:name, share_pct:pct});
     document.getElementById('editPartnerModal')?.remove();
-    showToast('تم التحديث');
+    toast('تم التحديث');
     await renderOwnerPartners(el);
   };
 }
@@ -18800,15 +18800,15 @@ async function renderOwnerSnapshots(el) {
     if(!confirm(`هل أنت متأكد من إغلاق ${monthName(now.getFullYear(), now.getMonth()+1)}؟\nلن يمكن تعديل البيانات بعد الإغلاق.`)) return;
     try {
       await api('POST', '/api/office/snapshots/close', {year: now.getFullYear(), month: now.getMonth()+1});
-      showToast('تم إغلاق الشهر بنجاح');
+      toast('تم إغلاق الشهر بنجاح');
       await renderOwnerSnapshots(el);
     } catch(e) {
-      showToast(e.message||'خطأ في الإغلاق', 'error');
+      toast(e.message||'خطأ في الإغلاق', 'error');
     }
   };
 
   window.exportOwnerMonthPDF = async function(year, month) {
-    showToast('جاري إعداد التقرير...');
+    toast('جاري إعداد التقرير...');
     try {
       const token = localStorage.getItem('ms_token');
       const url = `${API_BASE}/api/office/report-pdf?year=${year}&month=${month}`;
@@ -18819,7 +18819,7 @@ async function renderOwnerSnapshots(el) {
       a.href = URL.createObjectURL(blob);
       a.download = `office-report-${year}-${month}.pdf`;
       a.click();
-    } catch(e) { showToast(e.message, 'error'); }
+    } catch(e) { toast(e.message, 'error'); }
   };
 }
 
@@ -18908,7 +18908,7 @@ async function renderOwnerAnnual(el) {
     await loadAnnual();
   };
   window.exportOwnerAnnualPDF = async function() {
-    showToast('جاري إعداد التقرير...');
+    toast('جاري إعداد التقرير...');
     const token = localStorage.getItem('ms_token');
     const url = `${API_BASE}/api/office/report-pdf?year=${yr}`;
     try {
@@ -18917,7 +18917,7 @@ async function renderOwnerAnnual(el) {
       const blob = await resp.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = `annual-report-${yr}.pdf`; a.click();
-    } catch(e){ showToast(e.message,'error'); }
+    } catch(e){ toast(e.message,'error'); }
   };
   await loadAnnual();
 }
@@ -18957,11 +18957,11 @@ window.saveOwnerRevenue = async function(id) {
     amount: parseFloat(document.getElementById('revAmount').value||0),
     client_name: document.getElementById('revClient').value||null,
   };
-  if(!body.amount||!body.tx_date){ showToast('ادخل التاريخ والمبلغ','error'); return; }
+  if(!body.amount||!body.date){ toast('ادخل التاريخ والمبلغ','error'); return; }
   if(id) await api('PUT', `/api/office/revenues/${id}`, body);
   else   await api('POST', '/api/office/revenues', body);
   document.getElementById('addRevModal')?.remove();
-  showToast('تم الحفظ');
+  toast('تم الحفظ');
   await renderOwnerRevenues(document.getElementById('ownerContent'));
 };
 
@@ -18973,7 +18973,7 @@ window.editOwnerRevenue = async function(id) {
 window.deleteOwnerRevenue = async function(id) {
   if(!confirm('حذف هذا الإيراد؟')) return;
   await api('DELETE', `/api/office/revenues/${id}`);
-  showToast('تم الحذف');
+  toast('تم الحذف');
   await renderOwnerRevenues(document.getElementById('ownerContent'));
 };
 
@@ -19012,11 +19012,11 @@ window.saveOwnerExpense = async function(id) {
     amount: parseFloat(document.getElementById('expAmount').value||0),
     notes: document.getElementById('expNotes').value||null,
   };
-  if(!body.amount||!body.tx_date){ showToast('ادخل التاريخ والمبلغ','error'); return; }
+  if(!body.amount||!body.date){ toast('ادخل التاريخ والمبلغ','error'); return; }
   if(id) await api('PUT', `/api/office/expenses/${id}`, body);
   else   await api('POST', '/api/office/expenses', body);
   document.getElementById('addExpModal')?.remove();
-  showToast('تم الحفظ');
+  toast('تم الحفظ');
   await renderOwnerExpenses(document.getElementById('ownerContent'));
 };
 
@@ -19028,7 +19028,7 @@ window.editOwnerExpense = async function(id) {
 window.deleteOwnerExpense = async function(id) {
   if(!confirm('حذف هذا المصروف؟')) return;
   await api('DELETE', `/api/office/expenses/${id}`);
-  showToast('تم الحذف');
+  toast('تم الحذف');
   await renderOwnerExpenses(document.getElementById('ownerContent'));
 };
 
