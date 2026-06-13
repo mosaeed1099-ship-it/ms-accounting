@@ -41,6 +41,7 @@ from app.routers.formation_obligations import router as formation_obligations_ro
 from app.routers.realtime import router as realtime_router, manager as realtime_manager, ENTITY_MAP, SKIP_ENTITIES, DASHBOARD_ENTITIES
 from app.routers import portal_credentials as portal_credentials_router
 from app.routers.finance_center import router as finance_center_router
+from app.routers.monthly_fees import router as monthly_fees_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -59,6 +60,7 @@ import app.models.tax_center          # noqa: F401
 import app.models.establishment       # noqa: F401
 import app.models.service_template    # noqa: F401
 import app.models.portal_credentials  # noqa: F401
+import app.models.monthly_fees        # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -645,6 +647,7 @@ app.include_router(portal_credentials_router.router)
 app.include_router(realtime_router)
 
 app.include_router(finance_center_router)
+app.include_router(monthly_fees_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
