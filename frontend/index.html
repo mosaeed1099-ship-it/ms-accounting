@@ -2523,9 +2523,6 @@ function _clientsTableRows() {
   });
   if(!filtered.length) return emptyStateRow(9,'👥','لا يوجد عملاء','اضغط "+ إضافة عميل" لإنشاء أول عميل');
   return filtered.map(c=>{
-    const bal = c.balance||0;
-    const balStyle = bal>0?'color:#dc2626;font-weight:700':bal<0?'color:#16a34a;font-weight:700':'color:#94a3b8';
-    const balText = bal===0?'—': (bal>0?`<span style="${balStyle}">▲ ${money(bal)}</span>`:`<span style="${balStyle}">✓ ${money(Math.abs(bal))}</span>`);
     return `
   <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
     <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
@@ -2536,8 +2533,6 @@ function _clientsTableRows() {
     <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
     <td class="col-mob-hide" style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
     <td class="col-mob-hide" style="color:#374151;font-size:12px">${c.activity||'—'}</td>
-    <td class="col-mob-hide" style="font-weight:600;color:#1e293b">${c.contract_value?money(c.contract_value):'—'}</td>
-    <td class="col-mob-hide">${balText}</td>
     <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
     <td onclick="event.stopPropagation()">
       <div class="mob-actions-wrap" style="display:flex;gap:6px">
@@ -2581,7 +2576,7 @@ function renderClients() {
   <div class="card" style="overflow:hidden">
     <table>
       <thead><tr>
-        <th>الكود</th><th>الاسم</th><th>النوع</th><th class="col-mob-hide">الهاتف</th><th class="col-mob-hide">النشاط</th><th class="col-mob-hide">قيمة العقد</th><th class="col-mob-hide">الرصيد</th><th>الحالة</th><th>إجراءات</th>
+        <th>الكود</th><th>الاسم</th><th>النوع</th><th class="col-mob-hide">الهاتف</th><th class="col-mob-hide">النشاط</th><th>الحالة</th><th>إجراءات</th>
       </tr></thead>
       <tbody id="clientsTbody">${_clientsTableRows()}</tbody>
     </table>
@@ -2634,7 +2629,7 @@ async function showClientDetail(id) {
         ['📞 الهاتف',c.phone||'—'],['🏙️ المحافظة',c.governorate||'—'],
         ['🔢 الرقم الضريبي',c.tax_number||'—'],['🏢 السجل التجاري',c.commercial_register||'—'],
         ['⚙️ النشاط',c.activity||'—'],['💳 نوع الضريبة',c.tax_type||'—'],
-        ['💰 قيمة العقد',c.contract_value?money(c.contract_value):'—'],['✅ الحالة',statusLabel[c.status]||c.status],
+        ['✅ الحالة',statusLabel[c.status]||c.status],
         ...(c.trade_name?[['🏷️ السمة التجارية',c.trade_name]]:[] ),
         ...(c.legal_entity?[['⚖️ الكيان القانوني',c.legal_entity]]:[] ),
         ...(c.company_status&&c.company_status!=='active'?[['🏭 حالة الشركة',{active:'نشطة',inactive:'غير نشطة',under_establishment:'قيد التأسيس'}[c.company_status]||c.company_status]]:[] ),
