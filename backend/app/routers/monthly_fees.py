@@ -67,6 +67,7 @@ def dashboard(
     mo = month or today.month
 
     active = db.query(MonthlyFeeClient).filter(MonthlyFeeClient.status == MFClientStatus.ACTIVE).all()
+    all_clients = db.query(MonthlyFeeClient).all()
     records_month = db.query(MonthlyFeeRecord).filter(
         MonthlyFeeRecord.year == yr, MonthlyFeeRecord.month == mo
     ).all()
@@ -80,7 +81,7 @@ def dashboard(
     collection_pct = round(total_paid / total_due * 100, 1) if total_due else 0
 
     # top debtors (most remaining)
-    client_map = {c.id: c.name for c in active}
+    client_map = {c.id: c.name for c in all_clients}
     top_debtors = sorted(
         [r for r in records_month if r.remaining > 0],
         key=lambda r: r.remaining, reverse=True
