@@ -216,6 +216,26 @@ def _run_migrations_pg():
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS inline_notes TEXT",
         # backfill task_date from created_at for existing rows
         "UPDATE tasks SET task_date = created_at::date WHERE task_date IS NULL",
+        # ── Backup Records ────────────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS backup_records (
+            id SERIAL PRIMARY KEY,
+            backup_type VARCHAR(20) NOT NULL,
+            label VARCHAR(200),
+            includes_db BOOLEAN DEFAULT TRUE,
+            includes_uploads BOOLEAN DEFAULT FALSE,
+            db_size_kb FLOAT DEFAULT 0,
+            uploads_size_kb FLOAT DEFAULT 0,
+            total_size_kb FLOAT DEFAULT 0,
+            db_stats TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            error_message TEXT,
+            emailed_to VARCHAR(200),
+            emailed_at TIMESTAMP,
+            triggered_by INTEGER,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            completed_at TIMESTAMP
+        )""",
     ]
     with engine.connect() as conn:
         for sql in migrations:

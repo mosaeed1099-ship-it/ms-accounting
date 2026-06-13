@@ -1,12 +1,14 @@
 FROM python:3.11-slim
 
 # Cache-bust: 2026-06-10a
-ARG CACHEBUST=2026-06-13-finance-center
+ARG CACHEBUST=2026-06-14-backup-system
 
 WORKDIR /app
 
-# Install curl for HEALTHCHECK
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install curl (healthcheck) + postgresql-client (pg_dump/psql for backups)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

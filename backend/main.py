@@ -42,6 +42,7 @@ from app.routers.realtime import router as realtime_router, manager as realtime_
 from app.routers import portal_credentials as portal_credentials_router
 from app.routers.finance_center import router as finance_center_router
 from app.routers.monthly_fees import router as monthly_fees_router
+from app.routers.backup import router as backup_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -51,6 +52,7 @@ import app.models.wa_log              # noqa: F401
 import app.models.company_document    # noqa: F401
 import app.models.audit_log           # noqa: F401
 import app.models.folder              # noqa: F401
+import app.models.backup              # noqa: F401  — registers backup_records table
 import app.models.client_portal       # noqa: F401
 import app.models.client_required_doc # noqa: F401
 import app.models.office_finance      # noqa: F401
@@ -94,77 +96,49 @@ def _db_health_job():
         logger.warning(f"[db-health] failed: {exc} — pool will auto-reconnect via pool_pre_ping")
 
 
-def _db_backup_job():
-    """Weekly PostgreSQL backup — pg_dump compressed → email to admin."""
-    import subprocess, gzip, os
-    from datetime import datetime
+def _run_scheduled_backup(backup_type: str):
+    """Unified scheduled backup runner — used by daily/weekly/monthly jobs."""
+    from app.database import SessionLocal
+    from app.routers.backup import run_backup
 
     db_url = os.environ.get("DATABASE_URL", "")
     if not db_url or "sqlite" in db_url:
-        logger.info("[backup] SQLite/desktop mode — skipping pg backup")
+        logger.info(f"[backup] SQLite/desktop mode — skipping {backup_type} backup")
         return
 
-    # Parse postgresql://user:pass@host:port/dbname
+    db = SessionLocal()
     try:
-        from urllib.parse import urlparse
-        p = urlparse(db_url)
-        env = os.environ.copy()
-        env["PGPASSWORD"] = p.password or ""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        result = subprocess.run(
-            ["pg_dump", "-h", p.hostname, "-p", str(p.port or 5432),
-             "-U", p.username, "-d", p.path.lstrip("/"),
-             "--no-owner", "--no-acl", "-F", "p"],
-            capture_output=True, env=env, timeout=120
+        record = run_backup(
+            backup_type=backup_type,
+            db=db,
+            triggered_by=None,
+            notes=f"تلقائي — {backup_type}",
+            include_uploads=True,
+            send_email=True,
         )
-        if result.returncode != 0:
-            logger.error(f"[backup] pg_dump failed: {result.stderr.decode()}")
-            return
-
-        compressed = gzip.compress(result.stdout)
-        filename = f"ms_backup_{timestamp}.sql.gz"
-
-        # Save locally in BACKUP_DIR
-        try:
-            from app.config import settings
-            backup_path = os.path.join(settings.BACKUP_DIR, filename)
-            with open(backup_path, "wb") as f:
-                f.write(compressed)
-            logger.info(f"[backup] saved locally: {backup_path} ({len(compressed)//1024} KB)")
-        except Exception as e:
-            logger.warning(f"[backup] local save failed: {e}")
-
-        # Email to admin if SMTP configured
-        try:
-            from app.services.email_service import get_config, send_email_with_attachment
-            cfg = get_config()
-            if cfg.smtp_user and cfg.smtp_pass:
-                size_kb = len(compressed) // 1024
-                html = f"""
-                <div style="font-family:sans-serif;direction:rtl;padding:20px">
-                  <h2 style="color:#1a2472">🗄️ نسخة احتياطية أسبوعية — MS Accounting</h2>
-                  <p>تم إنشاء النسخة الاحتياطية بنجاح.</p>
-                  <table style="border-collapse:collapse;width:100%">
-                    <tr><td style="padding:8px;font-weight:bold">التاريخ</td><td style="padding:8px">{datetime.now().strftime('%Y-%m-%d %H:%M')}</td></tr>
-                    <tr style="background:#f8fafc"><td style="padding:8px;font-weight:bold">الملف</td><td style="padding:8px">{filename}</td></tr>
-                    <tr><td style="padding:8px;font-weight:bold">الحجم</td><td style="padding:8px">{size_kb} KB</td></tr>
-                  </table>
-                  <p style="color:#64748b;font-size:12px;margin-top:20px">الملف المضغوط مرفق بهذا البريد.</p>
-                </div>"""
-                send_email_with_attachment(
-                    to_email=cfg.smtp_user,
-                    subject=f"🗄️ نسخة احتياطية أسبوعية — {timestamp}",
-                    html_body=html,
-                    attachment_bytes=compressed,
-                    attachment_name=filename,
-                    mime_type="application/gzip"
-                )
-                logger.info(f"[backup] emailed to {cfg.smtp_user}")
-        except Exception as e:
-            logger.warning(f"[backup] email failed: {e}")
-
+        if record.status == "completed":
+            logger.info(f"[backup] {backup_type} completed — {record.total_size_kb:.0f} KB — id={record.id}")
+        else:
+            logger.error(f"[backup] {backup_type} FAILED — {record.error_message}")
     except Exception as exc:
-        logger.error(f"[backup] job error: {exc}", exc_info=True)
+        logger.error(f"[backup] {backup_type} job error: {exc}", exc_info=True)
+    finally:
+        db.close()
+
+
+def _db_backup_job():
+    """Weekly backup (kept for backward compat — now delegates to unified runner)."""
+    _run_scheduled_backup("weekly")
+
+
+def _daily_backup_job():
+    """Daily backup at midnight."""
+    _run_scheduled_backup("daily")
+
+
+def _monthly_backup_job():
+    """Monthly backup on 1st of each month at 1am."""
+    _run_scheduled_backup("monthly")
 
 
 def _monthly_client_report_job():
@@ -275,12 +249,15 @@ def _start_scheduler():
         sched = BackgroundScheduler(timezone="Africa/Cairo", daemon=True)
         sched.add_job(_keep_alive_job,          IntervalTrigger(minutes=8),          id="keep_alive",      replace_existing=True)
         sched.add_job(_db_health_job,           IntervalTrigger(minutes=5),          id="db_health",       replace_existing=True)
-        sched.add_job(_db_backup_job,           CronTrigger(day_of_week="sun", hour=2, minute=0), id="db_backup",       replace_existing=True)
-        sched.add_job(_monthly_client_report_job, CronTrigger(day=1, hour=8, minute=0), id="monthly_report",  replace_existing=True)
-        sched.add_job(_process_eta_retry_queue,   IntervalTrigger(minutes=5),          id="eta_retry",       replace_existing=True)
-        sched.add_job(_daily_deadline_alerts,     CronTrigger(hour=8, minute=0),       id="deadline_alerts", replace_existing=True)
+        # Backup schedule: daily midnight, weekly Sunday 2am, monthly 1st-of-month 1am
+        sched.add_job(_daily_backup_job,          CronTrigger(hour=0,  minute=0),                            id="backup_daily",    replace_existing=True)
+        sched.add_job(_db_backup_job,             CronTrigger(day_of_week="sun", hour=2, minute=0),          id="backup_weekly",   replace_existing=True)
+        sched.add_job(_monthly_backup_job,        CronTrigger(day=1,   hour=1, minute=0),                    id="backup_monthly",  replace_existing=True)
+        sched.add_job(_monthly_client_report_job, CronTrigger(day=1,   hour=8, minute=0),                    id="monthly_report",  replace_existing=True)
+        sched.add_job(_process_eta_retry_queue,   IntervalTrigger(minutes=5),                                id="eta_retry",       replace_existing=True)
+        sched.add_job(_daily_deadline_alerts,     CronTrigger(hour=8, minute=0),                             id="deadline_alerts", replace_existing=True)
         sched.start()
-        logger.info("✅ Scheduler started (keep-alive 8min, db-health 5min, backup Sunday 2am, monthly-report 1st-of-month 8am, eta-retry 5min, deadline-alerts 8am)")
+        logger.info("✅ Scheduler started (keep-alive 8min, db-health 5min, backup daily/weekly/monthly, monthly-report, eta-retry 5min, deadline-alerts 8am)")
         return sched
     except Exception as exc:
         logger.warning(f"⚠️  Scheduler not started: {exc}")
@@ -648,6 +625,7 @@ app.include_router(realtime_router)
 
 app.include_router(finance_center_router)
 app.include_router(monthly_fees_router)
+app.include_router(backup_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

@@ -1232,6 +1232,7 @@ const navItems = [
   {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
   {id:'system_logs'  ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
+  {id:'backup'       ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
 ];
 // Grouped navigation for sidebar display
 const navGroups = [
@@ -1242,7 +1243,7 @@ const navGroups = [
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
   {label:'المكتب المالي', items:['finance_center','owner']},
-  {label:'النظام', items:['system_logs']},
+  {label:'النظام', items:['system_logs','backup']},
 ];
 
 // ── Client Portal Mode ─────────────────────────────
@@ -1945,7 +1946,7 @@ function navigate(page) {
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,system_logs:loadSystemLogs};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,system_logs:loadSystemLogs,backup:loadBackup};
   if(pages[page]) pages[page]();
 }
 
@@ -20167,6 +20168,291 @@ window._logCopyAll = function() {
 };
 
 window.loadSystemLogs = loadSystemLogs;
+
+// ── Backup Management Screen ──────────────────────────────────────────────────
+const _BK_TYPE_CFG = {
+  daily:       { icon:'📅', label:'يومية',       color:'#3b82f6', bg:'#dbeafe' },
+  weekly:      { icon:'📆', label:'أسبوعية',     color:'#8b5cf6', bg:'#ede9fe' },
+  monthly:     { icon:'🗓️', label:'شهرية',       color:'#059669', bg:'#d1fae5' },
+  manual:      { icon:'🖐️', label:'يدوية',       color:'#d97706', bg:'#fef3c7' },
+  'pre-deploy':{ icon:'🚀', label:'قبل النشر',   color:'#dc2626', bg:'#fee2e2' },
+  restore:     { icon:'🔄', label:'استعادة',     color:'#6b7280', bg:'#f3f4f6' },
+};
+
+async function loadBackup() {
+  const el = document.getElementById('main');
+  el.className = 'page';
+  el.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+
+  try {
+    const [stats, list] = await Promise.all([
+      api('GET', '/api/backup/stats'),
+      api('GET', '/api/backup/list?limit=50'),
+    ]);
+    _bkRender(stats, list);
+  } catch(e) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:#dc2626">فشل التحميل: ${escH(e.message)}</div>`;
+  }
+}
+
+function _bkRender(stats, list) {
+  const el = document.getElementById('main');
+
+  // ── KPI cards ──
+  const types = ['daily','weekly','monthly','manual','pre-deploy'];
+  const kpiCards = types.map(t => {
+    const cfg = _BK_TYPE_CFG[t];
+    const info = stats.by_type?.[t] || {};
+    const lastRun = info.last_run ? new Date(info.last_run).toLocaleDateString('ar-EG') : 'لم يتم بعد';
+    const ok = info.last_status === 'completed';
+    return `
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-size:28px;margin-bottom:6px">${cfg.icon}</div>
+        <div style="font-size:13px;font-weight:700;color:#111;margin-bottom:4px">${cfg.label}</div>
+        <div style="font-size:11px;color:#6b7280">آخر نسخة: ${lastRun}</div>
+        <div style="margin-top:8px">
+          <span style="background:${ok?'#d1fae5':info.last_status==='never'?'#f3f4f6':'#fee2e2'};color:${ok?'#15803d':info.last_status==='never'?'#6b7280':'#dc2626'};padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700">
+            ${ok?'✓ مكتمل':info.last_status==='never'?'لم يتم':'✕ فشل'}
+          </span>
+        </div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:4px">${info.count||0} نسخة محفوظة</div>
+      </div>`;
+  }).join('');
+
+  // ── Backup table rows ──
+  const backups = list.backups || [];
+  const rows = backups.length === 0
+    ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:#9ca3af">لا توجد نسخ احتياطية بعد</td></tr>`
+    : backups.map(b => {
+        const cfg  = _BK_TYPE_CFG[b.backup_type] || _BK_TYPE_CFG.manual;
+        const date = new Date(b.created_at).toLocaleString('ar-EG');
+        const ok   = b.status === 'completed';
+        const stats = b.db_stats || {};
+        const hint = [
+          stats.clients ? `${stats.clients} عميل` : '',
+          stats.tasks   ? `${stats.tasks} مهمة`   : '',
+        ].filter(Boolean).join(' · ') || '—';
+        const sizeMb = b.total_size_kb > 0 ? (b.total_size_kb/1024).toFixed(2)+' MB' : '—';
+        return `
+          <tr>
+            <td style="white-space:nowrap;font-size:12px;color:#6b7280">${date}</td>
+            <td><span style="background:${cfg.bg};color:${cfg.color};padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700">${cfg.icon} ${cfg.label}</span></td>
+            <td><span style="background:${ok?'#d1fae5':'#fee2e2'};color:${ok?'#15803d':'#dc2626'};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600">${ok?'مكتمل':'فشل'}</span></td>
+            <td style="font-size:12px;color:#374151">${hint}</td>
+            <td style="font-size:12px;color:#374151">${sizeMb}</td>
+            <td style="font-size:11px;color:#6b7280">${b.emailed_to ? '📧 '+escH(b.emailed_to) : '—'}</td>
+            <td style="white-space:nowrap">
+              ${ok ? `<button onclick="_bkDownload()" class="btn btn-secondary btn-sm" title="تحميل نسخة احتياطية جديدة">⬇️</button>` : ''}
+              <button onclick="_bkDelete(${b.id})" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;margin-right:4px" title="حذف السجل">🗑</button>
+            </td>
+          </tr>
+          ${b.error_message ? `<tr style="background:#fff5f5"><td colspan="7" style="font-size:11px;color:#dc2626;padding:6px 14px">⚠️ ${escH(b.error_message)}</td></tr>` : ''}`;
+      }).join('');
+
+  el.innerHTML = `
+    <div style="padding:20px;max-width:1200px;margin:0 auto">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="font-size:20px;font-weight:800;color:#111;margin:0">🗄️ النسخ الاحتياطية</h2>
+          <p style="font-size:12px;color:#6b7280;margin:4px 0 0">
+            آخر نسخة: ${stats.last_backup_at ? new Date(stats.last_backup_at).toLocaleString('ar-EG') : 'لم يتم بعد'}
+            ${stats.last_failure ? ` · <span style="color:#dc2626">آخر فشل: ${new Date(stats.last_failure).toLocaleDateString('ar-EG')}</span>` : ''}
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="_bkCreate()" class="btn btn-primary" id="bkCreateBtn">
+            <span id="bkCreateIcon">🗄️</span> إنشاء نسخة احتياطية الآن
+          </button>
+          <button onclick="_bkDownload()" class="btn btn-secondary">⬇️ تحميل مباشر</button>
+          <button onclick="_bkRestoreDialog()" class="btn btn-secondary">🔄 استعادة</button>
+          <button onclick="loadBackup()" class="btn btn-secondary btn-sm">🔄 تحديث</button>
+        </div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px">
+        ${kpiCards}
+      </div>
+
+      <!-- Schedule Info -->
+      <div class="card" style="padding:16px;margin-bottom:20px;background:#f0fdf4;border-color:#bbf7d0">
+        <div style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:8px">📅 جدول النسخ التلقائية</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px;color:#374151">
+          <span>📅 <strong>يومية</strong> — كل يوم منتصف الليل</span>
+          <span>📆 <strong>أسبوعية</strong> — الأحد الساعة 2 صباحاً</span>
+          <span>🗓️ <strong>شهرية</strong> — أول كل شهر الساعة 1 صباحاً</span>
+        </div>
+        <div style="font-size:11px;color:#6b7280;margin-top:8px">
+          الاحتفاظ: 7 يومية · 4 أسبوعية · 12 شهرية · 20 يدوية
+          · كل نسخة تُرسل تلقائياً على البريد الإلكتروني
+        </div>
+      </div>
+
+      <!-- Disaster Recovery -->
+      <details class="card" style="padding:16px;margin-bottom:20px;cursor:pointer">
+        <summary style="font-size:13px;font-weight:700;color:#dc2626;list-style:none;display:flex;align-items:center;gap:8px">
+          <span>🚨</span> خطة الاسترجاع في حالات الطوارئ (Disaster Recovery)
+        </summary>
+        <div style="margin-top:12px;font-size:12px;color:#374151;line-height:1.8">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <div style="font-weight:700;margin-bottom:6px">🔴 تلف قاعدة البيانات</div>
+              <ol style="margin:0;padding-right:16px">
+                <li>ابحث عن آخر إيميل نسخة احتياطية</li>
+                <li>احفظ ملف .sql.gz من الإيميل</li>
+                <li>استخدم زر "استعادة" لرفع الملف</li>
+                <li>أعد تشغيل الخادم من Railway</li>
+                <li>وقت الاسترجاع: <strong>5-15 دقيقة</strong></li>
+              </ol>
+            </div>
+            <div>
+              <div style="font-weight:700;margin-bottom:6px">🟡 حذف ملفات بالخطأ</div>
+              <ol style="margin:0;padding-right:16px">
+                <li>ملفات الـ uploads مخزّنة على Railway Volume</li>
+                <li>تواصل مع Railway Support فوراً</li>
+                <li>⚠️ لا يوجد backup للملفات حالياً (Railway Volumes مطلوب)</li>
+              </ol>
+            </div>
+            <div>
+              <div style="font-weight:700;margin-bottom:6px">🟠 فشل Deployment</div>
+              <ol style="margin:0;padding-right:16px">
+                <li>Railway يحتفظ بآخر 5 deployments</li>
+                <li>روح Railway Dashboard → Deployments → Rollback</li>
+                <li>وقت الاسترجاع: <strong>2-5 دقائق</strong></li>
+              </ol>
+            </div>
+            <div>
+              <div style="font-weight:700;margin-bottom:6px">⚪ مشكلة في السيرفر</div>
+              <ol style="margin:0;padding-right:16px">
+                <li>Railway يعيد التشغيل تلقائياً</li>
+                <li>DB على PostgreSQL منفصل — لا يتأثر</li>
+                <li>وقت الاسترجاع: <strong>1-3 دقائق</strong></li>
+              </ol>
+            </div>
+          </div>
+          <div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:8px;border:1px solid #fde68a">
+            ⚠️ <strong>تحذير مهم:</strong> Railway filesystem مؤقت — الملفات المرفوعة (uploads) قد تُحذف عند كل Deployment.
+            لحماية الملفات بشكل دائم تحتاج Railway Volume أو خدمة تخزين خارجية (S3/Google Drive).
+          </div>
+        </div>
+      </details>
+
+      <!-- Backups Table -->
+      <div class="card" style="overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;font-size:14px;font-weight:700;color:#111">
+          سجل النسخ الاحتياطية (${backups.length})
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>التاريخ والوقت</th>
+                <th>النوع</th>
+                <th>الحالة</th>
+                <th>محتويات</th>
+                <th>الحجم</th>
+                <th>البريد</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+window._bkCreate = async function() {
+  const btn  = document.getElementById('bkCreateBtn');
+  const icon = document.getElementById('bkCreateIcon');
+  if (btn) btn.disabled = true;
+  if (icon) { icon.textContent = '⏳'; icon.style.animation = 'spin 1s linear infinite'; }
+  try {
+    const r = await api('POST', '/api/backup/create?include_uploads=true&send_email=true', null, {useCache:false});
+    if (r.success) {
+      toast(`✅ ${r.message} — ${(r.total_size_kb/1024).toFixed(1)} MB`, 'success');
+    } else {
+      toast(`فشل: ${r.error || r.message}`, 'error');
+    }
+    loadBackup();
+  } catch(e) { toast('فشل إنشاء النسخة: ' + e.message, 'error'); }
+  finally {
+    if (btn) btn.disabled = false;
+    if (icon) { icon.textContent = '🗄️'; icon.style.animation = ''; }
+  }
+};
+
+window._bkDownload = function() {
+  window.open(API + '/api/backup/download', '_blank');
+};
+
+window._bkDelete = async function(id) {
+  if (!confirm('حذف سجل هذه النسخة الاحتياطية؟')) return;
+  try {
+    await api('DELETE', `/api/backup/${id}`, null, {useCache:false});
+    toast('تم الحذف', 'success');
+    loadBackup();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+window._bkRestoreDialog = function() {
+  document.getElementById('bkRestoreModal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'bkRestoreModal';
+  m.className = 'modal-overlay';
+  m.innerHTML = `
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0;font-size:16px;font-weight:700">🔄 استعادة نسخة احتياطية</h3>
+        <button onclick="document.getElementById('bkRestoreModal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280">✕</button>
+      </div>
+      <div style="padding:20px">
+        <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;color:#dc2626">
+          ⚠️ <strong>تحذير:</strong> هذا الإجراء سيستبدل قاعدة البيانات الحالية بالكامل. تأكد من إنشاء نسخة احتياطية أولاً.
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">اختر ملف النسخة الاحتياطية (.sql أو .sql.gz)</label>
+          <input type="file" id="bkRestoreFile" accept=".sql,.sql.gz" class="input">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="document.getElementById('bkRestoreModal').remove()" class="btn btn-secondary">إلغاء</button>
+          <button onclick="_bkDoRestore()" class="btn btn-danger" id="bkDoRestoreBtn">🔄 تنفيذ الاستعادة</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+};
+
+window._bkDoRestore = async function() {
+  const file = document.getElementById('bkRestoreFile')?.files?.[0];
+  if (!file) { toast('اختر ملفاً أولاً', 'warning'); return; }
+  if (!confirm('هل أنت متأكد؟ هذا الإجراء لا يمكن التراجع عنه.')) return;
+
+  const btn = document.getElementById('bkDoRestoreBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الاستعادة...'; }
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch(API + '/api/backup/restore', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    const data = await r.json();
+    if (r.ok) {
+      toast(data.message, 'success');
+      document.getElementById('bkRestoreModal')?.remove();
+    } else {
+      toast(data.detail || 'فشلت الاستعادة', 'error');
+    }
+  } catch(e) { toast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🔄 تنفيذ الاستعادة'; } }
+};
+
+window.loadBackup = loadBackup;
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {
