@@ -675,11 +675,13 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
         if(typeof data.detail === 'string') msg = data.detail;
         else if(Array.isArray(data.detail)) msg = data.detail.map(e=>e.msg||e).join(' | ');
         else if(data.message) msg = data.message;
+        // Log API errors (4xx/5xx) — skip 401 (handled separately)
+        if (r.status !== 401) _EL.log('api', `${method} ${path} → ${r.status}`, msg);
         throw new Error(msg);
       }
       // Success — cache GET, invalidate cache for writes, clear stale banner
       if (isGet && useCache) _AC.set(path, data);
-      else if (!isGet) _AC.invalidate(path); // DELETE/POST/PUT/PATCH → bust related GET cache
+      else if (!isGet) _AC.invalidate(path);
       if(_connState !== 'ok') { _connState='ok'; setApiStatus(true,'API متصل'); }
       _hideStaleBanner();
       return data;
@@ -687,9 +689,9 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
       lastErr = e;
       const isNet = e.name==='TimeoutError' || e.name==='AbortError'
                  || (e.message && /fetch|Failed to fetch|NetworkError|network/i.test(e.message));
-      if(isNet && attempt < retries) continue;  // retry with backoff
+      if(isNet && attempt < retries) continue;
       if(isNet) {
-        // Network error — try stale cache before giving up
+        _EL.log('network', `${method} ${path} — شبكة`, e.message);
         if (isGet && useCache) {
           const stale = _AC.get(path);
           if (stale) { _showStaleBanner(); return stale.d; }
@@ -701,6 +703,62 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
   }
   throw lastErr;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ERROR LOGGING SYSTEM — يسجل كل خطأ في localStorage + يعرضه في شاشة الأخطاء
+// ═══════════════════════════════════════════════════════════════════════════════
+const _EL = {
+  MAX: 500,      // أقصى عدد سجلات
+  KEY: 'ms_error_log',
+
+  _read() {
+    try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch(e) { return []; }
+  },
+
+  log(type, message, detail = '', source = '') {
+    try {
+      const logs = this._read();
+      logs.unshift({
+        id: Date.now() + Math.random(),
+        type,        // 'js' | 'api' | 'network' | 'promise' | 'upload'
+        message: String(message).slice(0, 400),
+        detail:  String(detail  || '').slice(0, 800),
+        source:  String(source  || '').slice(0, 200),
+        page:    typeof currentPage !== 'undefined' ? currentPage : '',
+        user:    (typeof currentUser !== 'undefined' && currentUser) ? currentUser.email : '',
+        ts:      new Date().toISOString(),
+      });
+      // حذف القديم إذا تجاوز الحد
+      if (logs.length > this.MAX) logs.length = this.MAX;
+      localStorage.setItem(this.KEY, JSON.stringify(logs));
+      // لو الشاشة مفتوحة، حدّثها في الخلفية
+      if (typeof currentPage !== 'undefined' && currentPage === 'system_logs') {
+        clearTimeout(this._refreshTimer);
+        this._refreshTimer = setTimeout(() => loadSystemLogs(), 300);
+      }
+    } catch(e) {}
+  },
+
+  clear() {
+    localStorage.removeItem(this.KEY);
+  },
+
+  getAll() { return this._read(); },
+
+  count() { return this._read().length; },
+};
+
+// ── Global JS error capture ──────────────────────────────────────────────────
+window.onerror = function(msg, src, line, col, err) {
+  _EL.log('js', msg, err?.stack || `${src}:${line}:${col}`, src);
+  return false; // don't suppress default behavior
+};
+
+window.onunhandledrejection = function(e) {
+  const msg = e.reason?.message || String(e.reason || 'Unhandled Promise Rejection');
+  const stack = e.reason?.stack || '';
+  _EL.log('promise', msg, stack);
+};
 
 function toast(msg, type='success') {
   const colors={success:'#16a34a',error:'#dc2626',warning:'#d97706',info:'#1a2472'};
@@ -1173,6 +1231,7 @@ const navItems = [
   {id:'finance_center',icon:'💰',label:'المالية', adminOnly: true},
   {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
+  {id:'system_logs'  ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
 ];
 // Grouped navigation for sidebar display
 const navGroups = [
@@ -1183,6 +1242,7 @@ const navGroups = [
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
   {label:'المكتب المالي', items:['finance_center','owner']},
+  {label:'النظام', items:['system_logs']},
 ];
 
 // ── Client Portal Mode ─────────────────────────────
@@ -1426,8 +1486,10 @@ function renderApp() {
             <span id="langToggleIcon">🌐</span>
             <span id="langToggleLabel">EN</span>
           </button>
-          <!-- Manual Refresh button -->
-          <button id="refreshBtn" onclick="refreshCurrentPage()" title="تحديث الصفحة" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'"><span id="refreshIcon">🔄</span></button>
+          <!-- Manual Refresh button (short press = reload data, long press = hard refresh) -->
+          <button id="refreshBtn" onclick="refreshCurrentPage()" oncontextmenu="event.preventDefault();hardRefresh()" title="تحديث البيانات | كليك يمين = Force Refresh كامل" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s;position:relative" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'"><span id="refreshIcon">🔄</span></button>
+          <!-- Force Refresh button — clears ALL cache and reloads -->
+          <button onclick="hardRefresh()" title="Force Refresh — مسح الكاش وإعادة التحميل الكامل" style="background:#fff8f0;border:1.5px solid #fdba74;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:all .15s" onmouseover="this.style.background='#fff3e0'" onmouseout="this.style.background='#fff8f0'">⚡</button>
           <!-- Print button -->
           <button onclick="printCurrentPage()" title="طباعة الصفحة الحالية" class="topbar-extra-btn" style="background:#f8fafc;border:1.5px solid #e8edf3;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s" onmouseover="this.style.background='#eef1fb'" onmouseout="this.style.background='#f8fafc'">🖨️</button>
           <!-- Quick compose email button -->
@@ -1883,7 +1945,7 @@ function navigate(page) {
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,system_logs:loadSystemLogs};
   if(pages[page]) pages[page]();
 }
 
@@ -12392,10 +12454,9 @@ window.refreshCurrentPage = async function() {
   if (btn)  btn.disabled = true;
   if (icon) icon.style.animation = 'spin 0.7s linear infinite';
   try {
-    _clearPageCache(currentPage); // bust GET cache so we always get live server data
+    _clearPageCache(currentPage);
     const fn = _REFRESH_FN_MAP[currentPage];
     if (fn) {
-      // Force visual re-render exactly like navigate() does
       const main = document.getElementById('main');
       if (main) main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
       await fn();
@@ -12407,6 +12468,29 @@ window.refreshCurrentPage = async function() {
   finally {
     if (btn)  btn.disabled = false;
     if (icon) icon.style.animation = '';
+  }
+};
+
+// ── Hard Refresh — مسح الكاش بالكامل وإعادة التحميل ────────────────────────
+window.hardRefresh = async function() {
+  try {
+    toast('جاري مسح الكاش وإعادة التحميل...', 'info');
+    // 1. Clear sessionStorage (API cache)
+    sessionStorage.clear();
+    // 2. Clear all service worker caches
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    // 3. Unregister service worker (will re-register on next load)
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    // 4. Hard reload — bypass browser cache
+    setTimeout(() => location.reload(true), 300);
+  } catch(e) {
+    location.reload(true);
   }
 };
 
@@ -19956,6 +20040,133 @@ window.addEventListener('ms-app-ready', ()=>{
 
 window.toggleLanguage = toggleLanguage;
 window.t = t;
+
+// ── System Logs Screen ────────────────────────────────────────────────────────
+const _LOG_COLORS = {
+  js:      { bg:'#fee2e2', text:'#dc2626', label:'JS Error' },
+  api:     { bg:'#fef9c3', text:'#a16207', label:'API Error' },
+  network: { bg:'#ffe4e6', text:'#be123c', label:'Network'  },
+  promise: { bg:'#ede9fe', text:'#6d28d9', label:'Promise'  },
+  upload:  { bg:'#dbeafe', text:'#1d4ed8', label:'Upload'   },
+};
+
+function loadSystemLogs() {
+  const el = document.getElementById('main');
+  el.className = 'page';
+
+  const logs  = _EL.getAll();
+  const total = logs.length;
+
+  // Count by type
+  const counts = {};
+  logs.forEach(l => { counts[l.type] = (counts[l.type]||0)+1; });
+
+  const typeLabels = Object.entries(_LOG_COLORS);
+  const statCards  = typeLabels.map(([type, cfg]) => `
+    <div style="background:${cfg.bg};border-radius:12px;padding:14px 18px;text-align:center;min-width:100px">
+      <div style="font-size:22px;font-weight:800;color:${cfg.text}">${counts[type]||0}</div>
+      <div style="font-size:11px;color:${cfg.text};font-weight:600;margin-top:2px">${cfg.label}</div>
+    </div>`).join('');
+
+  const rows = logs.length === 0
+    ? `<tr><td colspan="6" style="text-align:center;padding:40px;color:#9ca3af">لا توجد أخطاء مسجّلة 🎉</td></tr>`
+    : logs.map((l, i) => {
+        const cfg   = _LOG_COLORS[l.type] || { bg:'#f3f4f6', text:'#374151', label:l.type };
+        const time  = new Date(l.ts).toLocaleString('ar-EG');
+        const short = l.message.length > 80 ? l.message.slice(0,80)+'…' : l.message;
+        return `
+          <tr style="cursor:pointer" onclick="_logExpand(${i})" title="انقر للتفاصيل">
+            <td style="font-size:11px;color:#6b7280;white-space:nowrap">${time}</td>
+            <td><span style="background:${cfg.bg};color:${cfg.text};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">${cfg.label}</span></td>
+            <td style="font-size:12px;color:#111;max-width:320px;word-break:break-word">${escH(short)}</td>
+            <td style="font-size:11px;color:#6b7280">${escH(l.page||'—')}</td>
+            <td style="font-size:11px;color:#6b7280">${escH(l.user||'—')}</td>
+            <td><button onclick="event.stopPropagation();_logDelete(${i})" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:14px" title="حذف">🗑</button></td>
+          </tr>
+          <tr id="_logDetail_${i}" style="display:none;background:#f8fafc">
+            <td colspan="6" style="padding:10px 16px">
+              <pre style="font-size:11px;color:#374151;white-space:pre-wrap;margin:0;background:#f1f5f9;padding:10px;border-radius:8px;max-height:200px;overflow-y:auto">${escH(l.detail||'لا توجد تفاصيل إضافية')}</pre>
+              ${l.source ? `<div style="font-size:10px;color:#9ca3af;margin-top:4px">المصدر: ${escH(l.source)}</div>` : ''}
+            </td>
+          </tr>`;
+      }).join('');
+
+  el.innerHTML = `
+    <div style="padding:20px;max-width:1200px;margin:0 auto">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="font-size:20px;font-weight:800;color:#111;margin:0">🔍 سجل الأخطاء</h2>
+          <p style="font-size:12px;color:#6b7280;margin:4px 0 0">${total} سجل مخزّن — آخر ${Math.min(total,_EL.MAX)} خطأ</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="_logCopyAll()" class="btn btn-secondary btn-sm">📋 نسخ الكل</button>
+          <button onclick="_logClearAll()" class="btn btn-danger btn-sm">🗑 مسح الكل</button>
+          <button onclick="loadSystemLogs()" class="btn btn-primary btn-sm">🔄 تحديث</button>
+        </div>
+      </div>
+
+      <!-- Stat Cards -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+        ${statCards}
+        <div style="background:#f0fdf4;border-radius:12px;padding:14px 18px;text-align:center;min-width:100px">
+          <div style="font-size:22px;font-weight:800;color:#15803d">${total}</div>
+          <div style="font-size:11px;color:#15803d;font-weight:600;margin-top:2px">الإجمالي</div>
+        </div>
+      </div>
+
+      <!-- Logs Table -->
+      <div class="card" style="overflow:hidden">
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>الوقت</th>
+                <th>النوع</th>
+                <th>الرسالة</th>
+                <th>الصفحة</th>
+                <th>المستخدم</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="_logsBody">${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+window._logExpand = function(i) {
+  const row = document.getElementById('_logDetail_' + i);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+};
+
+window._logDelete = function(i) {
+  try {
+    const logs = _EL.getAll();
+    logs.splice(i, 1);
+    localStorage.setItem(_EL.KEY, JSON.stringify(logs));
+    loadSystemLogs();
+  } catch(e) {}
+};
+
+window._logClearAll = function() {
+  if (!confirm('مسح جميع السجلات؟')) return;
+  _EL.clear();
+  loadSystemLogs();
+  toast('تم مسح جميع السجلات', 'success');
+};
+
+window._logCopyAll = function() {
+  const logs = _EL.getAll();
+  const text = logs.map(l =>
+    `[${l.ts}] [${l.type.toUpperCase()}] ${l.message}\n${l.detail||''}\nPage:${l.page} User:${l.user}\n---`
+  ).join('\n');
+  navigator.clipboard.writeText(text).then(() => toast('تم النسخ ✓', 'success')).catch(() => toast('فشل النسخ', 'error'));
+};
+
+window.loadSystemLogs = loadSystemLogs;
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {
