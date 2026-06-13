@@ -1892,7 +1892,7 @@ async function loadDashboard(silent=false) {
       api('GET','/api/dashboard/recent-activity'),
       api('GET','/api/obligations/stats').catch(()=>null),
       api('GET','/api/obligations/upcoming?days=14').catch(()=>[]),
-      api('GET','/api/leads?page_size=500').catch(()=>({items:[]})),
+      api('GET','/api/leads?limit=5000').catch(()=>({items:[]})),
       api('GET','/api/formation/stats').catch(()=>null),
       api('GET','/api/obligations?page_size=1000').catch(()=>({items:[]})),
       api('GET','/api/formation-obligations/stats').catch(()=>null),
@@ -2161,6 +2161,7 @@ async function loadDashboard(silent=false) {
         ${(()=>{
           const stages = [
             {l:'إجمالي العملاء المحتملين',c:leads.length,col:'#6366f1',bg:'#eef2ff'},
+            {l:'جديد',c:lCount('new'),col:'#6366f1',bg:'#eef2ff'},
             {l:'مهتم',c:lCount('interested'),col:'#15803d',bg:'#f0fdf4'},
             {l:'كلمني لاحقاً',c:lCount('call_later'),col:'#d97706',bg:'#fefce8'},
             {l:'عرض مرسل',c:lCount('quotation_sent'),col:'#f97316',bg:'#fff7ed'},
@@ -6479,10 +6480,10 @@ function toWAPhone(raw) {
   // أي حالة أخرى → احذف الأصفار الأولى وأضف 20
   return '20' + d.replace(/^0+/, '');
 }
-const LEAD_STATUS_COLORS={interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
-const LEAD_STATUS_LABEL={interested:'مهتم',not_answered:'لم يرد',call_later:'كلمني لاحقاً',quotation_sent:'عرض مرسل',under_establishment:'قيد التأسيس',lost:'خسارة'};
-const LEAD_ROW_BG={interested:'#f0fdf4',not_answered:'#f1f5f9',call_later:'#fefce8',quotation_sent:'#fff7ed',under_establishment:'#ecfeff',lost:'#fef2f2'};
-const LEAD_ROW_BG_ALT={interested:'#dcfce7',not_answered:'#e2e8f0',call_later:'#fef9c3',quotation_sent:'#ffedd5',under_establishment:'#cffafe',lost:'#fee2e2'};
+const LEAD_STATUS_COLORS={new:'#6366f1',interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
+const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',not_answered:'لم يرد',call_later:'كلمني لاحقاً',quotation_sent:'عرض مرسل',under_establishment:'قيد التأسيس',lost:'خسارة'};
+const LEAD_ROW_BG={new:'#eef2ff',interested:'#f0fdf4',not_answered:'#f1f5f9',call_later:'#fefce8',quotation_sent:'#fff7ed',under_establishment:'#ecfeff',lost:'#fef2f2'};
+const LEAD_ROW_BG_ALT={new:'#e0e7ff',interested:'#dcfce7',not_answered:'#e2e8f0',call_later:'#fef9c3',quotation_sent:'#ffedd5',under_establishment:'#cffafe',lost:'#fee2e2'};
 
 const LEAD_DEFAULT_DELIVERABLES = [
   'عقد تأسيس',
