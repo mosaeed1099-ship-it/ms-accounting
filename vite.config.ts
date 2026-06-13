@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  root: 'react-app',
   base: mode === 'production' ? '/ms-accounting/app/' : '/',
-  build: { outDir: 'dist', sourcemap: false },
+  build: { outDir: '../dist', emptyOutDir: true, sourcemap: false },
   server: {
     port: 5173,
     proxy: {
