@@ -1,5 +1,5 @@
-// MS Accounting SW v3 — network-first for HTML, cache-first for assets
-const VERSION = '20260613-v3';
+// MS Accounting SW v4 — network-first for HTML+config, cache-first for assets
+const VERSION = '20260613-v4';
 const CACHE = 'ms-acc-' + VERSION;
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -16,7 +16,7 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.mode === 'navigate' || url.pathname.endsWith('.html')) {
+  if (e.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('config.js')) {
     e.respondWith(
       fetch(e.request, {cache: 'no-store'}).catch(() => caches.match(e.request))
     );
