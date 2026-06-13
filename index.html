@@ -2657,6 +2657,7 @@ async function showClientDetail(id) {
       <button class="btn btn-sm" style="background:linear-gradient(135deg,#1e3a8a,#1a2472);color:white;border:none;font-weight:700" onclick="this.closest('.modal-overlay').remove();openClientAccounting(${c.id},'${escH(c.name)}')">🏛️ الحسابات</button>
       <button class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac;font-weight:700" onclick="this.closest('.modal-overlay').remove();navigate('documents')">📜 وثائق</button>
       <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;border:1.5px solid #fed7aa;font-weight:700" onclick="this.closest('.modal-overlay').remove();navigate('office_services');setTimeout(()=>{document.getElementById('osSvcFilter')&&(document.getElementById('osSvcFilter').value='')},500)">🏢 خدمات</button>
+      ${currentUser?.role==='admin'?`<button class="btn btn-sm" style="background:#1e293b;color:white;border:none;font-weight:700" onclick="showPortalCredentials(${c.id},'${escH(c.name)}')">🔐 بيانات البوابات</button>`:''}
       <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
     </div>
   </div>`;
@@ -11882,6 +11883,101 @@ window.doSendClientReminder=doSendClientReminder;
 window.items=[];
 // clients
 window.showClientDetail=showClientDetail;
+
+window.showPortalCredentials = async function(clientId, clientName) {
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML = `<div class="modal" style="max-width:600px;max-height:90vh;overflow-y:auto">
+    <div style="padding:18px 24px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <h2 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">🔐 بيانات البوابات</h2>
+        <div style="font-size:12px;color:#64748b;margin-top:2px">${escH(clientName)} — سري — أدمن فقط</div>
+      </div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div id="portalCredBody" style="padding:20px 24px">
+      <div style="text-align:center;color:#94a3b8;padding:30px">⏳ جاري التحميل...</div>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid #f1f5f9;display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="savePortalCredentials(${clientId})">💾 حفظ</button>
+      <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove()">إغلاق</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+
+  let existing = {};
+  try { existing = await api('GET', `/api/portal-credentials/${clientId}`) || {}; } catch(e){}
+
+  function field(id, label, val, type='text') {
+    return `<div>
+      <div style="font-size:11px;color:#64748b;font-weight:700;margin-bottom:4px">${label}</div>
+      <input id="pc_${id}" class="input" type="${type}" value="${escH(val||'')}" style="font-size:13px"/>
+    </div>`;
+  }
+  function section(title, fields) {
+    return `<div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:800;color:#1a2472;margin-bottom:10px;padding-bottom:5px;border-bottom:2px solid #eef1fb">${title}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${fields}</div>
+    </div>`;
+  }
+
+  document.getElementById('portalCredBody').innerHTML = `
+    ${section('👤 بيانات العميل الشخصي', [
+      field('contact_person','اسم العميل المسؤول', existing.contact_person),
+      field('national_id','الرقم القومي', existing.national_id),
+    ].join(''))}
+    ${section('🏛️ منظومة ساب / اي سيرفيس', [
+      field('portal_system','نوع المنظومة', existing.portal_system),
+      field('declaration_type','نوع الإقرار', existing.declaration_type),
+      field('portal_username','اسم المستخدم', existing.portal_username),
+      field('portal_password','الباسورد', existing.portal_password, 'password'),
+    ].join(''))}
+    ${section('🧾 الفاتورة الإلكترونية', [
+      field('einvoice_email','إيميل الفاتورة الإلكترونية', existing.einvoice_email),
+      field('einvoice_password','باسورد الفاتورة', existing.einvoice_password, 'password'),
+    ].join(''))}
+    ${section('📧 الإيميل', [
+      field('email_address','الإيميل', existing.email_address),
+      field('email_password','باسورد الإيميل', existing.email_password, 'password'),
+    ].join(''))}
+    ${section('💼 توحيد المرتبات', [
+      field('payroll_type','نوع الاشتراك', existing.payroll_type),
+      field('payroll_username','اسم المستخدم', existing.payroll_username),
+      field('payroll_password','الباسورد', existing.payroll_password, 'password'),
+    ].join(''))}
+    ${section('📝 ملاحظات', field('notes','ملاحظات', existing.notes))}
+    <div id="pcSaveMsg" style="display:none;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;margin-top:4px"></div>
+  `;
+
+  // Toggle password visibility
+  ov.querySelectorAll('input[type=password]').forEach(inp => {
+    const wrap = inp.parentElement;
+    const eye = document.createElement('span');
+    eye.textContent = '👁️';
+    eye.style = 'cursor:pointer;font-size:14px;margin-top:4px;display:block;text-align:right';
+    eye.onclick = () => { inp.type = inp.type==='password'?'text':'password'; };
+    wrap.appendChild(eye);
+  });
+};
+
+window.savePortalCredentials = async function(clientId) {
+  const fields = ['contact_person','national_id','portal_system','declaration_type',
+    'portal_username','portal_password','einvoice_email','einvoice_password',
+    'email_address','email_password','payroll_type','payroll_username','payroll_password','notes'];
+  const payload = {};
+  fields.forEach(f => {
+    const el = document.getElementById('pc_'+f);
+    if(el && el.value.trim()) payload[f] = el.value.trim();
+  });
+  const msg = document.getElementById('pcSaveMsg');
+  try {
+    await api('PUT', `/api/portal-credentials/${clientId}`, payload);
+    if(msg){ msg.style.display='block'; msg.style.background='#f0fdf4'; msg.style.color='#15803d'; msg.textContent='✅ تم الحفظ بنجاح'; setTimeout(()=>msg.style.display='none',3000); }
+  } catch(e) {
+    if(msg){ msg.style.display='block'; msg.style.background='#fff5f5'; msg.style.color='#dc2626'; msg.textContent='❌ خطأ في الحفظ — '+e.message; }
+  }
+};
 window.autoGenClientObligations=autoGenClientObligations;
 window.showTaskModalForClient=function(clientId, clientName) {
   // Navigate to tasks then open modal pre-filled with client
