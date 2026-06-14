@@ -668,7 +668,13 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
     try {
       if(attempt > 0) await new Promise(res => setTimeout(res, retryDelay * Math.pow(1.5, attempt-1)));
       const r = await fetch(API+path, opts);
-      if(r.status === 401){ logout(); return null; }
+      if(r.status === 401){
+        // Only logout if this is a confirmed 401 (not a transient server glitch).
+        // Ignore if the last successful API call was within 10 seconds (race condition / cold-start).
+        const msSinceLastOk = Date.now() - (window._lastApiOk || 0);
+        if(msSinceLastOk < 10000){ return null; }
+        logout(); return null;
+      }
       const data = await r.json().catch(()=>({}));
       if(!r.ok) {
         let msg = 'خطأ في الطلب';
@@ -684,6 +690,7 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
       else if (!isGet) _AC.invalidate(path);
       if(_connState !== 'ok') { _connState='ok'; setApiStatus(true,'API متصل'); }
       _hideStaleBanner();
+      window._lastApiOk = Date.now();
       return data;
     } catch(e) {
       lastErr = e;
@@ -929,11 +936,13 @@ async function login(email, password) {
   const r=await fetch(`${API}/api/auth/login`,{method:'POST',body,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
   const data=await r.json();
   if(!r.ok) throw new Error(data.detail||'بيانات الدخول غير صحيحة');
+  const isFirstLogin = !token;
   token=data.access_token; currentUser=data.user;
   localStorage.setItem('ms_token',token);
   localStorage.setItem('ms_user',JSON.stringify(currentUser));
+  window._lastApiOk = Date.now();
   renderApp();
-  setTimeout(()=>showWelcomeGreeting(currentUser?.name||''), 600);
+  if(isFirstLogin) setTimeout(()=>showWelcomeGreeting(currentUser?.name||''), 600);
 }
 function showWelcomeGreeting(name) {
   const h = new Date().getHours();
