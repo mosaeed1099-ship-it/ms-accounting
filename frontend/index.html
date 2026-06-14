@@ -407,6 +407,7 @@
 <body>
 <!-- Connection status bar — shown when API or WS is offline -->
 <div id="connBar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;padding:6px 16px;text-align:center;font-size:12px;font-weight:600;color:#fff;transition:background .3s" dir="rtl"></div>
+<div id="_oqBadge" style="display:none;position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:9998;background:#d97706;color:#fff;border-radius:999px;padding:6px 18px;font-size:12px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none" dir="rtl"></div>
 <div id="app"></div>
 <div id="toasts" class="toasts"></div>
 
@@ -491,7 +492,7 @@ function _rtConnect() {
       _setWsStatus(true);
       if (wasReconnect) {
         toast('✅ عاد التزامن المباشر', 'success');
-        // Refresh current page to catch any missed updates
+        _OQ.flush();
         if (typeof _REFRESH_FN_MAP !== 'undefined' && _REFRESH_FN_MAP[currentPage]) {
           _clearPageCache(currentPage);
           _REFRESH_FN_MAP[currentPage]().catch(()=>{});
@@ -666,7 +667,7 @@ function _hideStaleBanner() {
   if (typeof window._connMonitorNormal === 'function') window._connMonitorNormal();
 }
 
-async function api(method, path, body=null, {retries=2, retryDelay=2000, useCache=true}={}) {
+async function api(method, path, body=null, {retries=2, retryDelay=2000, useCache=true, queue=false, queueLabel=''}={}) {
   const isGet = method === 'GET';
   const opts = {
     method,
@@ -717,6 +718,12 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
       if(isNet && attempt < retries) continue;
       if(isNet) {
         _EL.log('network', `${method} ${path} — شبكة`, e.message);
+        if (!isGet && queue) {
+          _OQ.add(method, path, body, queueLabel);
+          const qe = new Error('قيد الانتظار — سيتم الإرسال تلقائياً عند عودة الاتصال');
+          qe._queued = true;
+          throw qe;
+        }
         if (isGet && useCache) {
           const stale = _AC.get(path);
           if (stale) { _showStaleBanner(); return stale.d; }
@@ -728,6 +735,60 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
   }
   throw lastErr;
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OFFLINE QUEUE — يحفظ التعديلات محلياً عند انقطاع الشبكة ويُرسلها عند العودة
+// ═══════════════════════════════════════════════════════════════════════════════
+const _OQ = {
+  KEY: 'ms_offline_queue',
+  _get() { try { return JSON.parse(localStorage.getItem(this.KEY)||'[]'); } catch(_){return[];} },
+  _set(a) { try { localStorage.setItem(this.KEY, JSON.stringify(a)); } catch(_){} },
+
+  add(method, path, body, label) {
+    const q = this._get();
+    const item = { id: Date.now()+'-'+Math.random().toString(36).slice(2,7), method, path, body, label: label||path, ts: Date.now() };
+    q.push(item);
+    this._set(q);
+    this._updateBadge();
+    return item.id;
+  },
+
+  remove(id) { this._set(this._get().filter(i=>i.id!==id)); this._updateBadge(); },
+  count()    { return this._get().length; },
+
+  _updateBadge() {
+    const n = this.count();
+    const b = document.getElementById('_oqBadge');
+    if (!b) return;
+    if (n > 0) { b.textContent = `⏳ ${n} تعديل معلق`; b.style.display='block'; }
+    else        { b.style.display='none'; }
+  },
+
+  async flush() {
+    const q = this._get();
+    if (!q.length) return;
+    const tok = localStorage.getItem('ms_token');
+    const hdrs = {'Content-Type':'application/json', ...(tok?{Authorization:`Bearer ${tok}`}:{})};
+    let ok = 0, kept = [];
+    for (const item of q) {
+      try {
+        const r = await fetch(API + item.path, { method:item.method, headers:hdrs, body:JSON.stringify(item.body), signal:AbortSignal.timeout(15000) });
+        if (r.ok) { ok++; }
+        else if (r.status < 500) { /* 4xx — server rejected — discard */ }
+        else { kept.push(item); break; }
+      } catch(_) { kept.push(...q.slice(q.indexOf(item))); break; }
+    }
+    this._set(kept);
+    this._updateBadge();
+    if (ok > 0) {
+      toast(`✅ تم إرسال ${ok} تعديل معلق بنجاح`);
+      if (typeof _REFRESH_FN_MAP !== 'undefined' && _REFRESH_FN_MAP[currentPage]) {
+        try { await _REFRESH_FN_MAP[currentPage](); } catch(_) {}
+      }
+    }
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ERROR LOGGING SYSTEM — يسجل كل خطأ في localStorage + يعرضه في شاشة الأخطاء
@@ -1982,7 +2043,7 @@ function _startConnMonitor() {
     clearInterval(_connInterval);
     _connInterval = setInterval(_checkConn, 20000);
   };
-  window.addEventListener('online',  () => { if(_connState !== 'ok') { _checkConn(); } });
+  window.addEventListener('online',  () => { if(_connState !== 'ok') { _checkConn(); } _OQ.flush(); });
   window.addEventListener('offline', () => {
     _connState = 'offline';
     setApiStatus(false, 'لا يوجد اتصال بالإنترنت');
@@ -3182,7 +3243,7 @@ function showClientModal(id=null) {
 
       let savedClient;
       if(c){
-        savedClient = await api('PUT',`/api/clients/${c.id}`,body);
+        savedClient = await api('PUT',`/api/clients/${c.id}`,body,{queue:true,queueLabel:'تعديل بيانات عميل'});
       } else {
         savedClient = await api('POST','/api/clients',body);
       }
@@ -3220,7 +3281,10 @@ function showClientModal(id=null) {
       overlay.remove();
       invalidateClientsCache();
       loadClients(true);
-    } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`}
+    } catch(e){
+      if(e._queued){toast('⏳ '+e.message,'warning');overlay.remove();loadClients();}
+      else{toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`;}
+    }
   };
 }
 
@@ -9994,10 +10058,13 @@ async function showCollectionPaymentModal(contractId, remaining, title, isMonthl
         body.period_month=parseInt($('#cpMonth',overlay).value);
         body.period_year=parseInt($('#cpYear',overlay).value);
       }
-      await api('POST','/api/collections/payments',body);
+      await api('POST','/api/collections/payments',body,{queue:true,queueLabel:'تسجيل دفعة تحصيل'});
       toast('تم تسجيل الدفعة بنجاح');
       overlay.remove(); loadCollections(true);
-    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💵 تسجيل الدفعة';}
+    } catch(e){
+      if(e._queued){toast('⏳ '+e.message,'warning');overlay.remove();loadCollections();}
+      else{toast(e.message,'error');btn.disabled=false;btn.textContent='💵 تسجيل الدفعة';}
+    }
   };
 }
 
@@ -10058,10 +10125,13 @@ async function showCollectionEditModal(contractId) {
         const mEl=document.getElementById('ceMonthly');
         if(mEl) body.monthly_amount=parseFloat(mEl.value)||0;
       }
-      await api('PUT',`/api/collections/${contractId}`,body);
+      await api('PUT',`/api/collections/${contractId}`,body,{queue:true,queueLabel:'تعديل عقد تحصيل'});
       toast('تم تحديث العقد بنجاح');
       overlay.remove(); loadCollections(true);
-    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💾 حفظ التعديلات';}
+    } catch(e){
+      if(e._queued){toast('⏳ '+e.message,'warning');overlay.remove();loadCollections();}
+      else{toast(e.message,'error');btn.disabled=false;btn.textContent='💾 حفظ التعديلات';}
+    }
   };
 }
 
@@ -20106,9 +20176,11 @@ window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentP
 
 window.mfResetPay = async function(recordId, clientName) {
   if(!confirm(`هل تريد حذف الدفعة لـ ${clientName}؟`)) return;
-  await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'});
-  toast('تم حذف الدفعة','success');
-  await renderMFPage();
+  try {
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'}, {queue:true,queueLabel:'إلغاء دفعة أتعاب'});
+    toast('تم حذف الدفعة','success');
+    await renderMFPage();
+  } catch(e){ if(e._queued) toast('⏳ '+e.message,'warning'); else toast(e.message,'error'); }
 };
 
 window.mfSavePay = async function(recordId) {
@@ -20116,10 +20188,15 @@ window.mfSavePay = async function(recordId) {
   const pdate  = document.getElementById('mfPayDate').value;
   const bayan  = document.getElementById('mfPayBayan').value;
   if(!amount){ toast('ادخل المبلغ','error'); return; }
-  await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:amount, paid_date:pdate, bayan});
-  document.getElementById('mfPayModalEl')?.remove();
-  toast('✅ تم تسجيل الدفعة');
-  await renderMFPage();
+  try {
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:amount, paid_date:pdate, bayan}, {queue:true,queueLabel:'تسجيل دفعة أتعاب'});
+    document.getElementById('mfPayModalEl')?.remove();
+    toast('✅ تم تسجيل الدفعة');
+    await renderMFPage();
+  } catch(e){
+    if(e._queued){document.getElementById('mfPayModalEl')?.remove();toast('⏳ '+e.message,'warning');}
+    else{ toast(e.message,'error'); }
+  }
 };
 
 window.mfShowClientHistory = async function(clientId, clientName) {
@@ -20305,15 +20382,18 @@ window.mfSaveEditRecord = async function(recordId) {
       paid_date: paidDate || null,
       bayan: bayan || null,
       notes: notes || null,
-    });
+    }, {queue:true, queueLabel:'تعديل سجل أتعاب'});
     document.getElementById('mfEditRecordModalEl')?.remove();
     toast('✅ تم تعديل السجل');
     await renderMFPage();
-  } catch(e){ toast(e.message,'error'); }
+  } catch(e){
+    if(e._queued){document.getElementById('mfEditRecordModalEl')?.remove();toast('⏳ '+e.message,'warning');}
+    else{ toast(e.message,'error'); }
+  }
 };
 
 // Apply saved language on load
-window.addEventListener('ms-app-ready', ()=>{
+window.addEventListener('ms-app-ready', ()=>{ _OQ._updateBadge();
   if(_currentLang === 'en') toggleLanguage();
 });
 
