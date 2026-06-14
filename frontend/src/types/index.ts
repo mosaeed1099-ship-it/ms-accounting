@@ -164,6 +164,9 @@ export interface DashboardStats {
     total: number
     active: number
     new_this_month: number
+    income_declaration: number
+    vat_declaration: number
+    payroll_declaration: number
   }
   financial: {
     total_invoiced: number

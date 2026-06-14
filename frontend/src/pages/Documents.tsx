@@ -97,7 +97,7 @@ export default function Documents() {
                 <div className="text-xs text-gray-400 mt-1">{formatFileSize(doc.file_size)} · {formatDate(doc.created_at)}</div>
               </div>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <a href={`/uploads/${doc.file_path}`} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm flex-1 justify-center">
+                <a href={`/uploads/${(doc as any).file_path}`} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm flex-1 justify-center">
                   <Download className="w-3.5 h-3.5" /> تحميل
                 </a>
                 <button className="btn-ghost btn-sm p-1.5 text-red-500" onClick={() => setDeleting(doc)}>
