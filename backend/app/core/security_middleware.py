@@ -16,7 +16,14 @@ logger = logging.getLogger(__name__)
 # ── In-memory rate limit store ────────────────────────────────────────────────
 # Structure: { ip: (request_count, window_start_timestamp) }
 _rate_store: Dict[str, Tuple[int, float]] = defaultdict(lambda: (0, time.time()))
-_rate_lock = asyncio.Lock()
+# Lock created lazily inside async context (asyncio.Lock() at module level fails Python 3.10+)
+_rate_lock: asyncio.Lock = None  # type: ignore
+
+def _get_lock() -> asyncio.Lock:
+    global _rate_lock
+    if _rate_lock is None:
+        _rate_lock = asyncio.Lock()
+    return _rate_lock
 
 # ── Per-route limits ──────────────────────────────────────────────────────────
 RATE_RULES = {
@@ -46,7 +53,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ip = self._get_client_ip(request)
         key = f"{ip}:{path.split('?')[0]}"
 
-        async with _rate_lock:
+        async with _get_lock():
             count, window_start = _rate_store[key]
             now = time.time()
 
