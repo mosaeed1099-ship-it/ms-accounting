@@ -277,6 +277,9 @@ def record_payment(
 
 class RecordUpdateIn(BaseModel):
     fee_amount: Optional[float] = None
+    balance_carried: Optional[float] = None
+    paid_amount: Optional[float] = None
+    paid_date: Optional[date] = None
     bayan: Optional[str] = None
     notes: Optional[str] = None
 
@@ -293,9 +296,19 @@ def update_record(
         raise HTTPException(404)
     if data.fee_amount is not None:
         r.fee_amount = data.fee_amount
+    if data.balance_carried is not None:
+        r.balance_carried = data.balance_carried
+    # Recalculate totals whenever fee or carry changes
+    if data.fee_amount is not None or data.balance_carried is not None:
         r.total_due = r.fee_amount + r.balance_carried
         r.remaining = max(0, r.total_due - r.paid_amount)
         r.paid = r.remaining == 0
+    if data.paid_amount is not None:
+        r.paid_amount = data.paid_amount
+        r.remaining = max(0, r.total_due - r.paid_amount)
+        r.paid = r.remaining == 0
+    if data.paid_date is not None:
+        r.paid_date = data.paid_date
     if data.bayan is not None:
         r.bayan = data.bayan
     if data.notes is not None:
