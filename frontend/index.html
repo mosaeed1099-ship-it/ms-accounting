@@ -6621,7 +6621,7 @@ function toWAPhone(raw) {
   return '20' + d.replace(/^0+/, '');
 }
 const LEAD_STATUS_COLORS={new:'#6b7280',interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
-const LEAD_STATUS_LABEL={new:'جديد',interested:'مهتم',not_answered:'لم يرد',call_later:'كلمني لاحقاً',quotation_sent:'عرض مرسل',under_establishment:'قيد التأسيس',lost:'خسارة'};
+const LEAD_STATUS_LABEL={interested:'مهتم',not_answered:'لم يرد',call_later:'كلمني لاحقاً',quotation_sent:'عرض مرسل',under_establishment:'قيد التأسيس',lost:'خسارة'};
 const LEAD_ROW_BG={new:'#f1f5f9',interested:'#f0fdf4',not_answered:'#f1f5f9',call_later:'#fefce8',quotation_sent:'#fff7ed',under_establishment:'#ecfeff',lost:'#fef2f2'};
 const LEAD_ROW_BG_ALT={new:'#e2e8f0',interested:'#dcfce7',not_answered:'#e2e8f0',call_later:'#fef9c3',quotation_sent:'#ffedd5',under_establishment:'#cffafe',lost:'#fee2e2'};
 
@@ -6688,6 +6688,18 @@ async function loadLeads(silent=false) {
     if(!data) return;
     leadsData=data.items||[];
     leadsUsersData=Array.isArray(users)?users:[];
+    // Auto-convert any 'new' leads: with fees → interested, without → not_answered
+    const newLeads = leadsData.filter(l => l.status === 'new');
+    if(newLeads.length > 0) {
+      await Promise.all(newLeads.map(async l => {
+        const derived = (l.quote_total_fees > 0) ? 'interested' : 'not_answered';
+        l.status = derived; // update locally first
+        try { await api('PUT', `/api/leads/${l.id}`, {status: derived}); } catch(e) {}
+      }));
+      // Re-fetch stats after bulk update
+      const newStats = await api('GET', `/api/leads/stats?${statsP}`).catch(()=>stats);
+      return renderLeads(newStats||stats);
+    }
     renderLeads(stats);
   } catch(e){toast(e.message,'error')}
 }
