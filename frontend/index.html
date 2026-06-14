@@ -888,10 +888,18 @@ function emptyStateRow(colspan, icon, title, sub='') {
 
 /** Wrap a save button in a loading state while async fn runs */
 async function withSaving(btn, fn) {
+  if (!btn) { try { await fn(); } catch(e) { toast(e.message,'error'); } return; }
   const orig = btn.innerHTML;
+  const origBg = btn.style.background;
   btn.disabled = true; btn.textContent = 'جاري الحفظ...';
-  try { await fn(); }
-  catch(e) { toast(e.message,'error'); btn.disabled=false; btn.innerHTML=orig; }
+  try {
+    await fn();
+    btn.textContent = '✓ تم الحفظ';
+    btn.style.background = '#16a34a';
+    btn.style.color = '#fff';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; btn.style.background = origBg; btn.style.color = ''; }, 2000);
+  }
+  catch(e) { toast(e.message,'error'); btn.disabled=false; btn.innerHTML=orig; btn.style.background=origBg; btn.style.color=''; }
 }
 
 // ── FAB Functions ──────────────────────────────────────
@@ -20999,6 +21007,23 @@ window.downloadBaselineReport = async function() {
   URL.revokeObjectURL(a.href);
   toast('تم تنزيل التقرير', 'success');
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTO ERROR-GUARD — يُغلّف كل دوال الحفظ غير المحمية بـ try/catch + toast
+// يعمل فقط إذا كانت الدالة لا تعالج الخطأ داخلياً (لا تُعيد الرمي)
+// ═══════════════════════════════════════════════════════════════════════════════
+(function _patchSaveFns() {
+  const savePat = /^(save|mfSave|vatSave|tcVatSave|tcCorpSave|etaSave|_saveFormationObl|saveFormationObl|savePortalCredentials|_saveLeadExpandField|_saveLeadExpandAll)./i;
+  Object.keys(window).forEach(k => {
+    if (!savePat.test(k) && k !== 'showCollectionPaymentModal') return;
+    if (typeof window[k] !== 'function') return;
+    const orig = window[k];
+    window[k] = async function(...args) {
+      try { return await orig.apply(this, args); }
+      catch(e) { toast(e.message || 'فشل الحفظ — حاول مجدداً', 'error'); }
+    };
+  });
+})();
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {
