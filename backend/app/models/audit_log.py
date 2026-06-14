@@ -8,14 +8,21 @@ class AuditLog(Base):
 
     id          = Column(Integer, primary_key=True, index=True)
     user_id     = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    action      = Column(String(20), nullable=False)   # create|update|delete|view|export|approve
-    module      = Column(String(50), nullable=False)
+    action      = Column(String(20), nullable=True)    # create|update|delete|view|export|approve
+    module      = Column(String(50), nullable=True)
     record_id   = Column(Integer)
     record_name = Column(String(300))
     old_data    = Column(JSON)
     new_data    = Column(JSON)
     ip_address  = Column(String(50))
     notes       = Column(Text)
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    # HTTP-level audit fields (populated by AuditMiddleware)
+    method      = Column(String(10))
+    path        = Column(String(500))
+    entity_type = Column(String(50))
+    entity_id   = Column(Integer)
+    status_code = Column(Integer)
+    user_agent  = Column(String(200))
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("User")

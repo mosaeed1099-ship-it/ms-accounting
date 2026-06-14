@@ -87,15 +87,40 @@ manager = RealtimeManager()
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint — clients connect here to receive live events."""
+async def websocket_endpoint(websocket: WebSocket, token: str = ""):
+    """WebSocket endpoint — requires valid JWT token as ?token=<jwt> query param."""
+    from app.core.security import decode_token
+    from app.database import SessionLocal
+    from app.models.user import User
+
+    if not token:
+        await websocket.close(code=4001, reason="token required")
+        logger.warning("[WS] Rejected — no token provided")
+        return
+
+    payload = decode_token(token)
+    if not payload:
+        await websocket.close(code=4001, reason="invalid or expired token")
+        logger.warning("[WS] Rejected — invalid token")
+        return
+
+    db = SessionLocal()
+    try:
+        user_id = payload.get("sub")
+        user = db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
+        if not user:
+            await websocket.close(code=4001, reason="user not found or inactive")
+            return
+    finally:
+        db.close()
+
     await manager.connect(websocket)
+    logger.info(f"[WS] Authenticated user_id={user_id} connected")
     try:
         while True:
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
-            # Clients can also send events (e.g. cursor position in future)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:

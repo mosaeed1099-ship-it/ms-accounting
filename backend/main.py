@@ -1,6 +1,6 @@
 import sys, os
 # ── Early startup signal (appears even if later imports crash) ───────────────
-print("🚀 MS Accounting backend starting... v2.1.0 (formation API)", file=sys.stderr, flush=True)
+print("🚀 MS Accounting backend starting... v2.2.0 (security hardening)", file=sys.stderr, flush=True)
 import asyncio
 import logging
 from fastapi import FastAPI, Request
@@ -9,6 +9,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from app.core.security_middleware import RateLimitMiddleware, log_audit_event
+from app.core.security import decode_token
 from app.database import create_tables
 from app.config import settings
 from app.routers import auth, users, clients, invoices, tasks, documents, tax, dashboard
@@ -530,12 +532,29 @@ app = FastAPI(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(RateLimitMiddleware)
+
+# ── CORS — restricted to actual domains ──────────────────────────────────────
+_ALLOWED_ORIGINS = [
+    # GitHub Pages (production frontend)
+    "https://mosaeed1099-ship-it.github.io",
+    # Desktop app (Electron) — uses localhost
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    # Allow Railway preview URLs (dynamic subdomain)
+    "https://ms-accounting-api-production.up.railway.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["X-Total-Count", "Retry-After"],
 )
 
 
@@ -565,6 +584,28 @@ async def realtime_broadcast_middleware(request: Request, call_next):
                     }))
     except Exception:
         pass  # Never let broadcast logic affect the HTTP response
+    return response
+
+
+# ── Central Audit Trail middleware ────────────────────────────────────────────
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    """Log every mutating API call with user identity, IP, and status code."""
+    response = await call_next(request)
+    try:
+        # Extract user_id from JWT (best-effort — never blocks the response)
+        user_id = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            payload = decode_token(auth_header[7:])
+            if payload:
+                user_id = payload.get("sub")
+
+        asyncio.create_task(
+            log_audit_event(request, response.status_code, user_id=user_id)
+        )
+    except Exception:
+        pass
     return response
 
 
