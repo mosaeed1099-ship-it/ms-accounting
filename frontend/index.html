@@ -427,6 +427,9 @@ const API = (() => {
 })();
 let token = localStorage.getItem('ms_token');
 let currentUser = JSON.parse(localStorage.getItem('ms_user') || 'null');
+// If user already has a valid token on page load, mark API as "recently ok"
+// so that cold-start 401s from Railway don't immediately trigger logout.
+if (token) window._lastApiOk = Date.now();
 let currentPage = 'dashboard';
 let chartInstances = {};
 
