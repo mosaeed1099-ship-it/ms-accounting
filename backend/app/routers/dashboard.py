@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, extract, case
 from datetime import datetime, timedelta, date
 from app.database import get_db
 from app.models.client import Client, ClientStatus
@@ -28,11 +28,18 @@ async def dashboard_stats(db: Session = Depends(get_db), current_user: User = De
         func.date(Client.created_at) >= month_start
     ).scalar() or 0
 
-    # Clients by obligation type
-    all_active = db.query(Client).filter(Client.status == ClientStatus.ACTIVE).all()
-    income_clients  = sum(1 for c in all_active if c.tax_obligations and 'income_annual'  in c.tax_obligations)
-    vat_clients     = sum(1 for c in all_active if c.tax_obligations and 'vat_monthly'    in c.tax_obligations)
-    payroll_clients = sum(1 for c in all_active if c.tax_obligations and 'payroll_monthly' in c.tax_obligations)
+    # Clients by obligation type — SQL-side to avoid full table load into Python
+    from sqlalchemy import text as _text
+    obl_counts = db.execute(_text("""
+        SELECT
+            COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%income_annual%')  AS income,
+            COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%vat_monthly%')    AS vat,
+            COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%payroll_monthly%') AS payroll
+        FROM clients WHERE status = 'active'
+    """)).fetchone()
+    income_clients  = obl_counts[0] if obl_counts else 0
+    vat_clients     = obl_counts[1] if obl_counts else 0
+    payroll_clients = obl_counts[2] if obl_counts else 0
 
     # Invoices
     total_invoiced = db.query(func.sum(Invoice.total)).filter(
@@ -145,6 +152,7 @@ async def recent_activity(
 ):
     logs = (
         db.query(ActivityLog)
+        .options(joinedload(ActivityLog.user), joinedload(ActivityLog.client))
         .order_by(ActivityLog.created_at.desc())
         .limit(limit)
         .all()
@@ -171,17 +179,21 @@ async def upcoming_deadlines(
     today = date.today()
     future = today + timedelta(days=days)
 
-    tasks = db.query(Task).filter(
-        Task.due_date >= today,
-        Task.due_date <= future,
-        Task.status != TaskStatus.DONE,
-    ).order_by(Task.due_date).all()
+    tasks = (
+        db.query(Task)
+        .options(joinedload(Task.client), joinedload(Task.assigned_to_user))
+        .filter(Task.due_date >= today, Task.due_date <= future, Task.status != TaskStatus.DONE)
+        .order_by(Task.due_date)
+        .all()
+    )
 
-    tax_returns = db.query(TaxReturn).filter(
-        TaxReturn.due_date >= today,
-        TaxReturn.due_date <= future,
-        TaxReturn.status != TaxReturnStatus.SUBMITTED,
-    ).order_by(TaxReturn.due_date).all()
+    tax_returns = (
+        db.query(TaxReturn)
+        .options(joinedload(TaxReturn.client))
+        .filter(TaxReturn.due_date >= today, TaxReturn.due_date <= future, TaxReturn.status != TaxReturnStatus.SUBMITTED)
+        .order_by(TaxReturn.due_date)
+        .all()
+    )
 
     return {
         "tasks": [

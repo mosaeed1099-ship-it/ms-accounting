@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -258,10 +258,14 @@ def list_records(
     db: Session = Depends(get_db),
     cu: User = Depends(_auth),
 ):
-    records = db.query(MonthlyFeeRecord).filter(
-        MonthlyFeeRecord.year == year,
-        MonthlyFeeRecord.month == month,
-    ).join(MonthlyFeeClient).order_by(MonthlyFeeClient.name).all()
+    records = (
+        db.query(MonthlyFeeRecord)
+        .options(joinedload(MonthlyFeeRecord.client))
+        .filter(MonthlyFeeRecord.year == year, MonthlyFeeRecord.month == month)
+        .join(MonthlyFeeClient)
+        .order_by(MonthlyFeeClient.name)
+        .all()
+    )
 
     result = []
     for r in records:

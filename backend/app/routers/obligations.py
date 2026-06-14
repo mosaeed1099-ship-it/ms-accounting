@@ -3,7 +3,7 @@ Smart Automation Engine — Tax Obligations Rules Engine
 يولّد الالتزامات تلقائيًا بناءً على بيانات العميل
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import Optional, List
 from datetime import datetime, date, timedelta
@@ -333,7 +333,18 @@ def list_instances(
             ObligationInstance.status.in_([ObligationStatus.UPCOMING, ObligationStatus.PENDING])
         )
     total = query.count()
-    items = query.order_by(ObligationInstance.due_date).offset((page-1)*page_size).limit(page_size).all()
+    items = (
+        query
+        .options(
+            joinedload(ObligationInstance.client),
+            joinedload(ObligationInstance.obligation),
+            joinedload(ObligationInstance.assigned_user),
+        )
+        .order_by(ObligationInstance.due_date)
+        .offset((page-1)*page_size)
+        .limit(page_size)
+        .all()
+    )
 
     return {
         "total": total,

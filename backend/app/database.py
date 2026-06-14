@@ -236,6 +236,16 @@ def _run_migrations_pg():
             created_at TIMESTAMP DEFAULT NOW(),
             completed_at TIMESTAMP
         )""",
+        # ── Performance Indexes ───────────────────────────────────────────────
+        "CREATE INDEX IF NOT EXISTS idx_obligation_instances_due_status ON obligation_instances(due_date, status)",
+        "CREATE INDEX IF NOT EXISTS idx_obligation_instances_client_id  ON obligation_instances(client_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tasks_due_date_status           ON tasks(due_date, status) WHERE due_date IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_tasks_assigned_status           ON tasks(assigned_to, status)",
+        "CREATE INDEX IF NOT EXISTS idx_activity_log_created_at         ON activity_logs(created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_clients_status                  ON clients(status)",
+        "CREATE INDEX IF NOT EXISTS idx_invoices_status                 ON invoices(status)",
+        "CREATE INDEX IF NOT EXISTS idx_mf_records_year_month           ON monthly_fee_records(year, month)",
+        "CREATE INDEX IF NOT EXISTS idx_leads_status_updated            ON leads(status, updated_at DESC)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
