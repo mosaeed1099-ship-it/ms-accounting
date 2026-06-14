@@ -1245,7 +1245,7 @@ const navItems = [
   {id:'mail'         ,icon:'📧',label:'البريد الإلكتروني'},
   {id:'client_portal' ,icon:'🔑',label:'بوابة العملاء'},
   {id:'permissions'   ,icon:'🛡️',label:'الصلاحيات'},
-  {id:'monthly_fees'  ,icon:'📋',label:'المدفوعات الشهرية', adminOnly: true},
+  {id:'monthly_fees'  ,icon:'📋',label:'المدفوعات الشهرية'},
   {id:'finance_center',icon:'💰',label:'المالية', adminOnly: true},
   {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
@@ -19792,10 +19792,6 @@ let mfCurrentYear = 2026;
 let mfCurrentMonth = 5; // مايو — آخر شهر فيه بيانات
 
 async function loadMonthlyFees() {
-  if(currentUser?.role !== 'admin') {
-    document.getElementById('main').innerHTML = `<div style="text-align:center;padding:80px;color:#dc2626;font-size:18px">🔒 للمسؤول فقط</div>`;
-    return;
-  }
   const main = document.getElementById('main');
   main.className = 'page';
   main.innerHTML = `<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>`;
@@ -19844,6 +19840,7 @@ function mfRenderPage(dash, records) {
       <div style="font-size:13px;color:#64748b;margin-top:2px">تتبع الأتعاب الشهرية — بناءً على منطق الأتعاب المؤجلة</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${currentUser?.role==='admin'?`<button onclick="mfAddClientModal()" style="padding:7px 14px;background:#3b82f6;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ إضافة شركة</button>`:''}
       <select id="mfYear" class="input" style="width:90px" onchange="mfFilterChange()">
         ${[2025,2026,2027].map(y=>`<option value="${y}" ${y===mfCurrentYear?'selected':''}>${y}</option>`).join('')}
       </select>
@@ -19925,14 +19922,20 @@ function mfRenderPage(dash, records) {
                 : `<span style="background:#fef2f2;color:#ef4444;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✗ غير مدفوع</span>`}
             </td>
             <td onclick="event.stopPropagation()" style="white-space:nowrap">
+              ${currentUser?.role==='admin'?`
               <button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining},${r.paid_amount})"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#3b82f6;color:white;margin-left:4px">
-                ${r.paid?'✏️ تعديل':'💳 دفع'}
+                ${r.paid?'✏️ تعديل دفعة':'💳 دفع'}
+              </button>
+              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},'${(r.client_name||'').replace(/'/g,"\\'")}','${r.bayan||''}','${r.notes||''}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل الأتعاب">
+                ✏️
               </button>
               ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${(r.client_name||'').replace(/'/g,"\\'")}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">
                 🗑️
               </button>`:''}
+              `:'<span style="color:#94a3b8;font-size:12px">—</span>'}
             </td>
           </tr>`).join('')
           : `<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
@@ -20016,7 +20019,10 @@ window.mfShowClientHistory = async function(clientId, clientName) {
     <div class="modal" style="max-width:680px;max-height:85vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3>🏢 ${clientName}</h3>
-        <button onclick="document.getElementById('mfHistoryModal').remove()" class="modal-close">✕</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${currentUser?.role==='admin'?`<button onclick="document.getElementById('mfHistoryModal').remove();mfEditClientModal(${clientId},'${clientName.replace(/'/g,"\\'")}',${data.client?.monthly_fee||0},'${(data.client?.notes||'').replace(/'/g,"\\'")}')" style="font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;color:#374151">✏️ تعديل</button>`:''}
+          <button onclick="document.getElementById('mfHistoryModal').remove()" class="modal-close">✕</button>
+        </div>
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1">
         <!-- Summary Cards -->
@@ -20051,6 +20057,127 @@ window.mfShowClientHistory = async function(clientId, clientName) {
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+};
+
+// ── Monthly Fees: Add Company Modal ──────────────────────
+window.mfAddClientModal = function() {
+  document.getElementById('mfAddClientModalEl')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfAddClientModalEl" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h3>➕ إضافة شركة جديدة</h3>
+        <button onclick="document.getElementById('mfAddClientModalEl').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div><label class="label">اسم الشركة *</label>
+          <input id="mfNewClientName" class="input" placeholder="اسم الشركة" /></div>
+        <div><label class="label">الأتعاب الشهرية (ج.م)</label>
+          <input id="mfNewClientFee" class="input" type="number" min="0" step="0.01" placeholder="0" /></div>
+        <div><label class="label">ملاحظات</label>
+          <input id="mfNewClientNotes" class="input" placeholder="اختياري" /></div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSaveNewClient()" class="btn btn-primary">💾 حفظ</button>
+        <button onclick="document.getElementById('mfAddClientModalEl').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(()=>document.getElementById('mfNewClientName')?.focus(), 50);
+};
+
+window.mfSaveNewClient = async function() {
+  const name  = document.getElementById('mfNewClientName')?.value?.trim();
+  const fee   = parseFloat(document.getElementById('mfNewClientFee')?.value || 0);
+  const notes = document.getElementById('mfNewClientNotes')?.value?.trim();
+  if(!name){ toast('اسم الشركة مطلوب','error'); return; }
+  try {
+    await api('POST', '/api/monthly-fees/clients', { name, monthly_fee: fee, status:'active', notes: notes||null });
+    document.getElementById('mfAddClientModalEl')?.remove();
+    toast('✅ تمت إضافة الشركة');
+    await renderMFPage();
+  } catch(e){ toast(e.message,'error'); }
+};
+
+// ── Monthly Fees: Edit Company Modal ─────────────────────
+window.mfEditClientModal = function(clientId, clientName, monthlyFee, notes) {
+  document.getElementById('mfEditClientModalEl')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfEditClientModalEl" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h3>✏️ تعديل بيانات الشركة</h3>
+        <button onclick="document.getElementById('mfEditClientModalEl').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div><label class="label">اسم الشركة *</label>
+          <input id="mfEditClientName" class="input" value="${clientName}" /></div>
+        <div><label class="label">الأتعاب الشهرية (ج.م)</label>
+          <input id="mfEditClientFee" class="input" type="number" min="0" step="0.01" value="${monthlyFee||0}" /></div>
+        <div><label class="label">ملاحظات</label>
+          <input id="mfEditClientNotes" class="input" value="${notes||''}" /></div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSaveEditClient(${clientId})" class="btn btn-primary">💾 حفظ التعديلات</button>
+        <button onclick="document.getElementById('mfEditClientModalEl').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfSaveEditClient = async function(clientId) {
+  const name  = document.getElementById('mfEditClientName')?.value?.trim();
+  const fee   = parseFloat(document.getElementById('mfEditClientFee')?.value || 0);
+  const notes = document.getElementById('mfEditClientNotes')?.value?.trim();
+  if(!name){ toast('اسم الشركة مطلوب','error'); return; }
+  try {
+    await api('PUT', `/api/monthly-fees/clients/${clientId}`, { name, monthly_fee: fee, notes: notes||null });
+    document.getElementById('mfEditClientModalEl')?.remove();
+    toast('✅ تم حفظ التعديلات');
+    await renderMFPage();
+  } catch(e){ toast(e.message,'error'); }
+};
+
+// ── Monthly Fees: Edit Record (fee amount) Modal ─────────
+window.mfEditRecordModal = function(recordId, feeAmount, clientName, bayan, notes) {
+  document.getElementById('mfEditRecordModalEl')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfEditRecordModalEl" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h3>✏️ تعديل السجل — ${clientName}</h3>
+        <button onclick="document.getElementById('mfEditRecordModalEl').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div><label class="label">الأتعاب هذا الشهر (ج.م)</label>
+          <input id="mfEditRecFee" class="input" type="number" min="0" step="0.01" value="${feeAmount||0}" /></div>
+        <div><label class="label">البيان</label>
+          <input id="mfEditRecBayan" class="input" value="${bayan||''}" /></div>
+        <div><label class="label">ملاحظات</label>
+          <input id="mfEditRecNotes" class="input" value="${notes||''}" /></div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSaveEditRecord(${recordId})" class="btn btn-primary">💾 حفظ</button>
+        <button onclick="document.getElementById('mfEditRecordModalEl').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfSaveEditRecord = async function(recordId) {
+  const fee   = parseFloat(document.getElementById('mfEditRecFee')?.value);
+  const bayan = document.getElementById('mfEditRecBayan')?.value?.trim();
+  const notes = document.getElementById('mfEditRecNotes')?.value?.trim();
+  if(isNaN(fee)){ toast('ادخل قيمة صحيحة','error'); return; }
+  try {
+    await api('PUT', `/api/monthly-fees/records/${recordId}`, { fee_amount: fee, bayan: bayan||null, notes: notes||null });
+    document.getElementById('mfEditRecordModalEl')?.remove();
+    toast('✅ تم تعديل السجل');
+    await renderMFPage();
+  } catch(e){ toast(e.message,'error'); }
 };
 
 // Apply saved language on load
