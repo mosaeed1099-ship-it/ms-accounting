@@ -8977,7 +8977,7 @@ async function runRefreshNotifs() {
 
 async function submitObligation(instanceId) {
   try {
-    await api('PUT', `/api/obligations/instances/${instanceId}`, {status:'submitted', submitted_at:new Date().toISOString()});
+    await api('PUT', `/api/obligations/instances/${instanceId}`, {status:'submitted', submitted_at:new Date().toISOString()},{queue:true,queueLabel:'تسجيل تقديم التزام'});
     toast('✅ تم تسجيل التقديم');
     loadObligations();
   } catch(e){ toast(e.message,'error'); }
@@ -9040,7 +9040,7 @@ async function showUpdateOblModal(instanceId) {
       if(ass) body.assigned_to=parseInt(ass);
       if(notes) body.notes=notes;
       if(status==='submitted') body.submitted_at=new Date().toISOString();
-      await api('PUT',`/api/obligations/instances/${instanceId}`,body);
+      await api('PUT',`/api/obligations/instances/${instanceId}`,body,{queue:true,queueLabel:'تعديل التزام ضريبي'});
       toast('تم حفظ التعديلات');
       overlay.remove(); loadObligations(true);
     } catch(e){ toast(e.message,'error'); btn.disabled=false; btn.textContent='💾 حفظ'; }
@@ -9161,7 +9161,7 @@ async function showObligationModal(preClientId=null) {
         obligation_type:oblType,
         frequency:document.getElementById('oblFreq').value,
         due_day:parseInt(document.getElementById('oblDay').value)||15,
-      });
+      },{queue:true,queueLabel:'إنشاء التزام ضريبي'});
       toast('تم إنشاء الالتزام الضريبي');
       overlay.remove(); loadObligations(true);
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='🔔 إضافة';}
@@ -9320,7 +9320,7 @@ function toggleFormationCase(caseId){
 
 async function updateFormationOblStatus(oblId, newStatus){
   try {
-    await api('PUT',`/api/formation-obligations/${oblId}`, {status: newStatus});
+    await api('PUT',`/api/formation-obligations/${oblId}`, {status: newStatus},{queue:true,queueLabel:'تحديث حالة التزام تأسيس'});
     await loadFormationObligations(true);
     toast('تم تحديث الحالة ✅');
   } catch(e){ toast(e.message,'error'); }
@@ -13227,7 +13227,7 @@ async function saveAccTransaction(type) {
   };
 
   try {
-    const r = await api('POST', `/api/accounting/${_accClientId}/transactions`, payload);
+    const r = await api('POST', `/api/accounting/${_accClientId}/transactions`, payload, {queue:true,queueLabel:'إضافة معاملة محاسبية'});
     resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message)}</div>`;
     setTimeout(() => { document.querySelector('.modal-overlay:last-child')?.remove(); accRender(); }, 1200);
   } catch(e) {
@@ -13238,7 +13238,7 @@ async function saveAccTransaction(type) {
 async function deleteAccTx(txId) {
   if(!await confirmDlg('حذف هذه المعاملة وقيدها اليومي؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/transactions/${txId}`);
+    await api('DELETE', `/api/accounting/${_accClientId}/transactions/${txId}`,null,{queue:true,queueLabel:'حذف معاملة محاسبية'});
     toast('تم الحذف');
     accRender();
   } catch(e) { toast(e.message, 'error'); }
@@ -13349,7 +13349,7 @@ async function saveEditTransaction(txId, type) {
   };
 
   try {
-    const r = await api('PUT', `/api/accounting/${_accClientId}/transactions/${txId}`, payload);
+    const r = await api('PUT', `/api/accounting/${_accClientId}/transactions/${txId}`, payload, {queue:true,queueLabel:'تعديل معاملة محاسبية'});
     resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message)}</div>`;
     setTimeout(() => { document.querySelector('.modal-overlay:last-child')?.remove(); accRender(); }, 1200);
   } catch(e) {
@@ -13463,7 +13463,7 @@ async function showJournalDetail(jeId) {
 
 async function postJournalEntry(jeId) {
   try {
-    const r = await api('PATCH', `/api/accounting/${_accClientId}/journal-entries/${jeId}/post`);
+    const r = await api('PATCH', `/api/accounting/${_accClientId}/journal-entries/${jeId}/post`,null,{queue:true,queueLabel:'ترحيل قيد يومي'});
     toast(r.message);
     accRender();
   } catch(e) { toast(e.message,'error'); }
@@ -13492,7 +13492,7 @@ async function reverseJournalEntry(jeId, overlay) {
 async function deleteJournalEntry(jeId, overlay) {
   if (!await confirmDlg('حذف هذا القيد نهائياً؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/journal-entries/${jeId}`);
+    await api('DELETE', `/api/accounting/${_accClientId}/journal-entries/${jeId}`,null,{queue:true,queueLabel:'حذف قيد يومي'});
     toast('تم حذف القيد');
     overlay?.remove();
     _AC.invalidate(`/api/accounting/${_accClientId}`);
@@ -13592,7 +13592,7 @@ async function saveManualJE() {
       reference: document.getElementById('jeRef')?.value?.trim(),
       entry_type: 'manual',
       lines,
-    });
+    }, {queue:true,queueLabel:'إنشاء قيد يومي'});
     resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message)}</div>`;
     setTimeout(()=>{ document.querySelector('.modal-overlay:last-child')?.remove(); accRender(); }, 1200);
   } catch(e) {
@@ -14542,7 +14542,7 @@ async function saveTreasury() {
   };
   if(!payload.name) { document.getElementById('trResult').innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل الاسم</div>`; return; }
   try {
-    await api('POST', `/api/accounting/${_accClientId}/treasuries`, payload);
+    await api('POST', `/api/accounting/${_accClientId}/treasuries`, payload,{queue:true,queueLabel:'إضافة خزينة'});
     toast('✅ تمت الإضافة');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14631,7 +14631,7 @@ async function saveTreasuryTx(treasuryId) {
       tx_type: document.getElementById('ttType')?.value,
       amount: amt,
       description: document.getElementById('ttDesc')?.value?.trim()||null,
-    });
+    },{queue:true,queueLabel:'إضافة حركة خزينة'});
     toast('✅ تمت الإضافة');
     document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
     accRender();
@@ -14641,7 +14641,7 @@ async function saveTreasuryTx(treasuryId) {
 async function deleteTreasuryTx(txId) {
   if(!await confirmDlg('حذف هذه الحركة؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/treasuries/transactions/${txId}`);
+    await api('DELETE', `/api/accounting/${_accClientId}/treasuries/transactions/${txId}`,null,{queue:true,queueLabel:'حذف حركة خزينة'});
     toast('تم الحذف');
     document.querySelector('.modal-overlay')?.remove();
     accRender();
@@ -14766,7 +14766,7 @@ async function saveCheck() {
       amount: amt,
       issue_date: new Date().toISOString().split('T')[0],
       due_date: document.getElementById('chkDue')?.value||null,
-    });
+    },{queue:true,queueLabel:'إضافة شيك'});
     toast('✅ تمت الإضافة');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14775,7 +14775,7 @@ async function saveCheck() {
 
 async function updateCheckStatus(checkId, status) {
   try {
-    await api('PATCH', `/api/accounting/${_accClientId}/checks/${checkId}/status`, {status});
+    await api('PATCH', `/api/accounting/${_accClientId}/checks/${checkId}/status`, {status},{queue:true,queueLabel:'تحديث حالة شيك'});
     toast('✅ تم تحديث الحالة');
     accRender();
   } catch(e) { toast(e.message,'error'); }
@@ -14784,7 +14784,7 @@ async function updateCheckStatus(checkId, status) {
 async function deleteCheck(checkId) {
   if(!await confirmDlg('حذف هذا الشيك؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/checks/${checkId}`);
+    await api('DELETE', `/api/accounting/${_accClientId}/checks/${checkId}`,null,{queue:true,queueLabel:'حذف شيك'});
     toast('تم الحذف');
     accRender();
   } catch(e) { toast(e.message,'error'); }
@@ -14897,7 +14897,7 @@ async function saveAdvance() {
       issue_date: document.getElementById('advIssue')?.value,
       due_date: document.getElementById('advDue')?.value||null,
       purpose: document.getElementById('advPurpose')?.value?.trim()||null,
-    });
+    },{queue:true,queueLabel:'إضافة سلفة'});
     toast('✅ تمت الإضافة');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14937,7 +14937,7 @@ async function confirmSettleAdvance(advId) {
   const amt = parseFloat(document.getElementById('settleAmt')?.value||0);
   if(!amt) return;
   try {
-    await api('PATCH', `/api/accounting/${_accClientId}/advances/${advId}/settle`, {amount: amt});
+    await api('PATCH', `/api/accounting/${_accClientId}/advances/${advId}/settle`, {amount: amt},{queue:true,queueLabel:'تسوية سلفة'});
     toast('✅ تمت التسوية');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14947,7 +14947,7 @@ async function confirmSettleAdvance(advId) {
 async function deleteAdvance(advId) {
   if(!await confirmDlg('حذف هذا السجل؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/advances/${advId}`);
+    await api('DELETE', `/api/accounting/${_accClientId}/advances/${advId}`,null,{queue:true,queueLabel:'حذف سلفة'});
     toast('تم الحذف'); accRender();
   } catch(e) { toast(e.message,'error'); }
 }
