@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from typing import Optional
 from pydantic import BaseModel
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import threading
 from app.database import get_db
 from app.models.task import Task, TaskComment, TaskStatus, TaskPriority, TaskCategory
@@ -301,16 +301,38 @@ async def create_task(
     return task_to_dict(task)
 
 
+def _check_task_conflict(record_updated_at, if_unmodified_since: Optional[str]):
+    if not if_unmodified_since or not record_updated_at:
+        return
+    try:
+        client_ts = datetime.fromisoformat(if_unmodified_since.replace("Z", "+00:00"))
+        server_ts = record_updated_at
+        if server_ts.tzinfo is None:
+            server_ts = server_ts.replace(tzinfo=timezone.utc)
+        if server_ts > client_ts + timedelta(seconds=2):
+            raise HTTPException(status_code=409, detail={
+                "conflict": True,
+                "message": "تم تعديل هذه المهمة من مستخدم آخر. يُرجى تحديث الصفحة.",
+                "server_updated_at": server_ts.isoformat(),
+            })
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
 @router.put("/{task_id}")
 async def update_task(
     task_id: int,
     data: TaskUpdate,
+    x_if_unmodified_since: Optional[str] = Header(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
+    _check_task_conflict(task.updated_at, x_if_unmodified_since)
 
     updates = data.dict(exclude_none=True)
     if "notes" in updates:
