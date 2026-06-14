@@ -697,7 +697,9 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
       const data = await r.json().catch(()=>({}));
       if(!r.ok) {
         let msg = 'خطأ في الطلب';
-        if(typeof data.detail === 'string') msg = data.detail;
+        if (r.status === 409 && data.detail?.conflict) {
+          msg = '⚠️ تعارض: ' + (data.detail.message || 'تم تعديل السجل من مستخدم آخر');
+        } else if(typeof data.detail === 'string') msg = data.detail;
         else if(Array.isArray(data.detail)) msg = data.detail.map(e=>e.msg||e).join(' | ');
         else if(data.message) msg = data.message;
         // Log API errors (4xx/5xx) — skip 401 (handled separately)
@@ -3243,7 +3245,7 @@ function showClientModal(id=null) {
 
       let savedClient;
       if(c){
-        savedClient = await api('PUT',`/api/clients/${c.id}`,body,{queue:true,queueLabel:'تعديل بيانات عميل'});
+        savedClient = await api('PUT',`/api/clients/${c.id}`,body,{queue:true,queueLabel:'تعديل بيانات عميل',conflictTs:c?.updated_at||null});
       } else {
         savedClient = await api('POST','/api/clients',body);
       }
@@ -10125,7 +10127,7 @@ async function showCollectionEditModal(contractId) {
         const mEl=document.getElementById('ceMonthly');
         if(mEl) body.monthly_amount=parseFloat(mEl.value)||0;
       }
-      await api('PUT',`/api/collections/${contractId}`,body,{queue:true,queueLabel:'تعديل عقد تحصيل'});
+      await api('PUT',`/api/collections/${contractId}`,body,{queue:true,queueLabel:'تعديل عقد تحصيل',conflictTs:c?.updated_at||null});
       toast('تم تحديث العقد بنجاح');
       overlay.remove(); loadCollections(true);
     } catch(e){
@@ -20109,15 +20111,15 @@ function mfRenderPage(dash, records) {
             </td>
             <td onclick="event.stopPropagation()" style="white-space:nowrap">
               ${currentUser?.role==='admin'?`
-              <button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining},${r.paid_amount})"
+              <button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining},${r.paid_amount},'${r.updated_at||''}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#3b82f6;color:white;margin-left:4px">
                 ${r.paid?'✏️ تعديل دفعة':'💳 دفع'}
               </button>
-              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${(r.client_name||'').replace(/'/g,"\\'")}','${r.bayan||''}','${r.notes||''}')"
+              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${(r.client_name||'').replace(/'/g,"\\'")}','${r.bayan||''}','${r.notes||''}','${r.updated_at||''}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">
                 ✏️
               </button>
-              ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${(r.client_name||'').replace(/'/g,"\\'")}')"
+              ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${(r.client_name||'').replace(/'/g,"\\'")}','${r.updated_at||''}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">
                 🗑️
               </button>`:''}
@@ -20143,7 +20145,7 @@ window.mfFilterChange = function() {
   renderMFPage();
 };
 
-window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
+window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid, updatedAt) {
   document.getElementById('mfPayModalEl')?.remove();
   const isEdit = (currentPaid||0) > 0;
   const html = `
@@ -20158,6 +20160,7 @@ window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentP
           إجمالي المطلوب: <strong>${(totalDue||0).toLocaleString('ar-EG')} ج.م</strong>
           ${isEdit?`<br>مدفوع حالياً: <strong style="color:#10b981">${(currentPaid||0).toLocaleString('ar-EG')} ج.م</strong>`:''}
         </div>
+        <input type="hidden" id="mfPayUpdatedAt" value="${updatedAt||''}"/>
         <div><label class="label">المبلغ المدفوع (ج.م)</label>
           <input id="mfPayAmount" class="input" type="number" min="0" step="0.01" value="${currentPaid||remaining||totalDue||''}"/></div>
         <div><label class="label">تاريخ الدفع</label>
@@ -20174,10 +20177,10 @@ window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentP
   document.body.insertAdjacentHTML('beforeend', html);
 };
 
-window.mfResetPay = async function(recordId, clientName) {
+window.mfResetPay = async function(recordId, clientName, updatedAt) {
   if(!confirm(`هل تريد حذف الدفعة لـ ${clientName}؟`)) return;
   try {
-    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'}, {queue:true,queueLabel:'إلغاء دفعة أتعاب'});
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'}, {queue:true,queueLabel:'إلغاء دفعة أتعاب',conflictTs:updatedAt||null});
     toast('تم حذف الدفعة','success');
     await renderMFPage();
   } catch(e){ if(e._queued) toast('⏳ '+e.message,'warning'); else toast(e.message,'error'); }
@@ -20189,7 +20192,8 @@ window.mfSavePay = async function(recordId) {
   const bayan  = document.getElementById('mfPayBayan').value;
   if(!amount){ toast('ادخل المبلغ','error'); return; }
   try {
-    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:amount, paid_date:pdate, bayan}, {queue:true,queueLabel:'تسجيل دفعة أتعاب'});
+    const _mfPayTs = document.getElementById('mfPayUpdatedAt')?.value||null;
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:amount, paid_date:pdate, bayan}, {queue:true,queueLabel:'تسجيل دفعة أتعاب',conflictTs:_mfPayTs});
     document.getElementById('mfPayModalEl')?.remove();
     toast('✅ تم تسجيل الدفعة');
     await renderMFPage();
@@ -20334,7 +20338,7 @@ window.mfSaveEditClient = async function(clientId) {
 };
 
 // ── Monthly Fees: Edit Record (fee amount) Modal ─────────
-window.mfEditRecordModal = function(recordId, feeAmount, balanceCarried, paidAmount, paidDate, clientName, bayan, notes) {
+window.mfEditRecordModal = function(recordId, feeAmount, balanceCarried, paidAmount, paidDate, clientName, bayan, notes, updatedAt) {
   document.getElementById('mfEditRecordModalEl')?.remove();
   const html = `
   <div class="modal-backdrop" id="mfEditRecordModalEl" onclick="if(event.target===this)this.remove()">
@@ -20354,6 +20358,7 @@ window.mfEditRecordModal = function(recordId, feeAmount, balanceCarried, paidAmo
           <input id="mfEditRecPaidDate" class="input" type="date" value="${paidDate||''}" /></div>
         <div><label class="label">البيان</label>
           <input id="mfEditRecBayan" class="input" value="${bayan||''}" /></div>
+        <input type="hidden" id="mfEditRecUpdatedAt" value="${updatedAt||''}"/>
         <div><label class="label">ملاحظات</label>
           <input id="mfEditRecNotes" class="input" value="${notes||''}" /></div>
       </div>
@@ -20375,6 +20380,7 @@ window.mfSaveEditRecord = async function(recordId) {
   const notes     = document.getElementById('mfEditRecNotes')?.value?.trim();
   if(isNaN(fee)){ toast('ادخل قيمة صحيحة للأتعاب','error'); return; }
   try {
+    const _mfEditTs = document.getElementById('mfEditRecUpdatedAt')?.value||null;
     await api('PUT', `/api/monthly-fees/records/${recordId}`, {
       fee_amount: fee,
       balance_carried: isNaN(carry) ? undefined : carry,
@@ -20382,7 +20388,7 @@ window.mfSaveEditRecord = async function(recordId) {
       paid_date: paidDate || null,
       bayan: bayan || null,
       notes: notes || null,
-    }, {queue:true, queueLabel:'تعديل سجل أتعاب'});
+    }, {queue:true, queueLabel:'تعديل سجل أتعاب', conflictTs:_mfEditTs});
     document.getElementById('mfEditRecordModalEl')?.remove();
     toast('✅ تم تعديل السجل');
     await renderMFPage();
