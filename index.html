@@ -9642,7 +9642,7 @@ function _collRender() {
     <td></td>
   </tr>`;
 
-  tbEl.innerHTML = rowsHTML + newRowHTML;
+  tbEl.innerHTML = newRowHTML + rowsHTML;
 
   // tfoot
   const tfEl = document.getElementById('collTfoot');
@@ -9706,10 +9706,16 @@ window._collDel = async function(id) {
   toast('تم الحذف');
 };
 
+const _collSaveTimers = {};
 window._collUpdate = function(id, field, val) {
-  // local update only (no separate PUT endpoint needed for now)
   const row = _collRows.find(r=>r.id===id);
-  if (row) row[field] = val;
+  if (row) row[field] = field === 'amount' ? parseFloat(val)||0 : val;
+  clearTimeout(_collSaveTimers[id]);
+  _collSaveTimers[id] = setTimeout(async () => {
+    try {
+      await api('PUT', `/api/finance/collections/${id}`, {[field]: field==='amount'?parseFloat(val)||0:val});
+    } catch(e) { toast(e.message||'خطأ في الحفظ','error'); }
+  }, 600);
 };
 
 // keep old refs working (modal functions still referenced elsewhere)
