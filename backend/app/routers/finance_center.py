@@ -25,7 +25,7 @@ OWNER_EMAIL = "ms.owner@mshq.io"
 
 PAYMENT_LABELS = {
     "cash": "كاش", "transfer": "تحويل بنكي",
-    "instapay": "إنستاباي", "check": "شيك",
+    "instapay": "إنستاباي", "check": "شيك", "wallet": "محفظة إلكترونية",
 }
 
 MONTH_AR = ["","يناير","فبراير","مارس","أبريل","مايو","يونيو",
