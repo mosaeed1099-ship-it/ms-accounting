@@ -9378,7 +9378,7 @@ window._saveFormationObl = async function(btn){
       status: document.getElementById('foStatus')?.value||'not_started',
       due_date: document.getElementById('foDueDate')?.value||null,
       notes: document.getElementById('foNotes')?.value||null,
-    });
+    },{queue:true,queueLabel:'إضافة التزام تأسيس'});
     document.querySelector('.modal-overlay')?.remove();
     await loadFormationObligations(true);
     toast('تم إضافة الالتزام ✅');
