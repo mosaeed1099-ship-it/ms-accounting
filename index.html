@@ -19933,8 +19933,8 @@ function mfRenderPage(dash, records) {
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#3b82f6;color:white;margin-left:4px">
                 ${r.paid?'✏️ تعديل دفعة':'💳 دفع'}
               </button>
-              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},'${(r.client_name||'').replace(/'/g,"\\'")}','${r.bayan||''}','${r.notes||''}')"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل الأتعاب">
+              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${(r.client_name||'').replace(/'/g,"\\'")}','${r.bayan||''}','${r.notes||''}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">
                 ✏️
               </button>
               ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${(r.client_name||'').replace(/'/g,"\\'")}')"
@@ -20147,11 +20147,11 @@ window.mfSaveEditClient = async function(clientId) {
 };
 
 // ── Monthly Fees: Edit Record (fee amount) Modal ─────────
-window.mfEditRecordModal = function(recordId, feeAmount, clientName, bayan, notes) {
+window.mfEditRecordModal = function(recordId, feeAmount, balanceCarried, paidAmount, paidDate, clientName, bayan, notes) {
   document.getElementById('mfEditRecordModalEl')?.remove();
   const html = `
   <div class="modal-backdrop" id="mfEditRecordModalEl" onclick="if(event.target===this)this.remove()">
-    <div class="modal" style="max-width:420px">
+    <div class="modal" style="max-width:460px">
       <div class="modal-header">
         <h3>✏️ تعديل السجل — ${clientName}</h3>
         <button onclick="document.getElementById('mfEditRecordModalEl').remove()" class="modal-close">✕</button>
@@ -20159,6 +20159,12 @@ window.mfEditRecordModal = function(recordId, feeAmount, clientName, bayan, note
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
         <div><label class="label">الأتعاب هذا الشهر (ج.م)</label>
           <input id="mfEditRecFee" class="input" type="number" min="0" step="0.01" value="${feeAmount||0}" /></div>
+        <div><label class="label">الرصيد السابق المرحّل (ج.م)</label>
+          <input id="mfEditRecCarry" class="input" type="number" min="0" step="0.01" value="${balanceCarried||0}" /></div>
+        <div><label class="label">المبلغ المدفوع (ج.م)</label>
+          <input id="mfEditRecPaid" class="input" type="number" min="0" step="0.01" value="${paidAmount||0}" /></div>
+        <div><label class="label">تاريخ الدفع</label>
+          <input id="mfEditRecPaidDate" class="input" type="date" value="${paidDate||''}" /></div>
         <div><label class="label">البيان</label>
           <input id="mfEditRecBayan" class="input" value="${bayan||''}" /></div>
         <div><label class="label">ملاحظات</label>
@@ -20174,12 +20180,22 @@ window.mfEditRecordModal = function(recordId, feeAmount, clientName, bayan, note
 };
 
 window.mfSaveEditRecord = async function(recordId) {
-  const fee   = parseFloat(document.getElementById('mfEditRecFee')?.value);
-  const bayan = document.getElementById('mfEditRecBayan')?.value?.trim();
-  const notes = document.getElementById('mfEditRecNotes')?.value?.trim();
-  if(isNaN(fee)){ toast('ادخل قيمة صحيحة','error'); return; }
+  const fee       = parseFloat(document.getElementById('mfEditRecFee')?.value);
+  const carry     = parseFloat(document.getElementById('mfEditRecCarry')?.value);
+  const paid      = parseFloat(document.getElementById('mfEditRecPaid')?.value);
+  const paidDate  = document.getElementById('mfEditRecPaidDate')?.value?.trim();
+  const bayan     = document.getElementById('mfEditRecBayan')?.value?.trim();
+  const notes     = document.getElementById('mfEditRecNotes')?.value?.trim();
+  if(isNaN(fee)){ toast('ادخل قيمة صحيحة للأتعاب','error'); return; }
   try {
-    await api('PUT', `/api/monthly-fees/records/${recordId}`, { fee_amount: fee, bayan: bayan||null, notes: notes||null });
+    await api('PUT', `/api/monthly-fees/records/${recordId}`, {
+      fee_amount: fee,
+      balance_carried: isNaN(carry) ? undefined : carry,
+      paid_amount: isNaN(paid) ? undefined : paid,
+      paid_date: paidDate || null,
+      bayan: bayan || null,
+      notes: notes || null,
+    });
     document.getElementById('mfEditRecordModalEl')?.remove();
     toast('✅ تم تعديل السجل');
     await renderMFPage();
