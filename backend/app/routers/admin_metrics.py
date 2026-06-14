@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 
 from app.database import get_db
-from app.core.security import get_current_user
+from app.core.deps import get_current_user
 from app.models.user import User, UserRole
 
 router = APIRouter(prefix="/api/admin/metrics", tags=["admin-metrics"])
