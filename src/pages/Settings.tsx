@@ -85,7 +85,7 @@ function ProfileTab() {
         </div>
         <div className="form-group">
           <label className="label">البريد الإلكتروني</label>
-          <input className="input" value={user?.email || ''} disabled className="input bg-gray-50 text-gray-400 cursor-not-allowed" />
+          <input className="input bg-gray-50 text-gray-400 cursor-not-allowed" value={user?.email || ''} disabled />
         </div>
         <button className="btn-primary" onClick={handleSave} disabled={saving}>
           <Save className="w-4 h-4" />{saving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
