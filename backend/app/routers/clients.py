@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from app.database import get_db
 from app.models.client import Client, ClientType, ClientStatus, TaxType
 from app.models.client_contact import ClientContact
@@ -12,6 +12,30 @@ from app.core.deps import get_current_user
 from app.models.user import User
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
+
+
+def _check_conflict(record_updated_at, if_unmodified_since: Optional[str]):
+    """Raise 409 if record was modified after the client's snapshot."""
+    if not if_unmodified_since or not record_updated_at:
+        return
+    try:
+        client_ts = datetime.fromisoformat(if_unmodified_since.replace("Z", "+00:00"))
+        server_ts = record_updated_at
+        if server_ts.tzinfo is None:
+            server_ts = server_ts.replace(tzinfo=timezone.utc)
+        if server_ts > client_ts + timedelta(seconds=2):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "conflict": True,
+                    "message": "تم تعديل هذا السجل من مستخدم آخر. يُرجى تحديث الصفحة للحصول على أحدث البيانات.",
+                    "server_updated_at": server_ts.isoformat(),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # malformed header — ignore
 
 
 class ClientCreate(BaseModel):
@@ -246,10 +270,13 @@ async def update_client(
     data: ClientUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    x_if_unmodified_since: Optional[str] = Header(None),
 ):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="العميل غير موجود")
+
+    _check_conflict(client.updated_at, x_if_unmodified_since)
 
     for field, value in data.dict(exclude_none=True).items():
         setattr(client, field, value)

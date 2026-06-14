@@ -2,9 +2,9 @@
 Monthly Fees — المدفوعات الشهرية
 All authenticated users can view. Admin only can create/edit/import.
 """
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,30 @@ from app.models.monthly_fees import MonthlyFeeClient, MonthlyFeeRecord, MFClient
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/monthly-fees", tags=["monthly-fees"])
+
+
+def _check_conflict(record_updated_at, if_unmodified_since: Optional[str]):
+    if not if_unmodified_since or not record_updated_at:
+        return
+    try:
+        client_ts = datetime.fromisoformat(if_unmodified_since.replace("Z", "+00:00"))
+        server_ts = record_updated_at
+        if server_ts.tzinfo is None:
+            server_ts = server_ts.replace(tzinfo=timezone.utc)
+        if server_ts > client_ts + timedelta(seconds=2):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "conflict": True,
+                    "message": "تم تعديل هذا السجل من مستخدم آخر. يُرجى تحديث الصفحة.",
+                    "server_updated_at": server_ts.isoformat(),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
 
 MONTH_AR = ["", "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
             "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
@@ -259,10 +283,12 @@ def record_payment(
     data: PaymentIn,
     db: Session = Depends(get_db),
     cu: User = Depends(_admin),
+    x_if_unmodified_since: Optional[str] = Header(None),
 ):
     r = db.query(MonthlyFeeRecord).filter(MonthlyFeeRecord.id == record_id).first()
     if not r:
         raise HTTPException(404)
+    _check_conflict(r.updated_at, x_if_unmodified_since)
     r.paid_amount = data.paid_amount
     r.remaining = max(0, r.total_due - r.paid_amount)
     r.paid = r.remaining == 0
@@ -290,10 +316,12 @@ def update_record(
     data: RecordUpdateIn,
     db: Session = Depends(get_db),
     cu: User = Depends(_admin),
+    x_if_unmodified_since: Optional[str] = Header(None),
 ):
     r = db.query(MonthlyFeeRecord).filter(MonthlyFeeRecord.id == record_id).first()
     if not r:
         raise HTTPException(404)
+    _check_conflict(r.updated_at, x_if_unmodified_since)
     if data.fee_amount is not None:
         r.fee_amount = data.fee_amount
     if data.balance_carried is not None:

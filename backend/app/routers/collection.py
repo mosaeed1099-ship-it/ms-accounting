@@ -2,12 +2,12 @@
 نظام التحصيلات — Collections Router
 يدير تحصيلات التأسيس والأتعاب الشهرية المتكررة
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional, List
 from pydantic import BaseModel
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 
 from app.database import get_db
 from app.core.deps import get_current_user
@@ -19,6 +19,29 @@ from app.models.client import Client
 from app.models.user import User
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
+
+
+def _check_conflict(record_updated_at, if_unmodified_since: Optional[str]):
+    if not if_unmodified_since or not record_updated_at:
+        return
+    try:
+        client_ts = datetime.fromisoformat(if_unmodified_since.replace("Z", "+00:00"))
+        server_ts = record_updated_at
+        if server_ts.tzinfo is None:
+            server_ts = server_ts.replace(tzinfo=timezone.utc)
+        if server_ts > client_ts + timedelta(seconds=2):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "conflict": True,
+                    "message": "تم تعديل هذا السجل من مستخدم آخر. يُرجى تحديث الصفحة.",
+                    "server_updated_at": server_ts.isoformat(),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
 
 ARABIC_MONTHS = ["يناير","فبراير","مارس","أبريل","مايو","يونيو",
                   "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"]
@@ -292,10 +315,13 @@ def update_contract(
     data: ContractUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    x_if_unmodified_since: Optional[str] = Header(None),
 ):
     contract = db.query(CollectionContract).filter(CollectionContract.id == contract_id).first()
     if not contract:
         raise HTTPException(404, "عقد التحصيل غير موجود")
+
+    _check_conflict(contract.updated_at, x_if_unmodified_since)
 
     updates = data.dict(exclude_none=True)
     for field, value in updates.items():
