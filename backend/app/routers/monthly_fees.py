@@ -24,7 +24,7 @@ def _auth(cu: User = Depends(get_current_user)):
 
 
 def _admin(cu: User = Depends(get_current_user)):
-    if cu.role not in (UserRole.ADMIN, UserRole.OWNER):
+    if cu.role != UserRole.ADMIN:
         raise HTTPException(403, "للمدير فقط")
     return cu
 
@@ -33,7 +33,7 @@ def _client_dict(c: MonthlyFeeClient) -> dict:
     return {
         "id": c.id, "name": c.name,
         "monthly_fee": c.monthly_fee,
-        "status": c.status,
+        "status": c.status.value if hasattr(c.status, 'value') else c.status,
         "notes": c.notes,
         "created_at": str(c.created_at) if c.created_at else None,
     }
@@ -139,10 +139,14 @@ def create_client(
     existing = db.query(MonthlyFeeClient).filter(MonthlyFeeClient.name == data.name).first()
     if existing:
         raise HTTPException(400, f"شركة بهذا الاسم موجودة بالفعل: {data.name}")
+    try:
+        status_val = MFClientStatus(data.status)
+    except ValueError:
+        status_val = MFClientStatus.ACTIVE
     obj = MonthlyFeeClient(
         name=data.name,
         monthly_fee=data.monthly_fee,
-        status=data.status,
+        status=status_val,
         notes=data.notes,
     )
     db.add(obj)
@@ -179,7 +183,10 @@ def update_client(
     if data.monthly_fee is not None:
         c.monthly_fee = data.monthly_fee
     if data.status is not None:
-        c.status = data.status
+        try:
+            c.status = MFClientStatus(data.status)
+        except ValueError:
+            pass
     if data.notes is not None:
         c.notes = data.notes
     db.commit()
