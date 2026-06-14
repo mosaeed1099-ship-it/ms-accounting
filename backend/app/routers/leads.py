@@ -1,11 +1,11 @@
 """
 Lead Management CRM Router
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from typing import Optional, List
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from pydantic import BaseModel
 
 from app.database import get_db
@@ -322,14 +322,36 @@ def get_lead(lead_id: int, db: Session = Depends(get_db), current_user: User = D
     return data
 
 
+def _check_lead_conflict(record_updated_at, if_unmodified_since: Optional[str]):
+    if not if_unmodified_since or not record_updated_at:
+        return
+    try:
+        client_ts = datetime.fromisoformat(if_unmodified_since.replace("Z", "+00:00"))
+        server_ts = record_updated_at
+        if server_ts.tzinfo is None:
+            server_ts = server_ts.replace(tzinfo=timezone.utc)
+        if server_ts > client_ts + timedelta(seconds=2):
+            raise HTTPException(status_code=409, detail={
+                "conflict": True,
+                "message": "تم تعديل هذا السجل من مستخدم آخر. يُرجى تحديث الصفحة للحصول على أحدث البيانات.",
+                "server_updated_at": server_ts.isoformat(),
+            })
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
 @router.put("/{lead_id}")
 def update_lead(
     lead_id: int, body: LeadUpdate,
+    x_if_unmodified_since: Optional[str] = Header(None),
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(404, "Lead غير موجود")
+    _check_lead_conflict(lead.updated_at, x_if_unmodified_since)
 
     old_status = lead.status
     for k, v in body.dict(exclude_none=True).items():
