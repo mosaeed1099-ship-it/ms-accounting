@@ -429,72 +429,6 @@ let token = localStorage.getItem('ms_token');
 let currentUser = JSON.parse(localStorage.getItem('ms_user') || 'null');
 if (token) window._lastApiOk = Date.now();
 
-// ══════════════════════════════════════════════════════════════
-// MS DIAGNOSTIC LAYER — remove after root cause is found
-// ══════════════════════════════════════════════════════════════
-(function installMSDiag() {
-  window._MS_DIAG_LOG      = [];
-  window._MS_DIAG_REQUESTS = [];
-
-  // 1. Intercept every fetch() call
-  const _origFetch = window.fetch;
-  window.fetch = async function(...args) {
-    const url    = typeof args[0] === 'string' ? args[0] : (args[0]?.url || String(args[0]));
-    const method = args[1]?.method || 'GET';
-    const t0     = Date.now();
-    let status   = '?';
-    try {
-      const resp = await _origFetch.apply(this, args);
-      status = resp.status;
-      const rec = { time: new Date().toISOString(), method, url: url.replace(/^https?:\/\/[^/]+/,''), status, ms: Date.now()-t0 };
-      window._MS_DIAG_REQUESTS.push(rec);
-      if (window._MS_DIAG_REQUESTS.length > 50) window._MS_DIAG_REQUESTS.shift();
-      if (status === 401 || status >= 500) {
-        console.warn(`🟡 [MS-DIAG] ${method} ${rec.url} → ${status} (${rec.ms}ms)`);
-        window._MS_DIAG_LOG.push({ event: 'BAD_RESPONSE', ...rec });
-      }
-      return resp;
-    } catch(err) {
-      const rec = { time: new Date().toISOString(), method, url: url.replace(/^https?:\/\/[^/]+/,''), status: 'NET_ERROR', error: err.message, ms: Date.now()-t0 };
-      window._MS_DIAG_REQUESTS.push(rec);
-      window._MS_DIAG_LOG.push({ event: 'FETCH_ERROR', ...rec });
-      console.warn(`🟡 [MS-DIAG] ${method} ${rec.url} → NET_ERROR: ${err.message}`);
-      throw err;
-    }
-  };
-
-  // 2. Monitor localStorage ms_token changes
-  const _origSetItem = localStorage.setItem.bind(localStorage);
-  const _origRemoveItem = localStorage.removeItem.bind(localStorage);
-  localStorage.setItem = function(k, v) {
-    if (k === 'ms_token' || k === 'ms_user') {
-      console.log(`🟢 [MS-DIAG] localStorage.setItem('${k}') called`, new Error().stack.split('\n')[2]?.trim());
-    }
-    return _origSetItem(k, v);
-  };
-  localStorage.removeItem = function(k) {
-    if (k === 'ms_token' || k === 'ms_user') {
-      console.error(`🔴 [MS-DIAG] localStorage.removeItem('${k}') called`, new Error().stack.split('\n')[2]?.trim());
-      window._MS_DIAG_LOG.push({ event: 'TOKEN_REMOVED', key: k, time: new Date().toISOString(), stack: new Error().stack });
-    }
-    return _origRemoveItem(k);
-  };
-
-  // 3. Helper: call window.msDiag() in console to dump full report
-  window.msDiag = function() {
-    console.group('═══ MS DIAGNOSTIC REPORT ═══');
-    console.log('ms_token in localStorage:', !!localStorage.getItem('ms_token'));
-    console.log('ms_user  in localStorage:', !!localStorage.getItem('ms_user'));
-    console.log('window.token (in-memory):', typeof token !== 'undefined' ? !!token : '(scope N/A)');
-    console.log('Last API ok:', window._lastApiOk ? new Date(window._lastApiOk).toISOString() : 'never');
-    console.log('Event log:', window._MS_DIAG_LOG);
-    console.log('Last 20 requests:', window._MS_DIAG_REQUESTS.slice(-20));
-    console.groupEnd();
-    return window._MS_DIAG_LOG;
-  };
-
-  console.log('%c[MS-DIAG] Diagnostic layer installed. Call msDiag() in console for report.', 'color:#6366f1;font-weight:bold');
-})();
 let currentPage = 'dashboard';
 let chartInstances = {};
 
@@ -505,6 +439,7 @@ let chartInstances = {};
 let _rt_ws        = null;
 let _rt_reconnect = null;
 let _rt_retries   = 0;
+let _rt_intervals = [];
 let _silentRefresh = false;  // When true: load functions skip the loading spinner
 
 // Maps server entity names → page IDs + refresh functions
@@ -622,19 +557,19 @@ function _rtSilentLoad(fn) {
 function initRealtime() {
   _rtConnect();
   // Ping WS every 25s to keep Railway connection alive
-  setInterval(() => {
+  _rt_intervals.push(setInterval(() => {
     if (_rt_ws && _rt_ws.readyState === WebSocket.OPEN) {
       _rt_ws.send('ping');
     }
-  }, 25000);
+  }, 25000));
   // HTTP keep-alive: hit /health every 4 min so Railway never cold-starts
-  setInterval(() => {
+  _rt_intervals.push(setInterval(() => {
     fetch(API + '/health', {method:'GET', signal: AbortSignal.timeout(5000)}).catch(()=>{});
-  }, 240000);
+  }, 240000));
   // Dashboard background refresh every 60s (catches anything missed)
-  setInterval(() => {
+  _rt_intervals.push(setInterval(() => {
     if (currentPage === 'dashboard') loadDashboard(true);
-  }, 60000);
+  }, 60000));
 }
 // ── END REAL-TIME SYNC ENGINE ──────────────────────────────────────────────
 
@@ -1161,21 +1096,12 @@ function showWelcomeGreeting(name) {
 }
 
 function logout() {
-  // ── DIAGNOSTIC: log every logout call with full context ──
-  const _diagStack = new Error('logout called').stack;
-  const _diagLog = window._MS_DIAG_LOG = window._MS_DIAG_LOG || [];
-  const _diagEntry = {
-    event: 'LOGOUT',
-    time: new Date().toISOString(),
-    stack: _diagStack,
-    tokenWas: token ? token.substring(0,30)+'...' : 'null',
-    lastApiOk: window._lastApiOk ? new Date(window._lastApiOk).toISOString() : 'never',
-    msSinceLastOk: window._lastApiOk ? (Date.now()-window._lastApiOk) : 'N/A',
-    recentRequests: (window._MS_DIAG_REQUESTS||[]).slice(-10),
-  };
-  _diagLog.push(_diagEntry);
-  console.error('🔴 [MS-DIAG] LOGOUT TRIGGERED', _diagEntry);
-  console.trace('🔴 [MS-DIAG] logout() stack trace');
+  // Clear all realtime intervals so stale requests can't trigger re-logout
+  _rt_intervals.forEach(id => clearInterval(id));
+  _rt_intervals = [];
+  if (_rt_ws) { try { _rt_ws.close(); } catch(_) {} _rt_ws = null; }
+  if (_rt_reconnect) { clearTimeout(_rt_reconnect); _rt_reconnect = null; }
+  if (_notifInterval) { clearInterval(_notifInterval); _notifInterval = null; }
   token=null; currentUser=null;
   localStorage.removeItem('ms_token'); localStorage.removeItem('ms_user');
   renderApp();
