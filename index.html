@@ -3859,7 +3859,7 @@ window._markDone = async function(id) {
   const isDone=t.status==='done';
   const newStatus=isDone?'todo':'done';
   try {
-    await api('PUT',`/api/tasks/${id}`,{status:newStatus},{useCache:false});
+    await api('PUT',`/api/tasks/${id}`,{status:newStatus},{useCache:false,queue:true,queueLabel:'تحديث حالة مهمة'});
     t.status=newStatus;
     if(!isDone){
       const now=new Date();
@@ -3992,7 +3992,7 @@ window._empDelAll = async function(uid) {
 
 async function _restoreTask(id) {
   try {
-    await api('PUT',`/api/tasks/${id}`,{status:'todo'});
+    await api('PUT',`/api/tasks/${id}`,{status:'todo'},{queue:true,queueLabel:'إعادة مهمة'});
     tasksData=tasksData.map(t=>t.id===id?{...t,status:'todo'}:t);
     renderDailySheet(); toast('تمت إعادة المهمة');
   } catch(e){toast(e.message,'error');}
@@ -4052,7 +4052,7 @@ window._genWAMessage = function() {
 async function _assignTask(taskId, userId, assign) {
   try {
     const newAssignee=assign?userId:null;
-    await api('PUT',`/api/tasks/${taskId}`,{assigned_to:newAssignee});
+    await api('PUT',`/api/tasks/${taskId}`,{assigned_to:newAssignee},{queue:true,queueLabel:'تعيين مهمة'});
     const emp=tasksUsersData.find(u=>u.id===userId);
     tasksData=tasksData.map(t=>t.id===taskId?{...t,assigned_to:newAssignee,assigned_to_name:assign?(emp?.name||null):null}:t);
     if(assign&&emp){
@@ -4222,7 +4222,7 @@ function renderEmployeeTasks() {
 
 async function quickDoneTask(id) {
   try {
-    await api('PUT', `/api/tasks/${id}`, {status:'done'});
+    await api('PUT', `/api/tasks/${id}`, {status:'done'},{queue:true,queueLabel:'إتمام مهمة'});
     tasksData = tasksData.map(t => t.id === id ? {...t, status:'done'} : t);
     renderEmployeeTasks();
     toast('✅ تم إنجاز المهمة');
@@ -4279,7 +4279,7 @@ function renderKanban() {
 
 async function updateTaskStatus(id, status) {
   try {
-    await api('PUT',`/api/tasks/${id}`,{status});
+    await api('PUT',`/api/tasks/${id}`,{status},{queue:true,queueLabel:'تحديث حالة مهمة'});
     tasksData=tasksData.map(t=>t.id===id?{...t,status}:t);
     renderKanban();
     toast('تم تحديث حالة المهمة');
@@ -4411,7 +4411,7 @@ async function showTaskModal(id=null) {
         recur_type:  isRecur?document.getElementById('tRecurType').value:null,
       };
       if(!body.title){toast('عنوان المهمة مطلوب','error');btn.disabled=false;return;}
-      if(t) await api('PUT',`/api/tasks/${t.id}`,body);
+      if(t) await api('PUT',`/api/tasks/${t.id}`,body,{queue:true,queueLabel:'تعديل مهمة'});
       else  await api('POST','/api/tasks',body);
       // إغلاق المودال أولاً قبل أي عملية أخرى
       overlay.remove();
@@ -4424,7 +4424,7 @@ async function showTaskModal(id=null) {
 async function deleteTask(id, overlay) {
   if (!await confirmDlg('حذف هذه المهمة نهائياً؟')) return;
   try {
-    await api('DELETE', `/api/tasks/${id}`);
+    await api('DELETE', `/api/tasks/${id}`,null,{queue:true,queueLabel:'حذف مهمة'});
     overlay?.remove();
     toast('تم حذف المهمة');
     loadTasks(true);
@@ -7233,9 +7233,10 @@ window._saveLeadExpandField = async function(id, field, value) {
   if (!backendField) return;
   const parsedVal = (field==='capital'||field==='total_fees') ? (parseFloat(value)||null) : (value||null);
   try {
+    const _leadExpandFieldTs = leadsData.find(l=>l.id===id)?.updated_at||null;
     await api('PUT', `/api/leads/${id}`, {[backendField]: parsedVal,
       ...(field==='total_fees' ? {quote_expenses_total: parsedVal} : {})
-    });
+    }, {queue:true, queueLabel:'تعديل حقل عميل محتمل', conflictTs:_leadExpandFieldTs});
     const lead = leadsData.find(l=>l.id===id);
     if (lead) lead[backendField] = parsedVal;
     const statusEl = document.getElementById(`expand-save-status-${id}`);
@@ -7248,6 +7249,7 @@ window._saveLeadExpandAll = async function(id) {
   if (!st) return;
   const statusEl = document.getElementById(`expand-save-status-${id}`);
   try {
+    const _leadExpandAllTs = leadsData.find(l=>l.id===id)?.updated_at||null;
     const updated = await api('PUT', `/api/leads/${id}`, {
       email: st.email || null,
       quote_legal_entity: st.legal_entity || null,
@@ -7259,7 +7261,7 @@ window._saveLeadExpandAll = async function(id) {
       losses_detail: st.extra || null,
       quote_deliver_docs: JSON.stringify(st.deliverables),
       quote_required_docs: JSON.stringify(st.reqDocs),
-    });
+    }, {queue:true, queueLabel:'حفظ تفاصيل العميل المحتمل', conflictTs:_leadExpandAllTs});
     const idx = leadsData.findIndex(l=>l.id===id);
     if (idx>=0) leadsData[idx] = updated;
     if (statusEl) { statusEl.textContent = '✅ تم الحفظ'; setTimeout(()=>{if(statusEl)statusEl.textContent='';},2000); }
@@ -7398,7 +7400,7 @@ async function saveLeadCell(el) {
   const origColor=el.style.borderColor;
   el.style.borderColor='#f59e0b';
   try {
-    await api('PUT',`/api/leads/${id}`,{[field]:value});
+    await api('PUT',`/api/leads/${id}`,{[field]:value},{queue:true,queueLabel:'تعديل عميل محتمل'});
     if(field==='status'){
       const sc=LEAD_STATUS_COLORS[value]||'#94a3b8';
       el.style.background=`${sc}18`;
@@ -7521,7 +7523,7 @@ async function deleteLeadRow(id) {
   }
   if(!await confirmDlg('حذف هذا العميل المحتمل؟')) return;
   try {
-    await api('DELETE',`/api/leads/${id}`);
+    await api('DELETE',`/api/leads/${id}`,null,{queue:true,queueLabel:'حذف عميل محتمل'});
     const row=document.querySelector(`tr[data-id="${id}"]`);
     if(row) row.remove();
     const expRow=document.getElementById(`lead-expand-${id}`);
@@ -7809,7 +7811,8 @@ async function saveLeadInfo(id) {
   if(excEl) body.has_existing_companies = excEl.checked;
 
   await withSaving(btn, async()=>{
-    const updated = await api('PUT', `/api/leads/${id}`, body);
+    const _saveLeadTs = leadsData.find(l=>l.id===id)?.updated_at||null;
+    const updated = await api('PUT', `/api/leads/${id}`, body, {queue:true, queueLabel:'حفظ بيانات عميل محتمل', conflictTs:_saveLeadTs});
     // Refresh local cache
     const idx = leadsData.findIndex(l=>l.id===id);
     if(idx>=0) leadsData[idx]=updated;
@@ -7859,7 +7862,8 @@ async function saveLeadQuote(id) {
     quote_notes:        document.getElementById('qq-notes')?.value||null,
   };
   await withSaving(btn, async()=>{
-    const updated = await api('PUT', `/api/leads/${id}`, body);
+    const _saveQuoteTs = leadsData.find(l=>l.id===id)?.updated_at||null;
+    const updated = await api('PUT', `/api/leads/${id}`, body, {queue:true, queueLabel:'حفظ عرض السعر', conflictTs:_saveQuoteTs});
     const idx = leadsData.findIndex(l=>l.id===id);
     if(idx>=0) leadsData[idx]=updated;
     _qsCalc();
