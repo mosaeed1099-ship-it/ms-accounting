@@ -31,7 +31,7 @@ def _check_conflict(record_updated_at, if_unmodified_since: Optional[str]):
         server_ts = record_updated_at
         if server_ts.tzinfo is None:
             server_ts = server_ts.replace(tzinfo=timezone.utc)
-        if server_ts > client_ts + timedelta(seconds=2):
+        if server_ts > client_ts + timedelta(milliseconds=100):
             raise HTTPException(
                 status_code=409,
                 detail={
