@@ -21,6 +21,8 @@ def _check_conflict(record_updated_at, if_unmodified_since: Optional[str]):
         return
     try:
         client_ts = datetime.fromisoformat(if_unmodified_since.replace("Z", "+00:00"))
+        if client_ts.tzinfo is None:
+            client_ts = client_ts.replace(tzinfo=timezone.utc)
         server_ts = record_updated_at
         if server_ts.tzinfo is None:
             server_ts = server_ts.replace(tzinfo=timezone.utc)
