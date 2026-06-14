@@ -4411,7 +4411,7 @@ async function showTaskModal(id=null) {
         recur_type:  isRecur?document.getElementById('tRecurType').value:null,
       };
       if(!body.title){toast('عنوان المهمة مطلوب','error');btn.disabled=false;return;}
-      if(t) await api('PUT',`/api/tasks/${t.id}`,body,{queue:true,queueLabel:'تعديل مهمة'});
+      if(t) await api('PUT',`/api/tasks/${t.id}`,body,{queue:true,queueLabel:'تعديل مهمة',conflictTs:t?.updated_at||null});
       else  await api('POST','/api/tasks',body);
       // إغلاق المودال أولاً قبل أي عملية أخرى
       overlay.remove();
