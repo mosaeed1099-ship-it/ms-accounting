@@ -125,16 +125,45 @@ def get_collections(
         if collection_type:
             q = q.filter(FinanceCollection.collection_type == collection_type)
     else:
-        today = date.today()
-        q = q.filter(
-            FinanceCollection.created_by == current_user.id,
-            FinanceCollection.date == today,
-        )
+        q = q.filter(FinanceCollection.created_by == current_user.id)
+        if month:
+            q = q.filter(FinanceCollection.billing_month == month)
+        if year:
+            q = q.filter(FinanceCollection.billing_year == year)
         if collection_type:
             q = q.filter(FinanceCollection.collection_type == collection_type)
 
     rows = q.order_by(FinanceCollection.date.desc(), FinanceCollection.created_at.desc()).all()
     return [_coll_dict(r, current_user.id) for r in rows]
+
+
+class CollectionUpdate(BaseModel):
+    date: Optional[date] = None
+    client_name: Optional[str] = None
+    billing_month: Optional[int] = None
+    billing_year: Optional[int] = None
+    amount: Optional[float] = None
+    payment_method: Optional[str] = None
+    note: Optional[str] = None
+
+
+@router.put("/collections/{coll_id}")
+def update_collection(
+    coll_id: int,
+    body: CollectionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    c = db.query(FinanceCollection).filter(FinanceCollection.id == coll_id).first()
+    if not c:
+        raise HTTPException(404, "غير موجود")
+    if not _is_owner(current_user) and c.created_by != current_user.id:
+        raise HTTPException(403, "مش مسموح")
+    for field, val in body.model_dump(exclude_none=True).items():
+        setattr(c, field, val)
+    db.commit()
+    db.refresh(c)
+    return _coll_dict(c, current_user.id)
 
 
 @router.delete("/collections/{coll_id}")
