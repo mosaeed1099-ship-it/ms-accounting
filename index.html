@@ -1890,32 +1890,42 @@ let _connState = 'ok';   // 'ok' | 'degraded' | 'offline'
 let _connRetries = 0;
 let _connTimer = null;
 
+function _updateConnBar(info) {
+  const bar = document.getElementById('connBar');
+  const app = document.getElementById('app');
+  if(!bar) return;
+  if(!info) {
+    bar.style.display = 'none';
+    if(app) app.style.paddingTop = '';
+  } else {
+    bar.style.display = 'block';
+    bar.style.background = info.color || '#ef4444';
+    bar.textContent = info.text;
+    if(app) app.style.paddingTop = (bar.offsetHeight || 30) + 'px';
+  }
+}
+
 function setApiStatus(ok, label) {
   const dot  = document.getElementById('apiDot');
   const lbl  = document.getElementById('apiStatusLabel');
-  const bar  = document.getElementById('connBar');
   const color = ok ? '#22c55e' : (_connState === 'degraded' ? '#f59e0b' : '#ef4444');
   if(dot) dot.style.background = color;
   if(lbl) lbl.textContent = label || (ok ? 'API متصل' : 'غير متصل');
-  if(bar) {
-    if(ok) { bar.style.display = 'none'; }
-    else { bar.style.display = 'block'; bar.style.background = color; bar.textContent = label || 'غير متصل'; }
-  }
+  _updateConnBar(ok ? null : {color, text: label || 'غير متصل'});
 }
 
 function _setWsStatus(connected, label) {
   const dot = document.getElementById('apiDot');
   const lbl = document.getElementById('apiStatusLabel');
-  const bar = document.getElementById('connBar');
   if(_connState !== 'ok') return; // API offline takes priority
   if(connected) {
     if(dot) dot.style.background = '#22c55e';
     if(lbl) lbl.textContent = 'متصل';
-    if(bar) bar.style.display = 'none';
+    _updateConnBar(null);
   } else {
     if(dot) dot.style.background = '#f59e0b';
     if(lbl) lbl.textContent = label || 'WS غير متصل';
-    if(bar) { bar.style.display='block'; bar.style.background='#f59e0b'; bar.textContent = label || 'التزامن المباشر غير متصل — جاري إعادة الاتصال...'; }
+    _updateConnBar({color: '#f59e0b', text: label || 'التزامن المباشر غير متصل — جاري إعادة الاتصال...'});
   }
 }
 
