@@ -41,6 +41,8 @@ ENTITY_MAP: Dict[str, str] = {
     "office-services":      "office_services",
     "office_services":      "office_services",
     "accounting":           "accounting",
+    "monthly-fees":         "monthly_fees",
+    "monthly_fees":         "monthly_fees",
 }
 
 # Entities that affect dashboard counters

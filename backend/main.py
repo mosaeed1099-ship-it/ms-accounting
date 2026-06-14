@@ -558,6 +558,16 @@ app.add_middleware(
 )
 
 
+# ── Cache-Control: no-store on all API responses ─────────────────────────────
+@app.middleware("http")
+async def no_cache_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 # ── Real-time broadcast middleware ────────────────────────────────────────────
 @app.middleware("http")
 async def realtime_broadcast_middleware(request: Request, call_next):

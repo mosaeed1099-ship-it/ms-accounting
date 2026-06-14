@@ -467,6 +467,7 @@ const _RT_ENTITY_MAP = {
   office_services:      { pages:['office_services'],        fn:()=>loadOfficeServices(),          dash:false },
   assets:               { pages:['fin_reports'],            fn:()=>loadFinReports(true),          dash:false },
   accounting:           { pages:['accounting'],             fn:()=>typeof accRender==='function'&&accRender(), dash:false },
+  monthly_fees:         { pages:['monthly_fees'],           fn:()=>typeof renderMFPage==='function'&&renderMFPage(), dash:false },
 };
 
 // Polished action labels for toast notifications
