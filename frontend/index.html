@@ -3587,26 +3587,25 @@ function renderDailySheet() {
     const init=(u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2);
     const phone=String(u.phone||u.mobile||u.whatsapp_phone||'').replace(/\D/g,'');
 
-    const rows=mine.map((t,i)=>{
-      const carried=t.carry_over_days>0&&t.status!=='done';
-      const isDone=t.status==='done';
+    // pending rows only (main table)
+    const rows=pendingT.map((t,i)=>{
+      const carried=t.carry_over_days>0;
       const doneAt=_taskDoneAt[t.id]||'';
-      const rowBg=isDone?'#f0f0f0':carried?'#fffde7':i%2===0?'#ffffff':'#f7fbf0';
+      const rowBg=carried?'#fffde7':i%2===0?'#ffffff':'#f7fbf0';
       const taskMsg=`السلام عليكم ${u.name} 👋\n\nتذكير بمهمة:\n*${t.title}*${t.client_name?'\n🏢 '+t.client_name:''}\n\n— MS Accounting`;
-      const waHref=phone?`https://wa.me/${phone}?text=${encodeURIComponent(taskMsg)}`:'';
       return `<tr style="background:${rowBg}">
         <td style="${xl('text-align:center;font-size:10px;color:#555;width:3%')}">${i+1}</td>
         <td style="${xl('width:36%')}">
           ${carried?`<span style="background:#ff6d00;color:white;border-radius:2px;padding:0 4px;font-size:8px;font-weight:700;margin-left:4px">مرحّل</span>`:''}
-          <span style="${isDone?'text-decoration:line-through;color:#888':'color:#1a1a1a'};font-size:11.5px">${escH(t.title)}</span>
+          <span style="color:#1a1a1a;font-size:11.5px">${escH(t.title)}</span>
           ${t.client_name?`<span style="color:#666;font-size:10px"> · ${escH(t.client_name)}</span>`:''}
         </td>
         <td style="${xl('text-align:center;font-size:10px;color:#555;width:8%')}">${t.created_at?t.created_at.slice(5,10).replace('-','/'):'—'}</td>
-        <td style="${xl('text-align:center;font-size:10px;color:'+(!isDone&&t.due_date&&new Date(t.due_date)<new Date()?'#c00':'#555')+';width:9%')}">${t.due_date||'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:'+(t.due_date&&new Date(t.due_date)<new Date()?'#c00':'#555')+';width:9%')}">${t.due_date||'—'}</td>
         <td style="${xl('text-align:center;font-size:10px;color:#555;width:12%')}">${doneAt}</td>
         <td style="${xl('text-align:center;width:6%')}">
           <div onclick="window._markDone(${t.id})"
-            style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all .12s;${isDone?'background:#1e7e34;color:white;border:1px solid #155724':'background:white;border:1.5px solid #999;color:transparent'}">
+            style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all .12s;background:white;border:1.5px solid #999;color:transparent">
             ✓
           </div>
         </td>
@@ -3625,6 +3624,47 @@ function renderDailySheet() {
         </td>
       </tr>`;
     }).join('');
+
+    // completed tasks section
+    const completedRows=doneT.map((t,i)=>{
+      const doneAt=_taskDoneAt[t.id]||t.updated_at?.slice(11,16)||'';
+      return `<tr style="background:#f6fef9">
+        <td style="${xl('text-align:center;font-size:10px;color:#888;width:3%')}">${i+1}</td>
+        <td style="${xl('width:36%')}">
+          <span style="text-decoration:line-through;color:#888;font-size:11.5px">${escH(t.title)}</span>
+          ${t.client_name?`<span style="color:#aaa;font-size:10px"> · ${escH(t.client_name)}</span>`:''}
+        </td>
+        <td style="${xl('text-align:center;font-size:10px;color:#aaa;width:8%')}">${t.created_at?t.created_at.slice(5,10).replace('-','/'):'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:#aaa;width:9%')}">${t.due_date||'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:#15803d;font-weight:600;width:12%')}">${doneAt||'✓'}</td>
+        <td style="${xl('text-align:center;width:6%')}">
+          <div onclick="window._markDone(${t.id})" title="إلغاء الإنجاز"
+            style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#1e7e34;color:white;border:1px solid #155724">
+            ✓
+          </div>
+        </td>
+        <td style="${xl('text-align:center;width:8%')}"></td>
+        <td style="${xl('text-align:center;width:6%')}">
+          <button onclick="showTaskModal(${t.id})" style="background:#e8f0fe;border:1px solid #aac4ff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#1a2472">✏️</button>
+        </td>
+        <td style="${xl('text-align:center;width:6%')}">
+          <button onclick="deleteTask(${t.id},null)" style="background:#fce8e6;border:1px solid #f5c6c2;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#c00">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const completedSection=doneT.length===0?'': `
+      <details style="border-top:2px solid #bbf7d0">
+        <summary style="padding:8px 14px;font-size:11px;font-weight:700;color:#15803d;cursor:pointer;background:#f0fdf4;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px">✅</span> المهام المكتملة (${doneT.length})
+          <span style="margin-right:auto;font-size:10px;color:#94a3b8">اضغط للعرض</span>
+        </summary>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px">
+            <tbody>${completedRows}</tbody>
+          </table>
+        </div>
+      </details>`;
 
     return `<div style="background:white;border:1px solid #b0b0b0;border-radius:6px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
       <div style="background:#1a2472;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -3655,11 +3695,12 @@ function renderDailySheet() {
             <th style="${xlH('text-align:center;width:6%')}">حذف</th>
           </tr></thead>
           <tbody>
-            ${mine.length===0?`<tr><td colspan="9" style="text-align:center;padding:12px;font-size:11px;color:#888;border:${XL_BORDER}">لا توجد مهام — أضف مهمة أدناه</td></tr>`:''}
+            ${pendingT.length===0?`<tr><td colspan="9" style="text-align:center;padding:12px;font-size:11px;color:#15803d;font-weight:600;border:${XL_BORDER}">🎉 جميع المهام مكتملة</td></tr>`:''}
             ${rows}
           </tbody>
         </table>
       </div>
+      ${completedSection}
       <div style="padding:8px 12px;background:var(--color-background-secondary);border-top:0.5px dashed var(--color-border-tertiary);display:flex;align-items:center;gap:8px">
         <input id="newt_${u.id}" class="input" placeholder="اكتب مهمة جديدة واضغط Enter..."
           style="flex:1;font-size:11px;padding:6px 10px"
