@@ -53,6 +53,12 @@
       setInterval(check, 3 * 60 * 1000);
     })();
   </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/ms-accounting/sw.js', {updateViaCache: 'none'})
+        .catch(function(){});
+    }
+  </script>
   <title>MS Accounting — نظام إدارة مكتب المحاسبة</title>
   <script src="config.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
