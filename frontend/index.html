@@ -1984,7 +1984,7 @@ function navigate(page) {
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard};
   if(pages[page]) pages[page]();
 }
 
@@ -20528,8 +20528,15 @@ window.toggleLanguage = toggleLanguage;
 window.t = t;
 
 // ── Daily Revenues Page ───────────────────────────────────────────────────────
+async function loadDailyRevenues() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+  await renderDailyRevenuesPage();
+}
+
 async function renderDailyRevenuesPage() {
-  const el = document.getElementById('page-daily_revenues');
+  const el = document.getElementById('main');
   if (!el) return;
   el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b7280">جاري التحميل...</div>';
 
