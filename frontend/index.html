@@ -20047,6 +20047,8 @@ function mfRenderPage(dash, records) {
         <th>المدفوع</th>
         <th>المتبقي</th>
         <th>تاريخ الدفع</th>
+        <th>آخر دفعة</th>
+        <th>الدفعات</th>
         <th>الحالة</th>
         <th>إجراءات</th>
       </tr></thead>
@@ -20065,6 +20067,8 @@ function mfRenderPage(dash, records) {
             <td style="color:#10b981">${(r.paid_amount||0).toLocaleString('ar-EG')} ج.م</td>
             <td style="color:${r.remaining>0?'#ef4444':'#10b981'};font-weight:600">${(r.remaining||0).toLocaleString('ar-EG')} ج.م</td>
             <td style="font-size:12px;color:#64748b">${r.paid_date||'—'}</td>
+            <td style="font-size:12px;color:#64748b">${r.last_paid_date||'—'}</td>
+            <td style="font-size:12px;color:#64748b;text-align:center">${r.payment_count||0}</td>
             <td>
               ${st==='paid'
                 ? `<span style="background:#ecfdf5;color:#10b981;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✓ مدفوع</span>`
@@ -20087,7 +20091,7 @@ function mfRenderPage(dash, records) {
               `:'<span style="color:#94a3b8;font-size:12px">—</span>'}
             </td>
           </tr>`;}).join('')
-          : `<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
+          : `<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
       </tbody>
     </table>
     </div>
