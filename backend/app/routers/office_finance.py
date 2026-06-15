@@ -30,6 +30,10 @@ def _admin_only(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+def _auth(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
 # ═══════════════════════════════════════════════════════════
 #  SCHEMAS
 # ═══════════════════════════════════════════════════════════
@@ -206,7 +210,7 @@ def list_revenues(
     year: Optional[int] = None, month: Optional[int] = None,
     category: Optional[str] = None,
     page: int = 1, page_size: int = 100,
-    db: Session = Depends(get_db), cu: User = Depends(_admin_only),
+    db: Session = Depends(get_db), cu: User = Depends(_auth),
 ):
     q = db.query(OfficeRevenue)
     if year:     q = q.filter(OfficeRevenue.year == year)
@@ -223,14 +227,14 @@ def list_revenues(
 
 
 @router.get("/revenues/{rev_id}")
-def get_revenue(rev_id: int, db: Session = Depends(get_db), cu: User = Depends(_admin_only)):
+def get_revenue(rev_id: int, db: Session = Depends(get_db), cu: User = Depends(_auth)):
     r = db.query(OfficeRevenue).filter(OfficeRevenue.id == rev_id).first()
     if not r: raise HTTPException(404)
     d = _rev_dict(r); d["tx_date"] = str(r.date); return d
 
 
 @router.post("/revenues")
-def add_revenue(data: RevenueIn, db: Session = Depends(get_db), cu: User = Depends(_admin_only)):
+def add_revenue(data: RevenueIn, db: Session = Depends(get_db), cu: User = Depends(_auth)):
     r = OfficeRevenue(
         date=data.date, month=data.date.month, year=data.date.year,
         category=data.category, amount=data.amount,
@@ -242,7 +246,7 @@ def add_revenue(data: RevenueIn, db: Session = Depends(get_db), cu: User = Depen
 
 
 @router.put("/revenues/{rev_id}")
-def update_revenue(rev_id: int, data: RevenueIn, db: Session = Depends(get_db), cu: User = Depends(_admin_only)):
+def update_revenue(rev_id: int, data: RevenueIn, db: Session = Depends(get_db), cu: User = Depends(_auth)):
     r = db.query(OfficeRevenue).filter(OfficeRevenue.id == rev_id).first()
     if not r: raise HTTPException(404)
     r.date=data.date; r.month=data.date.month; r.year=data.date.year
@@ -269,7 +273,7 @@ def list_expenses(
     year: Optional[int] = None, month: Optional[int] = None,
     category: Optional[str] = None,
     page: int = 1, page_size: int = 100,
-    db: Session = Depends(get_db), cu: User = Depends(_admin_only),
+    db: Session = Depends(get_db), cu: User = Depends(_auth),
 ):
     q = db.query(OfficeExpense)
     if year:     q = q.filter(OfficeExpense.year == year)
@@ -286,14 +290,14 @@ def list_expenses(
 
 
 @router.get("/expenses/{exp_id}")
-def get_expense(exp_id: int, db: Session = Depends(get_db), cu: User = Depends(_admin_only)):
+def get_expense(exp_id: int, db: Session = Depends(get_db), cu: User = Depends(_auth)):
     e = db.query(OfficeExpense).filter(OfficeExpense.id == exp_id).first()
     if not e: raise HTTPException(404)
     d = _exp_dict(e); d["tx_date"] = str(e.date); return d
 
 
 @router.post("/expenses")
-def add_expense(data: ExpenseIn, db: Session = Depends(get_db), cu: User = Depends(_admin_only)):
+def add_expense(data: ExpenseIn, db: Session = Depends(get_db), cu: User = Depends(_auth)):
     e = OfficeExpense(
         date=data.date, month=data.date.month, year=data.date.year,
         category=data.category, amount=data.amount,
@@ -305,7 +309,7 @@ def add_expense(data: ExpenseIn, db: Session = Depends(get_db), cu: User = Depen
 
 
 @router.put("/expenses/{exp_id}")
-def update_expense(exp_id: int, data: ExpenseIn, db: Session = Depends(get_db), cu: User = Depends(_admin_only)):
+def update_expense(exp_id: int, data: ExpenseIn, db: Session = Depends(get_db), cu: User = Depends(_auth)):
     e = db.query(OfficeExpense).filter(OfficeExpense.id == exp_id).first()
     if not e: raise HTTPException(404)
     e.date=data.date; e.month=data.date.month; e.year=data.date.year
