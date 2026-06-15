@@ -475,6 +475,7 @@ const _RT_ENTITY_MAP = {
   assets:               { pages:['fin_reports'],            fn:()=>loadFinReports(true),          dash:false },
   accounting:           { pages:['accounting'],             fn:()=>typeof accRender==='function'&&accRender(), dash:false },
   monthly_fees:         { pages:['monthly_fees'],           fn:()=>typeof renderMFPage==='function'&&renderMFPage(), dash:false },
+  daily_revenues:       { pages:['daily_revenues'],         fn:()=>typeof renderDailyRevenuesPage==='function'&&renderDailyRevenuesPage(), dash:false },
   notifications:        { pages:[],                         fn:()=>loadNotifCount(),              dash:false },
 };
 
@@ -1263,8 +1264,9 @@ const navItems = [
   {id:'client_portal' ,icon:'🔑',label:'بوابة العملاء'},
   {id:'permissions'   ,icon:'🛡️',label:'الصلاحيات'},
   {id:'monthly_fees'  ,icon:'📋',label:'المدفوعات الشهرية'},
+  {id:'daily_revenues',icon:'💵',label:'الإيرادات اليومية'},
   {id:'finance_center',icon:'💰',label:'المالية', adminOnly: true},
-  {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية'},
+  {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
   {id:'system_logs'       ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
   {id:'backup'            ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
@@ -1274,7 +1276,7 @@ const navItems = [
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
   {label:'CRM & المبيعات', items:['clients','leads','establishment']},
-  {label:'المالية', items:['collections','monthly_fees','tax','obligations']},
+  {label:'المالية', items:['collections','monthly_fees','daily_revenues','tax','obligations']},
   {label:'التشغيل', items:['tasks','documents']},
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
@@ -1976,7 +1978,7 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات'};
+  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات',daily_revenues:'الإيرادات اليومية'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
@@ -20525,6 +20527,80 @@ window.addEventListener('ms-app-ready', ()=>{
 window.toggleLanguage = toggleLanguage;
 window.t = t;
 
+// ── Daily Revenues Page ───────────────────────────────────────────────────────
+async function renderDailyRevenuesPage() {
+  const el = document.getElementById('page-daily_revenues');
+  if (!el) return;
+  el.innerHTML = `<div style="padding:20px;text-align:center;color:#6b7280">جاري التحميل...</div>`;
+
+  const now = new Date();
+  let selYear = now.getFullYear(), selMonth = now.getMonth() + 1;
+
+  async function load() {
+    el.innerHTML = `<div style="padding:20px;text-align:center;color:#6b7280">جاري التحميل...</div>`;
+    let data;
+    try {
+      const r = await apiFetch(\`/api/office/revenues?year=\${selYear}&month=\${selMonth}&page_size=500\`);
+      data = await r.json();
+    } catch(e) {
+      el.innerHTML = \`<div style="padding:20px;color:#dc2626">حدث خطأ في التحميل</div>\`; return;
+    }
+
+    const MONTHS_AR = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const years = [now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1];
+    const yearOpts = years.map(y => \`<option value="\${y}" \${y===selYear?'selected':''}>\${y}</option>\`).join('');
+    const monthOpts = MONTHS_AR.slice(1).map((m,i) => \`<option value="\${i+1}" \${(i+1)===selMonth?'selected':''}>\${m}</option>\`).join('');
+
+    const items = data.items || [];
+    const rows = items.length ? items.map(r => {
+      const d = new Date(r.date||r.tx_date||'');
+      const dateStr = isNaN(d) ? (r.date||'') : d.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'});
+      const cat = r.category_label || r.category || '';
+      return \`<tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:10px 12px">\${dateStr}</td>
+        <td style="padding:10px 12px">\${r.client_name||'—'}</td>
+        <td style="padding:10px 12px">\${cat}</td>
+        <td style="padding:10px 12px">\${r.description||'—'}</td>
+        <td style="padding:10px 12px;font-weight:600;color:#059669">\${Number(r.amount||0).toLocaleString('ar-EG')} ج.م</td>
+        <td style="padding:10px 12px;color:#6b7280;font-size:12px">\${r.notes||''}</td>
+      </tr>\`;
+    }).join('') : \`<tr><td colspan="6" style="padding:30px;text-align:center;color:#9ca3af">لا توجد إيرادات لهذا الشهر</td></tr>\`;
+
+    const total = Number(data.total_amount||0).toLocaleString('ar-EG');
+
+    el.innerHTML = \`
+      <div style="padding:16px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb">
+        <select id="dr-year" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">\${yearOpts}</select>
+        <select id="dr-month" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">\${monthOpts}</select>
+        <button onclick="window._drLoad()" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit">عرض</button>
+        <span style="margin-right:auto;font-weight:700;color:#059669">الإجمالي: \${total} ج.م</span>
+        <span style="color:#6b7280;font-size:13px">(\${items.length} إيراد)</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <thead>
+            <tr style="background:#f8fafc;font-weight:600;color:#374151">
+              <th style="padding:10px 12px;text-align:right">التاريخ</th>
+              <th style="padding:10px 12px;text-align:right">العميل</th>
+              <th style="padding:10px 12px;text-align:right">الفئة</th>
+              <th style="padding:10px 12px;text-align:right">البيان</th>
+              <th style="padding:10px 12px;text-align:right">المبلغ</th>
+              <th style="padding:10px 12px;text-align:right">ملاحظات</th>
+            </tr>
+          </thead>
+          <tbody>\${rows}</tbody>
+        </table>
+      </div>\`;
+  }
+
+  window._drLoad = function() {
+    selYear = parseInt(document.getElementById('dr-year').value);
+    selMonth = parseInt(document.getElementById('dr-month').value);
+    load();
+  };
+
+  await load();
+}
 // ── System Logs Screen ────────────────────────────────────────────────────────
 const _LOG_COLORS = {
   js:      { bg:'#fee2e2', text:'#dc2626', label:'JS Error' },
