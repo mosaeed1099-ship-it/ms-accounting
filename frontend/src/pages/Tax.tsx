@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
-import { Plus, Search, Calendar, Edit } from 'lucide-react'
-import api from '../api/client'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Calendar, Edit } from 'lucide-react'
+import { coreApi, EP, wsOn } from '../core'
 import type { TaxReturn, Client } from '../types'
 import { Modal } from '../components/ui/Modal'
 import { EmptyState } from '../components/ui/EmptyState'
 import { PageLoader } from '../components/ui/Spinner'
 import { toast } from '../hooks/useToast'
 import { formatDate, formatMoney } from '../utils/format'
+
+const PAGE_SIZE = 15
+const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'معلق', in_progress: 'جاري', submitted: 'مقدّم',
@@ -17,38 +20,42 @@ const STATUS_BADGE: Record<string, string> = {
   approved: 'badge-green', rejected: 'badge-red', late: 'badge-red',
 }
 const TYPE_LABELS: Record<string, string> = {
-  vat_monthly: 'قيمة مضافة شهري',
-  vat_quarterly: 'قيمة مضافة ربعي',
-  income_annual: 'ضريبة دخل سنوي',
-  withholding: 'خصم وإضافة',
-  stamp_tax: 'ضريبة دمغة',
-  salary_tax: 'ضريبة مرتبات',
+  vat_monthly: 'قيمة مضافة شهري', vat_quarterly: 'قيمة مضافة ربعي',
+  income_annual: 'ضريبة دخل سنوي', withholding: 'خصم وإضافة',
+  stamp_tax: 'ضريبة دمغة', salary_tax: 'ضريبة مرتبات',
 }
 
-export default function Tax() {
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
+function useTax() {
   const [items, setItems] = useState<TaxReturn[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear())
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const qs = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE), year: String(yearFilter) })
+    if (statusFilter) qs.set('status', statusFilter)
+    const res = await coreApi<{ items: TaxReturn[]; total: number }>('GET', `/tax?${qs}`)
+    if (res) { setItems(res.items); setTotal(res.total) }
+    setLoading(false)
+  }, [page, statusFilter, yearFilter])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => wsOn('dashboard_updated', () => load(true)), [load])
+
+  return { items, total, page, setPage, statusFilter, setStatusFilter, yearFilter, setYearFilter, loading, load }
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
+
+export default function Tax() {
+  const { items, total, page, setPage, statusFilter, setStatusFilter, yearFilter, setYearFilter, loading, load } = useTax()
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<TaxReturn | null>(null)
-
-  async function load() {
-    setLoading(true)
-    try {
-      const params: any = { page, page_size: 15, year: yearFilter }
-      if (statusFilter) params.status = statusFilter
-      const { data } = await api.get('/tax', { params })
-      setItems(data.items)
-      setTotal(data.total)
-    } finally { setLoading(false) }
-  }
-
-  useEffect(() => { load() }, [page, statusFilter, yearFilter])
-
-  const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
 
   return (
     <div className="space-y-5">
@@ -102,10 +109,22 @@ export default function Tax() {
         </table>
       </div>
 
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-500">عرض {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} من {total}</span>
+          <div className="flex gap-2">
+            <button className="btn-secondary btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>السابق</button>
+            <button className="btn-secondary btn-sm" disabled={page * PAGE_SIZE >= total} onClick={() => setPage(p => p + 1)}>التالي</button>
+          </div>
+        </div>
+      )}
+
       {showForm && <TaxReturnFormModal taxReturn={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load() }} />}
     </div>
   )
 }
+
+// ─── form modal ───────────────────────────────────────────────────────────────
 
 function TaxReturnFormModal({ taxReturn, onClose, onSaved }: { taxReturn: TaxReturn | null; onClose: () => void; onSaved: () => void }) {
   const isEdit = !!taxReturn
@@ -125,28 +144,34 @@ function TaxReturnFormModal({ taxReturn, onClose, onSaved }: { taxReturn: TaxRet
   })
 
   useEffect(() => {
-    api.get('/clients', { params: { page_size: 200 } }).then(r => setClients(r.data.items))
+    coreApi<{ items: Client[] }>('GET', `${EP.CLIENTS}?page_size=200`)
+      .then(r => { if (r) setClients(r.items) })
   }, [])
+
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSave() {
     if (!form.client_id) { toast('اختر العميل', 'error'); return }
     setSaving(true)
     try {
-      const payload: any = { ...form, client_id: +form.client_id }
+      const payload = { ...form, client_id: +form.client_id }
       if (isEdit) {
-        await api.put(`/tax/${taxReturn!.id}`, payload)
-        toast('تم تحديث الإقرار')
+        const res = await coreApi('PUT', `/tax/${taxReturn!.id}`, payload, {
+          conflictTs: taxReturn!.updated_at ?? null,
+          queue: true,
+          queueLabel: 'تعديل إقرار ضريبي',
+        })
+        if (res !== null) { toast('تم تحديث الإقرار'); onSaved() }
       } else {
-        await api.post('/tax', payload)
-        toast('تم إضافة الإقرار')
+        const res = await coreApi('POST', '/tax', payload, {
+          queue: true,
+          queueLabel: 'إضافة إقرار ضريبي',
+        })
+        if (res !== null) { toast('تم إضافة الإقرار'); onSaved() }
       }
-      onSaved()
     } catch (e: any) { toast(e.message, 'error') }
     finally { setSaving(false) }
   }
-
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-  const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
 
   return (
     <Modal isOpen onClose={onClose} title={isEdit ? 'تعديل الإقرار' : 'إقرار ضريبي جديد'} size="lg"
