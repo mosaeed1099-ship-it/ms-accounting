@@ -16,58 +16,53 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/stats")
 async def dashboard_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    import traceback as _tb
     now = datetime.now()
     month_start = date(now.year, now.month, 1)
     today = date.today()
+    errors = []
 
-    # Clients — exclude inactive (soft-deleted) clients from all counts
-    active_clients = db.query(func.count(Client.id)).filter(Client.status == ClientStatus.ACTIVE).scalar() or 0
-    total_clients = active_clients  # total = active only (inactive = effectively deleted)
-    new_clients_month = db.query(func.count(Client.id)).filter(
-        Client.status == ClientStatus.ACTIVE,
-        func.date(Client.created_at) >= month_start
-    ).scalar() or 0
-
-    # Clients by obligation type
-    all_active = db.query(Client).filter(Client.status == ClientStatus.ACTIVE).all()
-    income_clients  = sum(1 for c in all_active if c.tax_obligations and 'income_annual'  in c.tax_obligations)
-    vat_clients     = sum(1 for c in all_active if c.tax_obligations and 'vat_monthly'    in c.tax_obligations)
-    payroll_clients = sum(1 for c in all_active if c.tax_obligations and 'payroll_monthly' in c.tax_obligations)
+    # Clients
+    try:
+        active_clients = db.query(func.count(Client.id)).filter(Client.status == ClientStatus.ACTIVE).scalar() or 0
+        total_clients = active_clients
+        new_clients_month = db.query(func.count(Client.id)).filter(
+            Client.status == ClientStatus.ACTIVE,
+            func.date(Client.created_at) >= month_start
+        ).scalar() or 0
+        all_active = db.query(Client).filter(Client.status == ClientStatus.ACTIVE).all()
+        income_clients  = sum(1 for c in all_active if c.tax_obligations and 'income_annual'  in c.tax_obligations)
+        vat_clients     = sum(1 for c in all_active if c.tax_obligations and 'vat_monthly'    in c.tax_obligations)
+        payroll_clients = sum(1 for c in all_active if c.tax_obligations and 'payroll_monthly' in c.tax_obligations)
+    except Exception as e:
+        db.rollback(); errors.append(f"clients: {e}"); active_clients=total_clients=new_clients_month=income_clients=vat_clients=payroll_clients=0
 
     # Invoices
-    total_invoiced = db.query(func.sum(Invoice.total)).filter(
-        Invoice.status != InvoiceStatus.CANCELLED
-    ).scalar() or 0
-    total_collected = db.query(func.sum(Invoice.paid_amount)).scalar() or 0
-    total_overdue = db.query(func.sum(Invoice.remaining)).filter(
-        Invoice.status == InvoiceStatus.OVERDUE
-    ).scalar() or 0
-    monthly_revenue = db.query(func.sum(Payment.amount)).filter(
-        func.date(Payment.created_at) >= month_start
-    ).scalar() or 0
+    try:
+        total_invoiced = db.query(func.sum(Invoice.total)).filter(Invoice.status != InvoiceStatus.CANCELLED).scalar() or 0
+        total_collected = db.query(func.sum(Invoice.paid_amount)).scalar() or 0
+        total_overdue = db.query(func.sum(Invoice.remaining)).filter(Invoice.status == InvoiceStatus.OVERDUE).scalar() or 0
+        monthly_revenue = db.query(func.sum(Payment.amount)).filter(func.date(Payment.created_at) >= month_start).scalar() or 0
+    except Exception as e:
+        db.rollback(); errors.append(f"invoices: {e}"); total_invoiced=total_collected=total_overdue=monthly_revenue=0
 
     # Tasks
-    pending_tasks = db.query(func.count(Task.id)).filter(
-        Task.status.in_([TaskStatus.TODO, TaskStatus.IN_PROGRESS])
-    ).scalar() or 0
-    overdue_tasks = db.query(func.count(Task.id)).filter(
-        Task.status != TaskStatus.DONE,
-        Task.due_date < today,
-    ).scalar() or 0
-    urgent_tasks = db.query(func.count(Task.id)).filter(
-        Task.priority == TaskPriority.URGENT,
-        Task.status != TaskStatus.DONE,
-    ).scalar() or 0
+    try:
+        pending_tasks = db.query(func.count(Task.id)).filter(Task.status.in_([TaskStatus.TODO, TaskStatus.IN_PROGRESS])).scalar() or 0
+        overdue_tasks = db.query(func.count(Task.id)).filter(Task.status != TaskStatus.DONE, Task.due_date < today).scalar() or 0
+        urgent_tasks  = db.query(func.count(Task.id)).filter(Task.priority == TaskPriority.URGENT, Task.status != TaskStatus.DONE).scalar() or 0
+    except Exception as e:
+        db.rollback(); errors.append(f"tasks: {e}"); pending_tasks=overdue_tasks=urgent_tasks=0
 
     # Tax Returns
-    pending_tax = db.query(func.count(TaxReturn.id)).filter(
-        TaxReturn.status.in_([TaxReturnStatus.PENDING, TaxReturnStatus.IN_PROGRESS])
-    ).scalar() or 0
-    late_tax = db.query(func.count(TaxReturn.id)).filter(
-        TaxReturn.status == TaxReturnStatus.LATE
-    ).scalar() or 0
+    try:
+        pending_tax = db.query(func.count(TaxReturn.id)).filter(TaxReturn.status.in_([TaxReturnStatus.PENDING, TaxReturnStatus.IN_PROGRESS])).scalar() or 0
+        late_tax    = db.query(func.count(TaxReturn.id)).filter(TaxReturn.status == TaxReturnStatus.LATE).scalar() or 0
+    except Exception as e:
+        db.rollback(); errors.append(f"tax: {e}"); pending_tax=late_tax=0
 
     return {
+        "_debug_errors": errors,
         "clients": {
             "total": total_clients,
             "active": active_clients,
