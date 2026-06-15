@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, Search, Eye, Trash2, DollarSign, FileText } from 'lucide-react'
-import api from '../api/client'
+import { coreApi, EP, wsOn } from '../core'
 import type { Invoice, Client } from '../types'
 import { Modal } from '../components/ui/Modal'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -9,42 +9,54 @@ import { toast } from '../hooks/useToast'
 import { formatMoney, formatDate, invoiceStatusLabels } from '../utils/format'
 import clsx from 'clsx'
 
+const PAGE_SIZE = 15
+
 const STATUS_BADGE: Record<string, string> = {
   draft: 'badge-gray', sent: 'badge-blue', paid: 'badge-green',
   partial: 'badge-yellow', overdue: 'badge-red', cancelled: 'badge-gray',
 }
 
-export default function Invoices() {
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
+function useInvoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [total, setTotal] = useState(0)
   const [summary, setSummary] = useState<any>(null)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const qs = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) })
+    if (search) qs.set('q', search)
+    if (statusFilter) qs.set('status', statusFilter)
+    const [inv, sum] = await Promise.all([
+      coreApi<{ items: Invoice[]; total: number }>('GET', `${EP.INVOICES}?${qs}`),
+      coreApi<any>('GET', '/invoices/summary'),
+    ])
+    if (inv) { setInvoices(inv.items); setTotal(inv.total) }
+    if (sum) setSummary(sum)
+    setLoading(false)
+  }, [page, search, statusFilter])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => wsOn('dashboard_updated', () => load(true)), [load])
+
+  function changeSearch(v: string) { setSearch(v); setPage(1) }
+  function changeStatus(v: string) { setStatusFilter(v); setPage(1) }
+
+  return { invoices, total, summary, page, setPage, search, changeSearch, statusFilter, changeStatus, loading, load }
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
+
+export default function Invoices() {
+  const { invoices, total, summary, page, setPage, search, changeSearch, statusFilter, changeStatus, loading, load } = useInvoices()
   const [showForm, setShowForm] = useState(false)
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const [showPayment, setShowPayment] = useState<Invoice | null>(null)
-
-  async function load() {
-    setLoading(true)
-    try {
-      const params: any = { page, page_size: 15 }
-      if (search) params.q = search
-      if (statusFilter) params.status = statusFilter
-      const [inv, sum] = await Promise.all([
-        api.get('/invoices', { params }),
-        api.get('/invoices/summary'),
-      ])
-      setInvoices(inv.data.items)
-      setTotal(inv.data.total)
-      setSummary(sum.data)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { load() }, [page, search, statusFilter])
 
   return (
     <div className="space-y-5">
@@ -58,7 +70,6 @@ export default function Invoices() {
         </button>
       </div>
 
-      {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
@@ -75,31 +86,23 @@ export default function Invoices() {
         </div>
       )}
 
-      {/* Filters */}
       <div className="card p-4 flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input className="input pr-9" placeholder="بحث..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+          <input className="input pr-9" placeholder="بحث..." value={search} onChange={e => changeSearch(e.target.value)} />
         </div>
-        <select className="input w-auto" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1) }}>
+        <select className="input w-auto" value={statusFilter} onChange={e => changeStatus(e.target.value)}>
           <option value="">كل الحالات</option>
           {Object.entries(invoiceStatusLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
 
-      {/* Table */}
       <div className="table-container">
         <table className="table">
           <thead>
             <tr>
-              <th>رقم الفاتورة</th>
-              <th>العميل</th>
-              <th>الحالة</th>
-              <th>تاريخ الإصدار</th>
-              <th>الإجمالي</th>
-              <th>المسدد</th>
-              <th>المتبقي</th>
-              <th></th>
+              <th>رقم الفاتورة</th><th>العميل</th><th>الحالة</th>
+              <th>تاريخ الإصدار</th><th>الإجمالي</th><th>المسدد</th><th>المتبقي</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -134,12 +137,12 @@ export default function Invoices() {
         </table>
       </div>
 
-      {total > 15 && (
+      {total > PAGE_SIZE && (
         <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-500">عرض {(page - 1) * 15 + 1}–{Math.min(page * 15, total)} من {total}</span>
+          <span className="text-sm text-gray-500">عرض {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} من {total}</span>
           <div className="flex gap-2">
             <button className="btn-secondary btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>السابق</button>
-            <button className="btn-secondary btn-sm" disabled={page * 15 >= total} onClick={() => setPage(p => p + 1)}>التالي</button>
+            <button className="btn-secondary btn-sm" disabled={page * PAGE_SIZE >= total} onClick={() => setPage(p => p + 1)}>التالي</button>
           </div>
         </div>
       )}
@@ -151,7 +154,8 @@ export default function Invoices() {
   )
 }
 
-// ──── Invoice Form ────
+// ─── invoice form ─────────────────────────────────────────────────────────────
+
 function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)
@@ -163,7 +167,8 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const [items, setItems] = useState([{ description: '', quantity: 1, unit_price: 0, tax_percent: 0 }])
 
   useEffect(() => {
-    api.get('/clients', { params: { page_size: 100 } }).then(r => setClients(r.data.items))
+    coreApi<{ items: Client[] }>('GET', `${EP.CLIENTS}?page_size=100`)
+      .then(r => { if (r) setClients(r.items) })
   }, [])
 
   const subtotal = items.reduce((s, i) => s + i.quantity * i.unit_price, 0)
@@ -173,7 +178,7 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const total = taxable + taxAmt + form.stamp_tax - form.withholding_tax
 
   const addItem = () => setItems(prev => [...prev, { description: '', quantity: 1, unit_price: 0, tax_percent: 0 }])
-  const setItem = (i: number, k: string, v: any) => setItems(prev => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item))
+  const setItem = (i: number, k: string, v: unknown) => setItems(prev => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item))
   const removeItem = (i: number) => setItems(prev => prev.filter((_, idx) => idx !== i))
 
   async function handleSave() {
@@ -181,9 +186,10 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     if (items.some(i => !i.description || i.unit_price <= 0)) { toast('تحقق من بنود الفاتورة', 'error'); return }
     setSaving(true)
     try {
-      await api.post('/invoices', { ...form, client_id: +form.client_id, items })
-      toast('تم إنشاء الفاتورة بنجاح')
-      onSaved()
+      const res = await coreApi('POST', EP.INVOICES, { ...form, client_id: +form.client_id, items }, {
+        queue: true, queueLabel: 'إنشاء فاتورة',
+      })
+      if (res !== null) { toast('تم إنشاء الفاتورة بنجاح'); onSaved() }
     } catch (e: any) { toast(e.message, 'error') }
     finally { setSaving(false) }
   }
@@ -211,7 +217,6 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
           </div>
         </div>
 
-        {/* Items */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <h4 className="section-title mb-0">بنود الفاتورة</h4>
@@ -242,7 +247,6 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
           </div>
         </div>
 
-        {/* Totals */}
         <div className="form-row grid-cols-1 md:grid-cols-3">
           <div className="form-group">
             <label className="label">خصم (%)</label>
@@ -258,7 +262,6 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
           </div>
         </div>
 
-        {/* Summary */}
         <div className="p-4 bg-primary-50 rounded-xl border border-primary-100 space-y-2 text-sm">
           {[
             ['الإجمالي قبل الضريبة', formatMoney(subtotal)],
@@ -284,7 +287,8 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   )
 }
 
-// ──── Invoice View ────
+// ─── invoice view ─────────────────────────────────────────────────────────────
+
 function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   return (
     <Modal isOpen onClose={onClose} title={`فاتورة #${invoice.invoice_number}`} size="lg"
@@ -297,8 +301,6 @@ function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () 
           <div><span className="text-gray-400">تاريخ الإصدار:</span> <span>{formatDate(invoice.issue_date)}</span></div>
           <div><span className="text-gray-400">تاريخ الاستحقاق:</span> <span>{formatDate(invoice.due_date)}</span></div>
         </div>
-
-        {/* Items Table */}
         <div className="table-container">
           <table className="table text-xs">
             <thead><tr><th>الوصف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
@@ -309,8 +311,6 @@ function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () 
             </tbody>
           </table>
         </div>
-
-        {/* Totals */}
         <div className="p-3 bg-gray-50 rounded-lg space-y-1.5 text-sm">
           {[
             ['الإجمالي', formatMoney(invoice.subtotal)],
@@ -323,7 +323,6 @@ function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () 
           <div className="flex justify-between text-green-600"><span>المسدد</span><span>{formatMoney(invoice.paid_amount)}</span></div>
           <div className="flex justify-between text-red-500 font-medium"><span>المتبقي</span><span>{formatMoney(invoice.remaining)}</span></div>
         </div>
-
         {invoice.payments.length > 0 && (
           <div>
             <h4 className="font-medium text-gray-700 mb-2">سجل الدفعات</h4>
@@ -342,17 +341,25 @@ function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () 
   )
 }
 
-// ──── Payment Modal ────
+// ─── payment modal ────────────────────────────────────────────────────────────
+
 function PaymentModal({ invoice, onClose, onSaved }: { invoice: Invoice; onClose: () => void; onSaved: () => void }) {
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ amount: invoice.remaining, payment_date: new Date().toISOString().split('T')[0], payment_method: 'cash', reference: '', notes: '' })
+  const [form, setForm] = useState({
+    amount: invoice.remaining,
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'cash',
+    reference: '',
+    notes: '',
+  })
 
   async function handleSave() {
     setSaving(true)
     try {
-      await api.post('/invoices/payments', { ...form, invoice_id: invoice.id, amount: +form.amount })
-      toast('تم تسجيل الدفعة بنجاح')
-      onSaved()
+      const res = await coreApi('POST', '/invoices/payments', { ...form, invoice_id: invoice.id, amount: +form.amount }, {
+        queue: true, queueLabel: 'تسجيل دفعة فاتورة',
+      })
+      if (res !== null) { toast('تم تسجيل الدفعة بنجاح'); onSaved() }
     } catch (e: any) { toast(e.message, 'error') }
     finally { setSaving(false) }
   }

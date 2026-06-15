@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Save, Plus, Trash2, UserPlus, Shield } from 'lucide-react'
-import api from '../api/client'
+import { useState, useEffect, useCallback } from 'react'
+import { Save, UserPlus, Shield } from 'lucide-react'
+import { coreApi } from '../core'
 import { toast } from '../hooks/useToast'
 import { useAuthStore } from '../store/authStore'
 import { Modal } from '../components/ui/Modal'
@@ -46,6 +46,8 @@ export default function Settings() {
   )
 }
 
+// ─── profile tab ──────────────────────────────────────────────────────────────
+
 function ProfileTab() {
   const { user, updateUser } = useAuthStore()
   const [saving, setSaving] = useState(false)
@@ -54,9 +56,11 @@ function ProfileTab() {
   async function handleSave() {
     setSaving(true)
     try {
-      const { data } = await api.put(`/users/${user?.id}`, form)
-      updateUser({ name: form.name, phone: form.phone })
-      toast('تم حفظ التعديلات')
+      const res = await coreApi('PUT', `/users/${user?.id}`, form)
+      if (res !== null) {
+        updateUser({ name: form.name, phone: form.phone })
+        toast('تم حفظ التعديلات')
+      }
     } catch (e: any) { toast(e.message, 'error') }
     finally { setSaving(false) }
   }
@@ -95,27 +99,25 @@ function ProfileTab() {
   )
 }
 
+// ─── users tab ────────────────────────────────────────────────────────────────
+
 function UsersTab() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
-    try {
-      const { data } = await api.get('/users')
-      setUsers(data)
-    } finally { setLoading(false) }
-  }
+    const res = await coreApi<any[]>('GET', '/users')
+    if (res) setUsers(res)
+    setLoading(false)
+  }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
   async function toggleUser(u: any) {
-    try {
-      await api.put(`/users/${u.id}`, { is_active: !u.is_active })
-      toast(u.is_active ? 'تم تعطيل المستخدم' : 'تم تفعيل المستخدم')
-      load()
-    } catch (e: any) { toast(e.message, 'error') }
+    const res = await coreApi('PUT', `/users/${u.id}`, { is_active: !u.is_active })
+    if (res !== null) { toast(u.is_active ? 'تم تعطيل المستخدم' : 'تم تفعيل المستخدم'); load() }
   }
 
   if (loading) return <PageLoader />
@@ -162,9 +164,8 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     if (!form.name || !form.email || !form.password) { toast('يرجى ملء جميع الحقول المطلوبة', 'error'); return }
     setSaving(true)
     try {
-      await api.post('/users', form)
-      toast('تم إضافة المستخدم بنجاح')
-      onSaved()
+      const res = await coreApi('POST', '/users', form)
+      if (res !== null) { toast('تم إضافة المستخدم بنجاح'); onSaved() }
     } catch (e: any) { toast(e.message, 'error') }
     finally { setSaving(false) }
   }
@@ -196,8 +197,9 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   )
 }
 
+// ─── security tab ─────────────────────────────────────────────────────────────
+
 function SecurityTab() {
-  const { user } = useAuthStore()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ current_password: '', new_password: '', confirm: '' })
 
@@ -206,9 +208,14 @@ function SecurityTab() {
     if (form.new_password.length < 6) { toast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return }
     setSaving(true)
     try {
-      await api.post('/auth/change-password', { current_password: form.current_password, new_password: form.new_password })
-      toast('تم تغيير كلمة المرور بنجاح')
-      setForm({ current_password: '', new_password: '', confirm: '' })
+      const res = await coreApi('POST', '/auth/change-password', {
+        current_password: form.current_password,
+        new_password: form.new_password,
+      })
+      if (res !== null) {
+        toast('تم تغيير كلمة المرور بنجاح')
+        setForm({ current_password: '', new_password: '', confirm: '' })
+      }
     } catch (e: any) { toast(e.message, 'error') }
     finally { setSaving(false) }
   }

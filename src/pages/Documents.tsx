@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Upload, Search, FileText, File, Image, Download, Trash2, FolderOpen } from 'lucide-react'
 import api from '../api/client'
+import { coreApi, EP, wsOn } from '../core'
 import type { Document, Client } from '../types'
 import { Modal } from '../components/ui/Modal'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
@@ -24,38 +25,50 @@ function FileIcon({ type }: { type?: string }) {
   return <File className="w-8 h-8 text-gray-400" />
 }
 
-export default function Documents() {
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
+function useDocuments() {
   const [docs, setDocs] = useState<Document[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const qs = new URLSearchParams({ page: String(page), page_size: '20' })
+    if (search) qs.set('q', search)
+    if (categoryFilter) qs.set('category', categoryFilter)
+    const res = await coreApi<{ items: Document[]; total: number }>('GET', `/documents?${qs}`)
+    if (res) { setDocs(res.items); setTotal(res.total) }
+    setLoading(false)
+  }, [page, search, categoryFilter])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => wsOn('dashboard_updated', () => load(true)), [load])
+
+  function changeSearch(v: string) { setSearch(v); setPage(1) }
+  function changeCategory(v: string) { setCategoryFilter(v); setPage(1) }
+
+  return { docs, total, page, setPage, search, changeSearch, categoryFilter, changeCategory, loading, load }
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
+
+export default function Documents() {
+  const { docs, total, page, setPage, search, changeSearch, categoryFilter, changeCategory, loading, load } = useDocuments()
   const [showUpload, setShowUpload] = useState(false)
   const [deleting, setDeleting] = useState<Document | null>(null)
 
-  async function load() {
-    setLoading(true)
-    try {
-      const params: any = { page, page_size: 20 }
-      if (search) params.q = search
-      if (categoryFilter) params.category = categoryFilter
-      const { data } = await api.get('/documents', { params })
-      setDocs(data.items)
-      setTotal(data.total)
-    } finally { setLoading(false) }
-  }
-
-  useEffect(() => { load() }, [page, search, categoryFilter])
-
   async function handleDelete() {
     if (!deleting) return
-    try {
-      await api.delete(`/documents/${deleting.id}`)
-      toast('تم حذف الملف')
-      setDeleting(null)
-      load()
-    } catch (e: any) { toast(e.message, 'error') }
+    const res = await coreApi('DELETE', `/documents/${deleting.id}`, null, {
+      queue: true,
+      queueLabel: 'حذف مستند',
+    })
+    if (res !== undefined) { toast('تم حذف الملف'); load() }
+    setDeleting(null)
   }
 
   return (
@@ -73,9 +86,9 @@ export default function Documents() {
       <div className="card p-4 flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input className="input pr-9" placeholder="بحث في الملفات..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+          <input className="input pr-9" placeholder="بحث في الملفات..." value={search} onChange={e => changeSearch(e.target.value)} />
         </div>
-        <select className="input w-auto" value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1) }}>
+        <select className="input w-auto" value={categoryFilter} onChange={e => changeCategory(e.target.value)}>
           <option value="">كل التصنيفات</option>
           {Object.entries(CATEGORY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
@@ -115,6 +128,8 @@ export default function Documents() {
   )
 }
 
+// ─── upload modal — keeps axios for multipart/FormData ────────────────────────
+
 function UploadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [clients, setClients] = useState<Client[]>([])
   const [file, setFile] = useState<File | null>(null)
@@ -123,8 +138,11 @@ function UploadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
   const fileRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState({ client_id: '', category: 'other', description: '', year: new Date().getFullYear(), month: 0 })
 
+  const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
+
   useEffect(() => {
-    api.get('/clients', { params: { page_size: 200 } }).then(r => setClients(r.data.items))
+    coreApi<{ items: Client[] }>('GET', `${EP.CLIENTS}?page_size=200`)
+      .then(r => { if (r) setClients(r.items) })
   }, [])
 
   function handleDrop(e: React.DragEvent) {
@@ -144,6 +162,7 @@ function UploadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
       if (form.description) fd.append('description', form.description)
       fd.append('year', String(form.year))
       if (form.month) fd.append('month', String(form.month))
+      // File uploads use axios — FormData/multipart cannot go through coreApi (JSON only)
       await api.post('/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       toast('تم رفع الملف بنجاح')
       onSaved()
@@ -151,14 +170,11 @@ function UploadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
     finally { setUploading(false) }
   }
 
-  const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
-
   return (
     <Modal isOpen onClose={onClose} title="رفع ملف جديد" size="md"
       footer={<><button className="btn-secondary" onClick={onClose}>إلغاء</button><button className="btn-primary" onClick={handleUpload} disabled={uploading || !file}>{uploading ? 'جاري الرفع...' : 'رفع الملف'}</button></>}
     >
       <div className="space-y-4">
-        {/* Drop Zone */}
         <div
           className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${dragOver ? 'border-primary-400 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
           onDragOver={e => { e.preventDefault(); setDragOver(true) }}

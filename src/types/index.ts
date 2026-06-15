@@ -140,6 +140,7 @@ export interface TaxReturn {
   assigned_to?: number
   assigned_to_name?: string
   created_at: string
+  updated_at?: string
 }
 
 export interface Document {
