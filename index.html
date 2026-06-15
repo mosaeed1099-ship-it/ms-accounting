@@ -8,58 +8,22 @@
   <meta http-equiv="Expires" content="0"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <script>
-    // ── version.txt: fetched fresh on every load, redirect to uncached URL if stale ──
-    (function(){
-      var VER = '/ms-accounting/version.txt';
-      var KEY = '_msv';
-      var goFresh = function(v){
-        if (v) localStorage.setItem(KEY, v);
-        location.replace(location.origin + '/ms-accounting/?_r=' + Date.now());
-      };
-      // Clean up _r param from URL without reloading
-      if (location.search.indexOf('_r=') !== -1) {
-        var u = new URL(location.href);
-        u.searchParams.delete('_r');
-        u.searchParams.delete('v');
-        history.replaceState({}, '', u.pathname + (u.search === '?' ? '' : u.search));
-      }
-      // Fetch version.txt immediately — if changed since last visit, reload fresh
-      fetch(VER + '?_=' + Date.now(), {cache:'no-store'})
-        .then(function(r){ return r.ok ? r.text() : null; })
-        .then(function(raw){
-          if (!raw) return;
-          var v = raw.trim();
-          var stored = localStorage.getItem(KEY);
-          if (stored && v && v !== stored) { goFresh(v); return; }
-          if (v) localStorage.setItem(KEY, v);
-          // Mid-session watcher: check every 2 min + on focus
-          var poll = function(){
-            fetch(VER + '?_=' + Date.now(), {cache:'no-store'})
-              .then(function(r){ return r.ok ? r.text() : null; })
-              .then(function(raw2){
-                if (!raw2) return;
-                var v2 = raw2.trim();
-                if (v2 && v2 !== localStorage.getItem(KEY)) showBanner(v2);
-              }).catch(function(){});
-          };
-          window.addEventListener('focus', poll);
-          setInterval(poll, 2 * 60 * 1000);
-        }).catch(function(){});
-      // SW registration
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/ms-accounting/sw.js', {updateViaCache:'none'}).catch(function(){});
-      }
-      // Banner
-      var showBanner = function(v){
-        if (document.getElementById('_msBanner')) return;
-        var d = document.createElement('div');
-        d.id = '_msBanner';
-        d.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;background:#1e293b;color:white;padding:14px 22px;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 8px 30px rgba(0,0,0,.35);font-family:Cairo,sans-serif;display:flex;align-items:center;gap:12px';
-        d.innerHTML = '🔄 يتوفر تحديث جديد &nbsp;<span style="background:#3b82f6;padding:5px 16px;border-radius:8px;font-size:13px">تحديث الآن</span>';
-        d.onclick = function(){ goFresh(v); };
-        document.body ? document.body.appendChild(d) : document.addEventListener('DOMContentLoaded', function(){ document.body.appendChild(d); });
-      };
-    })();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/ms-accounting/sw.js', {updateViaCache:'none'})
+        .then(function(reg) {
+          // If new SW is waiting, activate it immediately
+          if (reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+          reg.addEventListener('updatefound', function() {
+            var sw = reg.installing;
+            sw.addEventListener('statechange', function() {
+              if (sw.state === 'installed' && reg.waiting) {
+                reg.waiting.postMessage({type:'SKIP_WAITING'});
+              }
+            });
+          });
+        })
+        .catch(function(){});
+    }
   </script>
   <title>MS Accounting — نظام إدارة مكتب المحاسبة</title>
   <script src="config.js"></script>
