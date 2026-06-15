@@ -10,7 +10,7 @@
   <script>
     // ── Cache-bust: redirect to versioned URL on every deploy ──────────────────
     (function(){
-      const V = '1781523917';
+      const V = '1781524377';
       const u = new URL(location.href);
       if(u.searchParams.get('v') !== V){
         u.searchParams.set('v', V);
@@ -22,20 +22,19 @@
     (function(){
       const VER_URL = '/ms-accounting/version.txt';
       let _curVer = null;
-      const doUpdate = function(newVer) {
-        // Navigate to a fresh URL that is guaranteed not in browser cache
-        const u = new URL(location.origin + '/ms-accounting/');
-        u.searchParams.set('v', newVer);
+      const doUpdate = function() {
+        // Add _r to current URL — forces CDN cache miss without changing v
+        const u = new URL(location.href);
         u.searchParams.set('_r', Date.now());
         location.replace(u.toString());
       };
-      const showBanner = function(newVer) {
+      const showBanner = function() {
         if (document.getElementById('_msUpdateBanner')) return;
         const d = document.createElement('div');
         d.id = '_msUpdateBanner';
         d.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;background:#1e293b;color:white;padding:14px 22px;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 8px 30px rgba(0,0,0,.35);font-family:Cairo,sans-serif;display:flex;align-items:center;gap:12px';
         d.innerHTML = '🔄 يتوفر تحديث جديد للنظام &nbsp;<span style="background:#3b82f6;padding:5px 16px;border-radius:8px;font-size:13px">تحديث الآن</span>';
-        d.onclick = function(){ doUpdate(newVer); };
+        d.onclick = function(){ doUpdate(); };
         const attach = function(){ document.body.appendChild(d); };
         document.body ? attach() : document.addEventListener('DOMContentLoaded', attach);
       };
@@ -45,7 +44,7 @@
           if (!r.ok) return;
           const v = (await r.text()).trim();
           if (!v) return;
-          if (_curVer && v !== _curVer) showBanner(v);
+          if (_curVer && v !== _curVer) showBanner();
           else _curVer = v;
         } catch(e) {}
       };
