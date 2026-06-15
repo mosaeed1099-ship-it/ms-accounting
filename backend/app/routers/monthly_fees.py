@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
+from sqlalchemy import func, Integer as SAInteger
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -267,11 +268,36 @@ def list_records(
         .all()
     )
 
+    # Single aggregate query for all clients — no N+1
+    client_ids = [r.client_id for r in records]
+    client_stats = {}
+    if client_ids:
+        rows = (
+            db.query(
+                MonthlyFeeRecord.client_id,
+                func.max(MonthlyFeeRecord.paid_date).label("last_paid_date"),
+                func.sum(func.cast(MonthlyFeeRecord.paid, SAInteger)).label("payment_count"),
+            )
+            .filter(MonthlyFeeRecord.client_id.in_(client_ids))
+            .group_by(MonthlyFeeRecord.client_id)
+            .all()
+        )
+        client_stats = {
+            row.client_id: {
+                "last_paid_date": str(row.last_paid_date) if row.last_paid_date else None,
+                "payment_count": int(row.payment_count or 0),
+            }
+            for row in rows
+        }
+
     result = []
     for r in records:
         d = _record_dict(r)
         d["client_name"] = r.client.name
         d["monthly_fee"] = r.client.monthly_fee
+        stats = client_stats.get(r.client_id, {})
+        d["last_paid_date"]  = stats.get("last_paid_date")
+        d["payment_count"]   = stats.get("payment_count", 0)
         result.append(d)
     return result
 
