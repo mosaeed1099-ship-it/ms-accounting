@@ -405,9 +405,6 @@
   </style>
 </head>
 <body>
-<!-- Connection status bar — shown when API or WS is offline -->
-<div id="connBar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;padding:6px 16px;text-align:center;font-size:12px;font-weight:600;color:#fff;transition:background .3s" dir="rtl"></div>
-<div id="_oqBadge" style="display:none;position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:9998;background:#d97706;color:#fff;border-radius:999px;padding:6px 18px;font-size:12px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none" dir="rtl"></div>
 <div id="app"></div>
 <div id="toasts" class="toasts"></div>
 
@@ -486,18 +483,8 @@ function _rtConnect() {
     _rt_ws = new WebSocket(`${proto}://${wsBase}/ws`);
 
     _rt_ws.onopen = () => {
-      const wasReconnect = _rt_retries > 0;
       _rt_retries = 0;
       if (_rt_reconnect) { clearTimeout(_rt_reconnect); _rt_reconnect = null; }
-      _setWsStatus(true);
-      if (wasReconnect) {
-        toast('✅ عاد التزامن المباشر', 'success');
-        _OQ.flush();
-        if (typeof _REFRESH_FN_MAP !== 'undefined' && _REFRESH_FN_MAP[currentPage]) {
-          _clearPageCache(currentPage);
-          _REFRESH_FN_MAP[currentPage]().catch(()=>{});
-        }
-      }
     };
 
     _rt_ws.onmessage = (evt) => {
@@ -513,7 +500,6 @@ function _rtConnect() {
       _rt_ws = null;
       const delay = Math.min(1000 * Math.pow(1.5, _rt_retries), 30000);
       _rt_retries++;
-      _setWsStatus(false, `التزامن المباشر غير متصل — إعادة الاتصال خلال ${Math.round(delay/1000)}ث`);
       _rt_reconnect = setTimeout(_rtConnect, delay);
     };
 
@@ -667,7 +653,7 @@ function _hideStaleBanner() {
   if (typeof window._connMonitorNormal === 'function') window._connMonitorNormal();
 }
 
-async function api(method, path, body=null, {retries=2, retryDelay=2000, useCache=true, queue=false, queueLabel=''}={}) {
+async function api(method, path, body=null, {retries=2, retryDelay=2000, useCache=true}={}) {
   const isGet = method === 'GET';
   const opts = {
     method,
@@ -697,9 +683,7 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
       const data = await r.json().catch(()=>({}));
       if(!r.ok) {
         let msg = 'خطأ في الطلب';
-        if (r.status === 409 && data.detail?.conflict) {
-          msg = '⚠️ تعارض: ' + (data.detail.message || 'تم تعديل السجل من مستخدم آخر');
-        } else if(typeof data.detail === 'string') msg = data.detail;
+        if(typeof data.detail === 'string') msg = data.detail;
         else if(Array.isArray(data.detail)) msg = data.detail.map(e=>e.msg||e).join(' | ');
         else if(data.message) msg = data.message;
         // Log API errors (4xx/5xx) — skip 401 (handled separately)
@@ -720,12 +704,6 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
       if(isNet && attempt < retries) continue;
       if(isNet) {
         _EL.log('network', `${method} ${path} — شبكة`, e.message);
-        if (!isGet && queue) {
-          _OQ.add(method, path, body, queueLabel);
-          const qe = new Error('قيد الانتظار — سيتم الإرسال تلقائياً عند عودة الاتصال');
-          qe._queued = true;
-          throw qe;
-        }
         if (isGet && useCache) {
           const stale = _AC.get(path);
           if (stale) { _showStaleBanner(); return stale.d; }
@@ -737,60 +715,6 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
   }
   throw lastErr;
 }
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// OFFLINE QUEUE — يحفظ التعديلات محلياً عند انقطاع الشبكة ويُرسلها عند العودة
-// ═══════════════════════════════════════════════════════════════════════════════
-const _OQ = {
-  KEY: 'ms_offline_queue',
-  _get() { try { return JSON.parse(localStorage.getItem(this.KEY)||'[]'); } catch(_){return[];} },
-  _set(a) { try { localStorage.setItem(this.KEY, JSON.stringify(a)); } catch(_){} },
-
-  add(method, path, body, label) {
-    const q = this._get();
-    const item = { id: Date.now()+'-'+Math.random().toString(36).slice(2,7), method, path, body, label: label||path, ts: Date.now() };
-    q.push(item);
-    this._set(q);
-    this._updateBadge();
-    return item.id;
-  },
-
-  remove(id) { this._set(this._get().filter(i=>i.id!==id)); this._updateBadge(); },
-  count()    { return this._get().length; },
-
-  _updateBadge() {
-    const n = this.count();
-    const b = document.getElementById('_oqBadge');
-    if (!b) return;
-    if (n > 0) { b.textContent = `⏳ ${n} تعديل معلق`; b.style.display='block'; }
-    else        { b.style.display='none'; }
-  },
-
-  async flush() {
-    const q = this._get();
-    if (!q.length) return;
-    const tok = localStorage.getItem('ms_token');
-    const hdrs = {'Content-Type':'application/json', ...(tok?{Authorization:`Bearer ${tok}`}:{})};
-    let ok = 0, kept = [];
-    for (const item of q) {
-      try {
-        const r = await fetch(API + item.path, { method:item.method, headers:hdrs, body:JSON.stringify(item.body), signal:AbortSignal.timeout(15000) });
-        if (r.ok) { ok++; }
-        else if (r.status < 500) { /* 4xx — server rejected — discard */ }
-        else { kept.push(item); break; }
-      } catch(_) { kept.push(...q.slice(q.indexOf(item))); break; }
-    }
-    this._set(kept);
-    this._updateBadge();
-    if (ok > 0) {
-      toast(`✅ تم إرسال ${ok} تعديل معلق بنجاح`);
-      if (typeof _REFRESH_FN_MAP !== 'undefined' && _REFRESH_FN_MAP[currentPage]) {
-        try { await _REFRESH_FN_MAP[currentPage](); } catch(_) {}
-      }
-    }
-  }
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ERROR LOGGING SYSTEM — يسجل كل خطأ في localStorage + يعرضه في شاشة الأخطاء
@@ -1953,43 +1877,11 @@ let _connState = 'ok';   // 'ok' | 'degraded' | 'offline'
 let _connRetries = 0;
 let _connTimer = null;
 
-function _updateConnBar(info) {
-  const bar = document.getElementById('connBar');
-  const app = document.getElementById('app');
-  if(!bar) return;
-  if(!info) {
-    bar.style.display = 'none';
-    if(app) app.style.paddingTop = '';
-  } else {
-    bar.style.display = 'block';
-    bar.style.background = info.color || '#ef4444';
-    bar.textContent = info.text;
-    if(app) app.style.paddingTop = (bar.offsetHeight || 30) + 'px';
-  }
-}
-
 function setApiStatus(ok, label) {
   const dot  = document.getElementById('apiDot');
   const lbl  = document.getElementById('apiStatusLabel');
-  const color = ok ? '#22c55e' : (_connState === 'degraded' ? '#f59e0b' : '#ef4444');
-  if(dot) dot.style.background = color;
+  if(dot) dot.style.background = ok ? '#22c55e' : (_connState === 'degraded' ? '#f59e0b' : '#ef4444');
   if(lbl) lbl.textContent = label || (ok ? 'API متصل' : 'غير متصل');
-  _updateConnBar(ok ? null : {color, text: label || 'غير متصل'});
-}
-
-function _setWsStatus(connected, label) {
-  const dot = document.getElementById('apiDot');
-  const lbl = document.getElementById('apiStatusLabel');
-  if(_connState !== 'ok') return; // API offline takes priority
-  if(connected) {
-    if(dot) dot.style.background = '#22c55e';
-    if(lbl) lbl.textContent = 'متصل';
-    _updateConnBar(null);
-  } else {
-    if(dot) dot.style.background = '#f59e0b';
-    if(lbl) lbl.textContent = label || 'WS غير متصل';
-    _updateConnBar({color: '#f59e0b', text: label || 'التزامن المباشر غير متصل — جاري إعادة الاتصال...'});
-  }
 }
 
 async function _checkConn() {
@@ -2045,7 +1937,7 @@ function _startConnMonitor() {
     clearInterval(_connInterval);
     _connInterval = setInterval(_checkConn, 20000);
   };
-  window.addEventListener('online',  () => { if(_connState !== 'ok') { _checkConn(); } _OQ.flush(); });
+  window.addEventListener('online',  () => { if(_connState !== 'ok') { _checkConn(); } });
   window.addEventListener('offline', () => {
     _connState = 'offline';
     setApiStatus(false, 'لا يوجد اتصال بالإنترنت');
@@ -3245,7 +3137,7 @@ function showClientModal(id=null) {
 
       let savedClient;
       if(c){
-        savedClient = await api('PUT',`/api/clients/${c.id}`,body,{queue:true,queueLabel:'تعديل بيانات عميل',conflictTs:c?.updated_at||null});
+        savedClient = await api('PUT',`/api/clients/${c.id}`,body);
       } else {
         savedClient = await api('POST','/api/clients',body);
       }
@@ -3283,10 +3175,7 @@ function showClientModal(id=null) {
       overlay.remove();
       invalidateClientsCache();
       loadClients(true);
-    } catch(e){
-      if(e._queued){toast('⏳ '+e.message,'warning');overlay.remove();loadClients();}
-      else{toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`;}
-    }
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`}
   };
 }
 
@@ -3859,7 +3748,7 @@ window._markDone = async function(id) {
   const isDone=t.status==='done';
   const newStatus=isDone?'todo':'done';
   try {
-    await api('PUT',`/api/tasks/${id}`,{status:newStatus},{useCache:false,queue:true,queueLabel:'تحديث حالة مهمة'});
+    await api('PUT',`/api/tasks/${id}`,{status:newStatus},{useCache:false});
     t.status=newStatus;
     if(!isDone){
       const now=new Date();
@@ -3992,7 +3881,7 @@ window._empDelAll = async function(uid) {
 
 async function _restoreTask(id) {
   try {
-    await api('PUT',`/api/tasks/${id}`,{status:'todo'},{queue:true,queueLabel:'إعادة مهمة'});
+    await api('PUT',`/api/tasks/${id}`,{status:'todo'});
     tasksData=tasksData.map(t=>t.id===id?{...t,status:'todo'}:t);
     renderDailySheet(); toast('تمت إعادة المهمة');
   } catch(e){toast(e.message,'error');}
@@ -4052,7 +3941,7 @@ window._genWAMessage = function() {
 async function _assignTask(taskId, userId, assign) {
   try {
     const newAssignee=assign?userId:null;
-    await api('PUT',`/api/tasks/${taskId}`,{assigned_to:newAssignee},{queue:true,queueLabel:'تعيين مهمة'});
+    await api('PUT',`/api/tasks/${taskId}`,{assigned_to:newAssignee});
     const emp=tasksUsersData.find(u=>u.id===userId);
     tasksData=tasksData.map(t=>t.id===taskId?{...t,assigned_to:newAssignee,assigned_to_name:assign?(emp?.name||null):null}:t);
     if(assign&&emp){
@@ -4222,7 +4111,7 @@ function renderEmployeeTasks() {
 
 async function quickDoneTask(id) {
   try {
-    await api('PUT', `/api/tasks/${id}`, {status:'done'},{queue:true,queueLabel:'إتمام مهمة'});
+    await api('PUT', `/api/tasks/${id}`, {status:'done'});
     tasksData = tasksData.map(t => t.id === id ? {...t, status:'done'} : t);
     renderEmployeeTasks();
     toast('✅ تم إنجاز المهمة');
@@ -4279,7 +4168,7 @@ function renderKanban() {
 
 async function updateTaskStatus(id, status) {
   try {
-    await api('PUT',`/api/tasks/${id}`,{status},{queue:true,queueLabel:'تحديث حالة مهمة'});
+    await api('PUT',`/api/tasks/${id}`,{status});
     tasksData=tasksData.map(t=>t.id===id?{...t,status}:t);
     renderKanban();
     toast('تم تحديث حالة المهمة');
@@ -4411,7 +4300,7 @@ async function showTaskModal(id=null) {
         recur_type:  isRecur?document.getElementById('tRecurType').value:null,
       };
       if(!body.title){toast('عنوان المهمة مطلوب','error');btn.disabled=false;return;}
-      if(t) await api('PUT',`/api/tasks/${t.id}`,body,{queue:true,queueLabel:'تعديل مهمة',conflictTs:t?.updated_at||null});
+      if(t) await api('PUT',`/api/tasks/${t.id}`,body);
       else  await api('POST','/api/tasks',body);
       // إغلاق المودال أولاً قبل أي عملية أخرى
       overlay.remove();
@@ -4424,7 +4313,7 @@ async function showTaskModal(id=null) {
 async function deleteTask(id, overlay) {
   if (!await confirmDlg('حذف هذه المهمة نهائياً؟')) return;
   try {
-    await api('DELETE', `/api/tasks/${id}`,null,{queue:true,queueLabel:'حذف مهمة'});
+    await api('DELETE', `/api/tasks/${id}`);
     overlay?.remove();
     toast('تم حذف المهمة');
     loadTasks(true);
@@ -6835,6 +6724,7 @@ function renderLeads(stats) {
     <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='quotation_sent'?'border:2px solid #f97316;':''}" onclick="setLeadsStatusFilter('quotation_sent')"><div style="font-size:18px;font-weight:800;color:#f97316">${stats.quotation_sent??stats.quotation??0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">عرض مرسل 📄</div></div>
     <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='under_establishment'?'border:2px solid #0891b2;':''}" onclick="setLeadsStatusFilter('under_establishment')"><div style="font-size:18px;font-weight:800;color:#0891b2">${stats.under_establishment||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">قيد التأسيس 🏗️</div></div>
     <div class="stat-card" style="cursor:pointer;${leadsStatusFilter==='lost'?'border:2px solid #dc2626;':''}" onclick="setLeadsStatusFilter('lost')"><div style="font-size:18px;font-weight:800;color:#dc2626">${stats.lost||0}</div><div style="font-size:10px;color:#64748b;margin-top:2px">خسارة ❌</div></div>
+  </div>`:''}
   <!-- Date filter bar -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
     ${[['all','الكل'],['today','اليوم'],['yesterday','أمس'],['this_week','هذا الأسبوع'],['this_month','هذا الشهر'],['last_month','الشهر الماضي'],['this_year','هذه السنة'],['custom','📅 مخصص']].map(([k,lbl])=>`
@@ -7233,10 +7123,9 @@ window._saveLeadExpandField = async function(id, field, value) {
   if (!backendField) return;
   const parsedVal = (field==='capital'||field==='total_fees') ? (parseFloat(value)||null) : (value||null);
   try {
-    const _leadExpandFieldTs = leadsData.find(l=>l.id===id)?.updated_at||null;
     await api('PUT', `/api/leads/${id}`, {[backendField]: parsedVal,
       ...(field==='total_fees' ? {quote_expenses_total: parsedVal} : {})
-    }, {queue:true, queueLabel:'تعديل حقل عميل محتمل', conflictTs:_leadExpandFieldTs});
+    });
     const lead = leadsData.find(l=>l.id===id);
     if (lead) lead[backendField] = parsedVal;
     const statusEl = document.getElementById(`expand-save-status-${id}`);
@@ -7249,7 +7138,6 @@ window._saveLeadExpandAll = async function(id) {
   if (!st) return;
   const statusEl = document.getElementById(`expand-save-status-${id}`);
   try {
-    const _leadExpandAllTs = leadsData.find(l=>l.id===id)?.updated_at||null;
     const updated = await api('PUT', `/api/leads/${id}`, {
       email: st.email || null,
       quote_legal_entity: st.legal_entity || null,
@@ -7261,7 +7149,7 @@ window._saveLeadExpandAll = async function(id) {
       losses_detail: st.extra || null,
       quote_deliver_docs: JSON.stringify(st.deliverables),
       quote_required_docs: JSON.stringify(st.reqDocs),
-    }, {queue:true, queueLabel:'حفظ تفاصيل العميل المحتمل', conflictTs:_leadExpandAllTs});
+    });
     const idx = leadsData.findIndex(l=>l.id===id);
     if (idx>=0) leadsData[idx] = updated;
     if (statusEl) { statusEl.textContent = '✅ تم الحفظ'; setTimeout(()=>{if(statusEl)statusEl.textContent='';},2000); }
@@ -7400,7 +7288,7 @@ async function saveLeadCell(el) {
   const origColor=el.style.borderColor;
   el.style.borderColor='#f59e0b';
   try {
-    await api('PUT',`/api/leads/${id}`,{[field]:value},{queue:true,queueLabel:'تعديل عميل محتمل'});
+    await api('PUT',`/api/leads/${id}`,{[field]:value});
     if(field==='status'){
       const sc=LEAD_STATUS_COLORS[value]||'#94a3b8';
       el.style.background=`${sc}18`;
@@ -7523,7 +7411,7 @@ async function deleteLeadRow(id) {
   }
   if(!await confirmDlg('حذف هذا العميل المحتمل؟')) return;
   try {
-    await api('DELETE',`/api/leads/${id}`,null,{queue:true,queueLabel:'حذف عميل محتمل'});
+    await api('DELETE',`/api/leads/${id}`);
     const row=document.querySelector(`tr[data-id="${id}"]`);
     if(row) row.remove();
     const expRow=document.getElementById(`lead-expand-${id}`);
@@ -7811,8 +7699,7 @@ async function saveLeadInfo(id) {
   if(excEl) body.has_existing_companies = excEl.checked;
 
   await withSaving(btn, async()=>{
-    const _saveLeadTs = leadsData.find(l=>l.id===id)?.updated_at||null;
-    const updated = await api('PUT', `/api/leads/${id}`, body, {queue:true, queueLabel:'حفظ بيانات عميل محتمل', conflictTs:_saveLeadTs});
+    const updated = await api('PUT', `/api/leads/${id}`, body);
     // Refresh local cache
     const idx = leadsData.findIndex(l=>l.id===id);
     if(idx>=0) leadsData[idx]=updated;
@@ -7862,8 +7749,7 @@ async function saveLeadQuote(id) {
     quote_notes:        document.getElementById('qq-notes')?.value||null,
   };
   await withSaving(btn, async()=>{
-    const _saveQuoteTs = leadsData.find(l=>l.id===id)?.updated_at||null;
-    const updated = await api('PUT', `/api/leads/${id}`, body, {queue:true, queueLabel:'حفظ عرض السعر', conflictTs:_saveQuoteTs});
+    const updated = await api('PUT', `/api/leads/${id}`, body);
     const idx = leadsData.findIndex(l=>l.id===id);
     if(idx>=0) leadsData[idx]=updated;
     _qsCalc();
@@ -8977,7 +8863,7 @@ async function runRefreshNotifs() {
 
 async function submitObligation(instanceId) {
   try {
-    await api('PUT', `/api/obligations/instances/${instanceId}`, {status:'submitted', submitted_at:new Date().toISOString()},{queue:true,queueLabel:'تسجيل تقديم التزام'});
+    await api('PUT', `/api/obligations/instances/${instanceId}`, {status:'submitted', submitted_at:new Date().toISOString()});
     toast('✅ تم تسجيل التقديم');
     loadObligations();
   } catch(e){ toast(e.message,'error'); }
@@ -9040,7 +8926,7 @@ async function showUpdateOblModal(instanceId) {
       if(ass) body.assigned_to=parseInt(ass);
       if(notes) body.notes=notes;
       if(status==='submitted') body.submitted_at=new Date().toISOString();
-      await api('PUT',`/api/obligations/instances/${instanceId}`,body,{queue:true,queueLabel:'تعديل التزام ضريبي'});
+      await api('PUT',`/api/obligations/instances/${instanceId}`,body);
       toast('تم حفظ التعديلات');
       overlay.remove(); loadObligations(true);
     } catch(e){ toast(e.message,'error'); btn.disabled=false; btn.textContent='💾 حفظ'; }
@@ -9161,7 +9047,7 @@ async function showObligationModal(preClientId=null) {
         obligation_type:oblType,
         frequency:document.getElementById('oblFreq').value,
         due_day:parseInt(document.getElementById('oblDay').value)||15,
-      },{queue:true,queueLabel:'إنشاء التزام ضريبي'});
+      });
       toast('تم إنشاء الالتزام الضريبي');
       overlay.remove(); loadObligations(true);
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='🔔 إضافة';}
@@ -9320,7 +9206,7 @@ function toggleFormationCase(caseId){
 
 async function updateFormationOblStatus(oblId, newStatus){
   try {
-    await api('PUT',`/api/formation-obligations/${oblId}`, {status: newStatus},{queue:true,queueLabel:'تحديث حالة التزام تأسيس'});
+    await api('PUT',`/api/formation-obligations/${oblId}`, {status: newStatus});
     await loadFormationObligations(true);
     toast('تم تحديث الحالة ✅');
   } catch(e){ toast(e.message,'error'); }
@@ -9378,7 +9264,7 @@ window._saveFormationObl = async function(btn){
       status: document.getElementById('foStatus')?.value||'not_started',
       due_date: document.getElementById('foDueDate')?.value||null,
       notes: document.getElementById('foNotes')?.value||null,
-    },{queue:true,queueLabel:'إضافة التزام تأسيس'});
+    });
     document.querySelector('.modal-overlay')?.remove();
     await loadFormationObligations(true);
     toast('تم إضافة الالتزام ✅');
@@ -10064,13 +9950,10 @@ async function showCollectionPaymentModal(contractId, remaining, title, isMonthl
         body.period_month=parseInt($('#cpMonth',overlay).value);
         body.period_year=parseInt($('#cpYear',overlay).value);
       }
-      await api('POST','/api/collections/payments',body,{queue:true,queueLabel:'تسجيل دفعة تحصيل'});
+      await api('POST','/api/collections/payments',body);
       toast('تم تسجيل الدفعة بنجاح');
       overlay.remove(); loadCollections(true);
-    } catch(e){
-      if(e._queued){toast('⏳ '+e.message,'warning');overlay.remove();loadCollections();}
-      else{toast(e.message,'error');btn.disabled=false;btn.textContent='💵 تسجيل الدفعة';}
-    }
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💵 تسجيل الدفعة';}
   };
 }
 
@@ -10131,13 +10014,10 @@ async function showCollectionEditModal(contractId) {
         const mEl=document.getElementById('ceMonthly');
         if(mEl) body.monthly_amount=parseFloat(mEl.value)||0;
       }
-      await api('PUT',`/api/collections/${contractId}`,body,{queue:true,queueLabel:'تعديل عقد تحصيل',conflictTs:c?.updated_at||null});
+      await api('PUT',`/api/collections/${contractId}`,body);
       toast('تم تحديث العقد بنجاح');
       overlay.remove(); loadCollections(true);
-    } catch(e){
-      if(e._queued){toast('⏳ '+e.message,'warning');overlay.remove();loadCollections();}
-      else{toast(e.message,'error');btn.disabled=false;btn.textContent='💾 حفظ التعديلات';}
-    }
+    } catch(e){toast(e.message,'error');btn.disabled=false;btn.textContent='💾 حفظ التعديلات';}
   };
 }
 
@@ -13227,7 +13107,7 @@ async function saveAccTransaction(type) {
   };
 
   try {
-    const r = await api('POST', `/api/accounting/${_accClientId}/transactions`, payload, {queue:true,queueLabel:'إضافة معاملة محاسبية'});
+    const r = await api('POST', `/api/accounting/${_accClientId}/transactions`, payload);
     resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message)}</div>`;
     setTimeout(() => { document.querySelector('.modal-overlay:last-child')?.remove(); accRender(); }, 1200);
   } catch(e) {
@@ -13238,7 +13118,7 @@ async function saveAccTransaction(type) {
 async function deleteAccTx(txId) {
   if(!await confirmDlg('حذف هذه المعاملة وقيدها اليومي؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/transactions/${txId}`,null,{queue:true,queueLabel:'حذف معاملة محاسبية'});
+    await api('DELETE', `/api/accounting/${_accClientId}/transactions/${txId}`);
     toast('تم الحذف');
     accRender();
   } catch(e) { toast(e.message, 'error'); }
@@ -13349,7 +13229,7 @@ async function saveEditTransaction(txId, type) {
   };
 
   try {
-    const r = await api('PUT', `/api/accounting/${_accClientId}/transactions/${txId}`, payload, {queue:true,queueLabel:'تعديل معاملة محاسبية'});
+    const r = await api('PUT', `/api/accounting/${_accClientId}/transactions/${txId}`, payload);
     resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message)}</div>`;
     setTimeout(() => { document.querySelector('.modal-overlay:last-child')?.remove(); accRender(); }, 1200);
   } catch(e) {
@@ -13463,7 +13343,7 @@ async function showJournalDetail(jeId) {
 
 async function postJournalEntry(jeId) {
   try {
-    const r = await api('PATCH', `/api/accounting/${_accClientId}/journal-entries/${jeId}/post`,null,{queue:true,queueLabel:'ترحيل قيد يومي'});
+    const r = await api('PATCH', `/api/accounting/${_accClientId}/journal-entries/${jeId}/post`);
     toast(r.message);
     accRender();
   } catch(e) { toast(e.message,'error'); }
@@ -13492,7 +13372,7 @@ async function reverseJournalEntry(jeId, overlay) {
 async function deleteJournalEntry(jeId, overlay) {
   if (!await confirmDlg('حذف هذا القيد نهائياً؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/journal-entries/${jeId}`,null,{queue:true,queueLabel:'حذف قيد يومي'});
+    await api('DELETE', `/api/accounting/${_accClientId}/journal-entries/${jeId}`);
     toast('تم حذف القيد');
     overlay?.remove();
     _AC.invalidate(`/api/accounting/${_accClientId}`);
@@ -13592,7 +13472,7 @@ async function saveManualJE() {
       reference: document.getElementById('jeRef')?.value?.trim(),
       entry_type: 'manual',
       lines,
-    }, {queue:true,queueLabel:'إنشاء قيد يومي'});
+    });
     resultDiv.innerHTML = `<div style="color:#16a34a;font-size:13px">✅ ${escH(r.message)}</div>`;
     setTimeout(()=>{ document.querySelector('.modal-overlay:last-child')?.remove(); accRender(); }, 1200);
   } catch(e) {
@@ -14542,7 +14422,7 @@ async function saveTreasury() {
   };
   if(!payload.name) { document.getElementById('trResult').innerHTML=`<div style="color:#dc2626;font-size:13px">⚠️ أدخل الاسم</div>`; return; }
   try {
-    await api('POST', `/api/accounting/${_accClientId}/treasuries`, payload,{queue:true,queueLabel:'إضافة خزينة'});
+    await api('POST', `/api/accounting/${_accClientId}/treasuries`, payload);
     toast('✅ تمت الإضافة');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14631,7 +14511,7 @@ async function saveTreasuryTx(treasuryId) {
       tx_type: document.getElementById('ttType')?.value,
       amount: amt,
       description: document.getElementById('ttDesc')?.value?.trim()||null,
-    },{queue:true,queueLabel:'إضافة حركة خزينة'});
+    });
     toast('✅ تمت الإضافة');
     document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
     accRender();
@@ -14641,7 +14521,7 @@ async function saveTreasuryTx(treasuryId) {
 async function deleteTreasuryTx(txId) {
   if(!await confirmDlg('حذف هذه الحركة؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/treasuries/transactions/${txId}`,null,{queue:true,queueLabel:'حذف حركة خزينة'});
+    await api('DELETE', `/api/accounting/${_accClientId}/treasuries/transactions/${txId}`);
     toast('تم الحذف');
     document.querySelector('.modal-overlay')?.remove();
     accRender();
@@ -14766,7 +14646,7 @@ async function saveCheck() {
       amount: amt,
       issue_date: new Date().toISOString().split('T')[0],
       due_date: document.getElementById('chkDue')?.value||null,
-    },{queue:true,queueLabel:'إضافة شيك'});
+    });
     toast('✅ تمت الإضافة');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14775,7 +14655,7 @@ async function saveCheck() {
 
 async function updateCheckStatus(checkId, status) {
   try {
-    await api('PATCH', `/api/accounting/${_accClientId}/checks/${checkId}/status`, {status},{queue:true,queueLabel:'تحديث حالة شيك'});
+    await api('PATCH', `/api/accounting/${_accClientId}/checks/${checkId}/status`, {status});
     toast('✅ تم تحديث الحالة');
     accRender();
   } catch(e) { toast(e.message,'error'); }
@@ -14784,7 +14664,7 @@ async function updateCheckStatus(checkId, status) {
 async function deleteCheck(checkId) {
   if(!await confirmDlg('حذف هذا الشيك؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/checks/${checkId}`,null,{queue:true,queueLabel:'حذف شيك'});
+    await api('DELETE', `/api/accounting/${_accClientId}/checks/${checkId}`);
     toast('تم الحذف');
     accRender();
   } catch(e) { toast(e.message,'error'); }
@@ -14897,7 +14777,7 @@ async function saveAdvance() {
       issue_date: document.getElementById('advIssue')?.value,
       due_date: document.getElementById('advDue')?.value||null,
       purpose: document.getElementById('advPurpose')?.value?.trim()||null,
-    },{queue:true,queueLabel:'إضافة سلفة'});
+    });
     toast('✅ تمت الإضافة');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14937,7 +14817,7 @@ async function confirmSettleAdvance(advId) {
   const amt = parseFloat(document.getElementById('settleAmt')?.value||0);
   if(!amt) return;
   try {
-    await api('PATCH', `/api/accounting/${_accClientId}/advances/${advId}/settle`, {amount: amt},{queue:true,queueLabel:'تسوية سلفة'});
+    await api('PATCH', `/api/accounting/${_accClientId}/advances/${advId}/settle`, {amount: amt});
     toast('✅ تمت التسوية');
     document.querySelector('.modal-overlay:last-child')?.remove();
     accRender();
@@ -14947,7 +14827,7 @@ async function confirmSettleAdvance(advId) {
 async function deleteAdvance(advId) {
   if(!await confirmDlg('حذف هذا السجل؟')) return;
   try {
-    await api('DELETE', `/api/accounting/${_accClientId}/advances/${advId}`,null,{queue:true,queueLabel:'حذف سلفة'});
+    await api('DELETE', `/api/accounting/${_accClientId}/advances/${advId}`);
     toast('تم الحذف'); accRender();
   } catch(e) { toast(e.message,'error'); }
 }
@@ -19990,7 +19870,8 @@ async function loadMonthlyFees() {
   await renderMFPage();
 }
 
-let mfTableFilter = 'all'; // 'all' | 'paid' | 'unpaid'
+let mfTableFilter = 'all'; // 'all' | 'paid' | 'unpaid' | 'partial' | 'overdue'
+let mfSearchQuery = '';
 let _mfAllRecords = [];
 
 async function renderMFPage() {
@@ -20004,25 +19885,88 @@ async function renderMFPage() {
   mfRenderPage(dash, records);
 }
 
+// ── helper: classify a record's status ────────────────────
+function _mfStatus(r) {
+  if (r.paid || r.remaining <= 0) return 'paid';
+  if (r.paid_amount > 0 && r.remaining > 0) return 'partial';
+  const isOverdue = r.year < mfCurrentYear || (r.year === mfCurrentYear && r.month < mfCurrentMonth);
+  if (isOverdue) return 'overdue';
+  return 'unpaid';
+}
+
+// ── helper: recompute dashboard summary from local records ─
+function _mfRecomputeDash(records) {
+  const dash = window._mfLastDash ? JSON.parse(JSON.stringify(window._mfLastDash)) : {summary:{},clients:{},top_debtors:[]};
+  const s = dash.summary;
+  s.total_due       = records.reduce((a,r)=>a+(r.total_due||0), 0);
+  s.total_paid      = records.reduce((a,r)=>a+(r.paid_amount||0), 0);
+  s.total_remaining = records.reduce((a,r)=>a+(r.remaining||0), 0);
+  s.collection_pct  = s.total_due > 0 ? (s.total_paid / s.total_due * 100) : 0;
+  dash.clients.paid_this_month   = records.filter(r=>r.paid).length;
+  dash.clients.unpaid_this_month = records.filter(r=>!r.paid).length;
+  dash.top_debtors = records
+    .filter(r=>r.remaining>0)
+    .sort((a,b)=>(b.remaining||0)-(a.remaining||0))
+    .slice(0,5)
+    .map(r=>({name:r.client_name, remaining:r.remaining}));
+  return dash;
+}
+
+// ── helper: update one record in-place and re-render ───────
+function _mfUpdateLocalRecord(recordId, updates) {
+  const idx = _mfAllRecords.findIndex(r=>r.id===recordId);
+  if (idx === -1) return;
+  const r = {..._mfAllRecords[idx], ...updates};
+  r.remaining = (r.total_due||0) - (r.paid_amount||0);
+  r.paid      = r.remaining <= 0;
+  _mfAllRecords[idx] = r;
+  window._mfLastDash = _mfRecomputeDash(_mfAllRecords);
+  mfRenderPage(window._mfLastDash, _mfAllRecords);
+}
+
 function mfRenderPage(dash, records) {
   const main = document.getElementById('main');
   const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
   const s = dash?.summary || {};
   const cl = dash?.clients || {};
 
-  const filtered = mfTableFilter === 'paid'   ? records.filter(r=>r.paid)
-                 : mfTableFilter === 'unpaid' ? records.filter(r=>!r.paid)
-                 : records;
+  // Apply filter
+  const q = (mfSearchQuery||'').trim().toLowerCase();
+  let filtered = records;
+  if (mfTableFilter === 'paid')    filtered = records.filter(r=>_mfStatus(r)==='paid');
+  else if (mfTableFilter === 'unpaid')  filtered = records.filter(r=>_mfStatus(r)==='unpaid');
+  else if (mfTableFilter === 'partial') filtered = records.filter(r=>_mfStatus(r)==='partial');
+  else if (mfTableFilter === 'overdue') filtered = records.filter(r=>_mfStatus(r)==='overdue');
+  if (q) filtered = filtered.filter(r=>(r.client_name||'').toLowerCase().includes(q));
+
+  // Stats for filter buttons
+  const countAll     = records.length;
+  const countPaid    = records.filter(r=>_mfStatus(r)==='paid').length;
+  const countUnpaid  = records.filter(r=>_mfStatus(r)==='unpaid').length;
+  const countPartial = records.filter(r=>_mfStatus(r)==='partial').length;
+  const countOverdue = records.filter(r=>_mfStatus(r)==='overdue').length;
 
   const kpis = [
     {l:'إجمالي المستحقات', v:fmt(s.total_due),              c:'#3b82f6', bg:'#eff6ff', filter:null},
-    {l:'إجمالي المحصّل',   v:fmt(s.total_paid),             c:'#10b981', bg:'#ecfdf5', filter:null},
-    {l:'إجمالي المتبقي',   v:fmt(s.total_remaining),        c:'#ef4444', bg:'#fef2f2', filter:null},
+    {l:'إجمالي المحصّل',   v:fmt(s.total_paid),             c:'#10b981', bg:'#ecfdf5', filter:'paid'},
+    {l:'إجمالي المتبقي',   v:fmt(s.total_remaining),        c:'#ef4444', bg:'#fef2f2', filter:'unpaid'},
     {l:'نسبة التحصيل',     v:(s.collection_pct||0).toFixed(1)+'%', c:'#8b5cf6', bg:'#f5f3ff', filter:null},
-    {l:'عملاء نشطون',      v:cl.active||0,                  c:'#1e293b', bg:'#f1f5f9', filter:'all'},
-    {l:'دفعوا هذا الشهر',  v:cl.paid_this_month||0,         c:'#10b981', bg:'#ecfdf5', filter:'paid'},
+    {l:'دفعوا',            v:cl.paid_this_month||0,         c:'#10b981', bg:'#ecfdf5', filter:'paid'},
     {l:'لم يدفعوا',        v:cl.unpaid_this_month||0,       c:'#ef4444', bg:'#fef2f2', filter:'unpaid'},
   ];
+
+  const filterBtns = [
+    {f:'all',     l:`الكل (${countAll})`,           c:'#64748b', ac:'#1e293b'},
+    {f:'paid',    l:`✅ مدفوع (${countPaid})`,       c:'#64748b', ac:'#10b981'},
+    {f:'partial', l:`🟡 جزئي (${countPartial})`,    c:'#64748b', ac:'#f59e0b'},
+    {f:'unpaid',  l:`❌ غير مدفوع (${countUnpaid})`,c:'#64748b', ac:'#ef4444'},
+    {f:'overdue', l:`⏰ متأخر (${countOverdue})`,   c:'#64748b', ac:'#dc2626'},
+  ];
+
+  const tableTitle = {
+    all:'جدول العملاء', paid:'✅ دفعوا',
+    partial:'🟡 مدفوع جزئياً', unpaid:'❌ لم يدفعوا', overdue:'⏰ المتأخرون'
+  }[mfTableFilter] || 'جدول العملاء';
 
   main.innerHTML = `
   <!-- Header -->
@@ -20042,14 +19986,14 @@ function mfRenderPage(dash, records) {
     </div>
   </div>
 
-  <!-- KPI Cards (clickable) -->
+  <!-- KPI Cards -->
   ${dash ? `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
     ${kpis.map(k=>`
-      <div onclick="${k.filter!==null ? `mfSetFilter('${k.filter}')` : ''}"
-           style="background:${k.bg};border-radius:12px;padding:14px 16px;border:2px solid ${mfTableFilter===k.filter&&k.filter!==null?k.c:k.c+'22'};${k.filter!==null?'cursor:pointer;':''}transition:border .2s">
-        <div style="font-size:11px;color:#64748b;margin-bottom:4px">${k.l}${k.filter!==null?` <span style="font-size:10px;opacity:.6">اضغط للفلترة</span>`:''}</div>
-        <div style="font-size:20px;font-weight:700;color:${k.c}">${k.v}</div>
+      <div onclick="${k.filter?`mfSetFilter('${k.filter}')`:''}"
+           style="background:${k.bg};border-radius:12px;padding:14px 16px;border:2px solid ${mfTableFilter===k.filter&&k.filter?k.c:k.c+'22'};${k.filter?'cursor:pointer;':''}transition:border .2s">
+        <div style="font-size:11px;color:#64748b;margin-bottom:4px">${k.l}</div>
+        <div style="font-size:20px;font-weight:700;color:${k.c}" id="mfKpi_${k.filter||'stat'}">${k.v}</div>
       </div>`).join('')}
   </div>
   ${dash.top_debtors?.length ? `
@@ -20065,23 +20009,32 @@ function mfRenderPage(dash, records) {
   <div style="background:white;border-radius:12px;padding:16px;border:1px solid #e8edf3;margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:6px">
       <span>نسبة التحصيل — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</span>
-      <span style="font-weight:700;color:#10b981">${(s.collection_pct||0).toFixed(1)}%</span>
+      <span style="font-weight:700;color:#10b981" id="mfProgressPct">${(s.collection_pct||0).toFixed(1)}%</span>
     </div>
     <div style="background:#f1f5f9;border-radius:20px;height:10px;overflow:hidden">
-      <div style="background:linear-gradient(90deg,#10b981,#059669);height:100%;border-radius:20px;width:${Math.min(100,s.collection_pct||0)}%;transition:width .5s"></div>
+      <div id="mfProgressBar" style="background:linear-gradient(90deg,#10b981,#059669);height:100%;border-radius:20px;width:${Math.min(100,s.collection_pct||0)}%;transition:width .5s"></div>
     </div>
   </div>` : ''}
 
+  <!-- Filters + Search -->
+  <div style="background:white;border-radius:12px;border:1px solid #e8edf3;padding:12px 16px;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    ${filterBtns.map(b=>`
+      <button onclick="mfSetFilter('${b.f}')"
+        style="padding:6px 14px;border-radius:20px;border:1.5px solid ${mfTableFilter===b.f?b.ac:'#e2e8f0'};background:${mfTableFilter===b.f?b.ac+'18':'#f8fafc'};color:${mfTableFilter===b.f?b.ac:'#64748b'};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s">
+        ${b.l}
+      </button>`).join('')}
+    <div style="flex:1;min-width:160px;max-width:280px;position:relative">
+      <input id="mfSearch" class="input" placeholder="🔍 بحث باسم الشركة..." value="${escH(mfSearchQuery)}"
+        oninput="mfSearchQuery=this.value;mfRenderPage(window._mfLastDash,_mfAllRecords)"
+        style="padding-right:12px;font-size:13px"/>
+    </div>
+  </div>
+
   <!-- Clients Table -->
   <div style="background:white;border-radius:16px;border:1px solid #e8edf3;overflow:hidden">
-    <div style="padding:14px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div style="font-size:14px;font-weight:700;color:#1e293b">
-        ${mfTableFilter==='paid'?'✅ دفعوا':mfTableFilter==='unpaid'?'❌ لم يدفعوا':'جدول العملاء'} — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        ${mfTableFilter!=='all'?`<button onclick="mfSetFilter('all')" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;color:#64748b">✕ إلغاء الفلتر</button>`:''}
-        <div style="font-size:12px;color:#64748b">${filtered.length} عميل</div>
-      </div>
+    <div style="padding:12px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:14px;font-weight:700;color:#1e293b">${tableTitle} — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</div>
+      <div style="font-size:12px;color:#64748b">${filtered.length} عميل</div>
     </div>
     <div style="overflow-x:auto">
     <table class="data-table" style="width:100%">
@@ -20098,8 +20051,12 @@ function mfRenderPage(dash, records) {
         <th>إجراءات</th>
       </tr></thead>
       <tbody>
-        ${filtered.length ? filtered.map((r,i)=>`
-          <tr style="cursor:pointer;background:${r.paid?'#f0fdf4':'white'}" onclick="mfShowClientHistory(${r.client_id},'${(r.client_name||'').replace(/'/g,"\\'")}')">
+        ${filtered.length ? filtered.map((r,i)=>{
+          const st = _mfStatus(r);
+          const rowBg = st==='paid'?'#f0fdf4' : st==='partial'?'#fffbeb' : st==='overdue'?'#fff1f2' : 'white';
+          const safeName = (r.client_name||'').replace(/'/g,"\\'");
+          return `
+          <tr id="mfRow_${r.id}" style="cursor:pointer;background:${rowBg};transition:background .3s" onclick="mfShowClientHistory(${r.client_id},'${safeName}')">
             <td style="color:#94a3b8">${i+1}</td>
             <td style="font-weight:600">${r.client_name||'—'}</td>
             <td>${(r.fee_amount||0).toLocaleString('ar-EG')} ج.م</td>
@@ -20109,27 +20066,27 @@ function mfRenderPage(dash, records) {
             <td style="color:${r.remaining>0?'#ef4444':'#10b981'};font-weight:600">${(r.remaining||0).toLocaleString('ar-EG')} ج.م</td>
             <td style="font-size:12px;color:#64748b">${r.paid_date||'—'}</td>
             <td>
-              ${r.paid
+              ${st==='paid'
                 ? `<span style="background:#ecfdf5;color:#10b981;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✓ مدفوع</span>`
+                : st==='partial'
+                ? `<span style="background:#fffbeb;color:#d97706;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">◑ جزئي</span>`
+                : st==='overdue'
+                ? `<span style="background:#fff1f2;color:#dc2626;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">⏰ متأخر</span>`
                 : `<span style="background:#fef2f2;color:#ef4444;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✗ غير مدفوع</span>`}
             </td>
             <td onclick="event.stopPropagation()" style="white-space:nowrap">
               ${currentUser?.role==='admin'?`
-              <button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining},${r.paid_amount},'${r.updated_at||''}')"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#3b82f6;color:white;margin-left:4px">
-                ${r.paid?'✏️ تعديل دفعة':'💳 دفع'}
+              <button id="mfPayBtn_${r.id}" onclick="mfPayModal(${r.id},${r.total_due},'${safeName}',${r.remaining},${r.paid_amount||0})"
+                style="font-size:12px;padding:4px 10px;border-radius:6px;border:none;cursor:pointer;background:${r.paid_amount>0?'#6366f1':'#3b82f6'};color:white;margin-left:4px;font-family:inherit">
+                ${r.paid_amount>0?'✏️ تعديل':'💳 دفع'}
               </button>
-              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${(r.client_name||'').replace(/'/g,"\\'")}','${r.bayan||''}','${r.notes||''}','${r.updated_at||''}')"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">
-                ✏️
-              </button>
-              ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${(r.client_name||'').replace(/'/g,"\\'")}','${r.updated_at||''}')"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">
-                🗑️
-              </button>`:''}
+              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${safeName}','${(r.bayan||'').replace(/'/g,"\\'")}','${(r.notes||'').replace(/'/g,"\\'")}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">✏️</button>
+              ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${safeName}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">🗑️</button>`:''}
               `:'<span style="color:#94a3b8;font-size:12px">—</span>'}
             </td>
-          </tr>`).join('')
+          </tr>`;}).join('')
           : `<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
       </tbody>
     </table>
@@ -20146,64 +20103,144 @@ window.mfFilterChange = function() {
   mfCurrentYear  = parseInt(document.getElementById('mfYear').value);
   mfCurrentMonth = parseInt(document.getElementById('mfMonth').value);
   mfTableFilter  = 'all';
+  mfSearchQuery  = '';
   renderMFPage();
 };
 
-window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid, updatedAt) {
+window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
   document.getElementById('mfPayModalEl')?.remove();
   const isEdit = (currentPaid||0) > 0;
+  // remaining relative to totalDue (not to previous partial)
+  const trueRemaining = (totalDue||0) - (currentPaid||0);
+  const defaultVal = currentPaid > 0 ? currentPaid : (remaining > 0 ? remaining : totalDue);
+
   const html = `
   <div class="modal-backdrop" id="mfPayModalEl" onclick="if(event.target===this)this.remove()">
-    <div class="modal" style="max-width:420px">
+    <div class="modal" style="max-width:440px">
       <div class="modal-header">
-        <h3>${isEdit?'✏️ تعديل الدفعة':'💳 تسجيل دفعة'} — ${clientName}</h3>
+        <h3 style="font-size:15px">${isEdit?'✏️ تعديل الدفعة':'💳 تسجيل دفعة'} — ${escH(clientName)}</h3>
         <button onclick="document.getElementById('mfPayModalEl').remove()" class="modal-close">✕</button>
       </div>
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
-        <div style="background:#eff6ff;border-radius:10px;padding:12px;font-size:13px;color:#1e40af">
-          إجمالي المطلوب: <strong>${(totalDue||0).toLocaleString('ar-EG')} ج.م</strong>
-          ${isEdit?`<br>مدفوع حالياً: <strong style="color:#10b981">${(currentPaid||0).toLocaleString('ar-EG')} ج.م</strong>`:''}
+
+        <!-- Summary row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+          <div style="background:#eff6ff;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px">المطلوب</div>
+            <div style="font-size:15px;font-weight:700;color:#3b82f6">${(totalDue||0).toLocaleString('ar-EG')}</div>
+            <div style="font-size:10px;color:#94a3b8">ج.م</div>
+          </div>
+          <div style="background:#ecfdf5;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px">مدفوع سابقاً</div>
+            <div style="font-size:15px;font-weight:700;color:#10b981">${(currentPaid||0).toLocaleString('ar-EG')}</div>
+            <div style="font-size:10px;color:#94a3b8">ج.م</div>
+          </div>
+          <div style="background:#fef2f2;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px">المتبقي</div>
+            <div id="mfPayPreviewRemaining" style="font-size:15px;font-weight:700;color:#ef4444">${trueRemaining.toLocaleString('ar-EG')}</div>
+            <div style="font-size:10px;color:#94a3b8">ج.م</div>
+          </div>
         </div>
-        <input type="hidden" id="mfPayUpdatedAt" value="${updatedAt||''}"/>
-        <div><label class="label">المبلغ المدفوع (ج.م)</label>
-          <input id="mfPayAmount" class="input" type="number" min="0" step="0.01" value="${currentPaid||remaining||totalDue||''}"/></div>
+
+        <!-- Status badge (live) -->
+        <div id="mfPayStatusBadge" style="text-align:center;font-size:13px;font-weight:600;padding:8px;border-radius:8px;background:#f8fafc;color:#64748b">
+          أدخل المبلغ لمعرفة الحالة
+        </div>
+
+        <div><label class="label">المبلغ المدفوع الآن (ج.م)</label>
+          <input id="mfPayAmount" class="input" type="number" min="0" step="0.01"
+            value="${defaultVal||''}"
+            oninput="mfPayPreview(${totalDue||0},${currentPaid||0})"/></div>
         <div><label class="label">تاريخ الدفع</label>
           <input id="mfPayDate" class="input" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
-        <div><label class="label">البيان</label>
+        <div><label class="label">البيان / ملاحظة (اختياري)</label>
           <input id="mfPayBayan" class="input" value="تم دفع"/></div>
       </div>
       <div class="modal-footer">
-        <button onclick="mfSavePay(${recordId})" class="btn btn-primary">💾 حفظ</button>
+        <button id="mfPaySaveBtn" onclick="mfSavePay(${recordId},${totalDue||0},${currentPaid||0})" class="btn btn-primary">💾 حفظ</button>
         <button onclick="document.getElementById('mfPayModalEl').remove()" class="btn">إلغاء</button>
       </div>
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+  // Trigger initial preview
+  setTimeout(()=>{ mfPayPreview(totalDue||0, currentPaid||0); document.getElementById('mfPayAmount')?.focus(); }, 30);
 };
 
-window.mfResetPay = async function(recordId, clientName, updatedAt) {
+window.mfPayPreview = function(totalDue, currentPaid) {
+  const amountEl = document.getElementById('mfPayAmount');
+  const remEl    = document.getElementById('mfPayPreviewRemaining');
+  const badge    = document.getElementById('mfPayStatusBadge');
+  const saveBtn  = document.getElementById('mfPaySaveBtn');
+  if (!amountEl || !remEl || !badge) return;
+  const amount = parseFloat(amountEl.value) || 0;
+  const remaining = totalDue - amount;
+  remEl.textContent = Math.max(0, remaining).toLocaleString('ar-EG');
+  if (amount <= 0) {
+    badge.textContent = 'أدخل المبلغ لمعرفة الحالة';
+    badge.style.background = '#f8fafc'; badge.style.color = '#64748b';
+    remEl.style.color = '#ef4444';
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+  } else if (amount > totalDue) {
+    badge.textContent = '⚠️ المبلغ أكبر من المطلوب — لا يمكن الحفظ';
+    badge.style.background = '#fff1f2'; badge.style.color = '#dc2626';
+    remEl.style.color = '#dc2626';
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '.5'; }
+  } else if (remaining <= 0) {
+    badge.textContent = '✅ مدفوع بالكامل';
+    badge.style.background = '#ecfdf5'; badge.style.color = '#10b981';
+    remEl.style.color = '#10b981';
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+  } else {
+    badge.textContent = `◑ مدفوع جزئياً — سيبقى ${remaining.toLocaleString('ar-EG')} ج.م`;
+    badge.style.background = '#fffbeb'; badge.style.color = '#d97706';
+    remEl.style.color = '#f59e0b';
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+  }
+};
+
+window.mfResetPay = async function(recordId, clientName) {
   if(!confirm(`هل تريد حذف الدفعة لـ ${clientName}؟`)) return;
   try {
-    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'}, {queue:true,queueLabel:'إلغاء دفعة أتعاب',conflictTs:updatedAt||null});
-    toast('تم حذف الدفعة','success');
-    await renderMFPage();
-  } catch(e){ if(e._queued) toast('⏳ '+e.message,'warning'); else toast(e.message,'error'); }
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`,
+      {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'},
+      {queue:true, queueLabel:'إلغاء دفعة أتعاب'});
+    toast('تم حذف الدفعة', 'success');
+    _mfUpdateLocalRecord(recordId, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'});
+  } catch(e) {
+    if (e._queued) { toast('⏳ '+e.message, 'warning'); _mfUpdateLocalRecord(recordId, {paid_amount:0, paid_date:null}); }
+    else toast(e.message, 'error');
+  }
 };
 
-window.mfSavePay = async function(recordId) {
-  const amount = parseFloat(document.getElementById('mfPayAmount').value||0);
-  const pdate  = document.getElementById('mfPayDate').value;
-  const bayan  = document.getElementById('mfPayBayan').value;
-  if(!amount){ toast('ادخل المبلغ','error'); return; }
+window.mfSavePay = async function(recordId, totalDue, currentPaid) {
+  const amount = parseFloat(document.getElementById('mfPayAmount')?.value||0);
+  const pdate  = document.getElementById('mfPayDate')?.value;
+  const bayan  = document.getElementById('mfPayBayan')?.value || 'تم دفع';
+  if (!amount || amount <= 0) { toast('ادخل مبلغ صحيح', 'error'); return; }
+  if (amount > (totalDue||0)) { toast('المبلغ أكبر من المطلوب', 'error'); return; }
+
+  const saveBtn = document.getElementById('mfPaySaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⏳</span> جاري الحفظ...'; }
+
   try {
-    const _mfPayTs = document.getElementById('mfPayUpdatedAt')?.value||null;
-    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:amount, paid_date:pdate, bayan}, {queue:true,queueLabel:'تسجيل دفعة أتعاب',conflictTs:_mfPayTs});
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`,
+      {paid_amount: amount, paid_date: pdate, bayan},
+      {queue: true, queueLabel: 'تسجيل دفعة أتعاب'});
     document.getElementById('mfPayModalEl')?.remove();
     toast('✅ تم تسجيل الدفعة');
-    await renderMFPage();
-  } catch(e){
-    if(e._queued){document.getElementById('mfPayModalEl')?.remove();toast('⏳ '+e.message,'warning');}
-    else{ toast(e.message,'error'); }
+    // Instant local update — no full page refresh
+    _mfUpdateLocalRecord(recordId, {paid_amount: amount, paid_date: pdate||null, bayan});
+  } catch(e) {
+    if (e._queued) {
+      document.getElementById('mfPayModalEl')?.remove();
+      toast('⏳ '+e.message, 'warning');
+      // Optimistic update even while queued
+      _mfUpdateLocalRecord(recordId, {paid_amount: amount, paid_date: pdate||null, bayan});
+    } else {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 حفظ'; }
+      toast(e.message, 'error');
+    }
   }
 };
 
@@ -20403,7 +20440,7 @@ window.mfSaveEditRecord = async function(recordId) {
 };
 
 // Apply saved language on load
-window.addEventListener('ms-app-ready', ()=>{ _OQ._updateBadge();
+window.addEventListener('ms-app-ready', ()=>{
   if(_currentLang === 'en') toggleLanguage();
 });
 
