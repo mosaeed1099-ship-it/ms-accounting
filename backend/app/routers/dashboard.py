@@ -30,17 +30,19 @@ async def dashboard_stats(db: Session = Depends(get_db), current_user: User = De
             Client.status == ClientStatus.ACTIVE,
             func.date(Client.created_at) >= month_start
         ).scalar() or 0
-        from sqlalchemy import text as _text, cast, String
-        obl_counts = db.execute(_text("""
-            SELECT
-                COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%income_annual%')   AS income,
-                COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%vat_monthly%')     AS vat,
-                COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%payroll_monthly%') AS payroll
-            FROM clients WHERE status = 'active'::clientstatus
-        """)).fetchone()
-        income_clients  = obl_counts[0] if obl_counts else 0
-        vat_clients     = obl_counts[1] if obl_counts else 0
-        payroll_clients = obl_counts[2] if obl_counts else 0
+        from sqlalchemy import cast as sa_cast, Text
+        income_clients = db.query(func.count(Client.id)).filter(
+            Client.status == ClientStatus.ACTIVE,
+            sa_cast(Client.tax_obligations, Text).like('%income_annual%')
+        ).scalar() or 0
+        vat_clients = db.query(func.count(Client.id)).filter(
+            Client.status == ClientStatus.ACTIVE,
+            sa_cast(Client.tax_obligations, Text).like('%vat_monthly%')
+        ).scalar() or 0
+        payroll_clients = db.query(func.count(Client.id)).filter(
+            Client.status == ClientStatus.ACTIVE,
+            sa_cast(Client.tax_obligations, Text).like('%payroll_monthly%')
+        ).scalar() or 0
     except Exception as e:
         db.rollback(); errors.append(f"clients: {e}"); active_clients=total_clients=new_clients_month=income_clients=vat_clients=payroll_clients=0
 

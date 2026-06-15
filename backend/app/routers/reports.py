@@ -50,7 +50,7 @@ def aging_report(
     for inv, client in unpaid:
         paid = db.query(func.sum(Payment.amount)).filter(
             Payment.invoice_id == inv.id).scalar() or 0
-        remaining = round((inv.total_amount or 0) - paid, 2)
+        remaining = round((inv.total or 0) - paid, 2)
         if remaining <= 0:
             continue
 
@@ -64,7 +64,7 @@ def aging_report(
             "invoice_number": inv.invoice_number,
             "due_date": str(due),
             "age_days": age,
-            "total_amount": inv.total_amount,
+            "total_amount": inv.total,
             "paid": paid,
             "remaining": remaining,
         }
@@ -148,7 +148,7 @@ def financial_summary(
 ):
     """ملخص مالي سريع للمكتب"""
     # Invoices issued
-    inv_q = db.query(func.sum(Invoice.total_amount)).filter(
+    inv_q = db.query(func.sum(Invoice.total)).filter(
         func.extract("year", Invoice.created_at) == year)
     if month:
         inv_q = inv_q.filter(func.extract("month", Invoice.created_at) == month)
@@ -199,7 +199,7 @@ def clients_profit(
     q = db.query(
         Client.id,
         Client.name,
-        func.sum(Invoice.total_amount).label("total_invoiced"),
+        func.sum(Invoice.total).label("total_invoiced"),
         func.count(Invoice.id).label("invoice_count")
     ).outerjoin(Invoice, Invoice.client_id == Client.id)
 
@@ -210,7 +210,7 @@ def clients_profit(
         )
 
     rows = q.group_by(Client.id, Client.name).order_by(
-        func.sum(Invoice.total_amount).desc().nullslast()
+        func.sum(Invoice.total).desc().nullslast()
     ).all()
 
     result = []
