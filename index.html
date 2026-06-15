@@ -10,12 +10,41 @@
   <script>
     // Force reload if served from cache (no v= param)
     (function(){
-      const V = '1750035001';
+      const V = '1750035002';
       const u = new URL(location.href);
       if(u.searchParams.get('v') !== V){
         u.searchParams.set('v', V);
         location.replace(u.toString());
       }
+    })();
+    // Live version watcher — polls version.txt, shows banner on new deploy
+    (function(){
+      const VER_URL = '/ms-accounting/version.txt';
+      let _storedVer = null;
+      let _bannerShown = false;
+      const showBanner = function() {
+        if (_bannerShown || document.getElementById('_msUpdateBanner')) return;
+        _bannerShown = true;
+        const d = document.createElement('div');
+        d.id = '_msUpdateBanner';
+        d.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;background:#1e293b;color:white;padding:14px 22px;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 8px 30px rgba(0,0,0,.35);font-family:Cairo,sans-serif;display:flex;align-items:center;gap:12px;animation:fadeUp .3s ease';
+        d.innerHTML = '🔄 يتوفر تحديث جديد للنظام &nbsp;<span style="background:#3b82f6;padding:4px 14px;border-radius:8px;font-size:13px">تحديث الآن</span>';
+        d.onclick = function(){ location.reload(true); };
+        document.body ? document.body.appendChild(d) : document.addEventListener('DOMContentLoaded', function(){ document.body.appendChild(d); });
+      };
+      const check = async function() {
+        try {
+          const r = await fetch(VER_URL + '?_=' + Date.now(), {cache:'no-store'});
+          if (!r.ok) return;
+          const v = (await r.text()).trim();
+          if (!v) return;
+          if (_storedVer && v !== _storedVer) showBanner();
+          _storedVer = v;
+        } catch(e) {}
+      };
+      window.addEventListener('focus', check);
+      setTimeout(check, 8000);
+      setInterval(check, 5 * 60 * 1000);
     })();
   </script>
   <title>MS Accounting — نظام إدارة مكتب المحاسبة</title>
