@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Plus, Search, Filter, Edit, Eye, Phone, Mail, Building2, User } from 'lucide-react'
-import api from '../api/client'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Search, Edit, Eye, Phone, Building2, User } from 'lucide-react'
+import { coreApi, EP, wsOn } from '../core'
 import type { Client } from '../types'
 import { Modal } from '../components/ui/Modal'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -9,45 +9,63 @@ import { toast } from '../hooks/useToast'
 import {
   clientStatusLabels, clientTypeLabels, formatDate, formatMoney, governorates,
 } from '../utils/format'
-import clsx from 'clsx'
+
+const PAGE_SIZE = 15
 
 const STATUS_BADGE: Record<string, string> = {
   active: 'badge-green', inactive: 'badge-gray', prospect: 'badge-blue', suspended: 'badge-red',
 }
 
-export default function Clients() {
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
+function useClients() {
   const [clients, setClients] = useState<Client[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const qs = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) })
+    if (search) qs.set('q', search)
+    if (statusFilter) qs.set('status', statusFilter)
+    const res = await coreApi<{ items: Client[]; total: number }>('GET', `${EP.CLIENTS}?${qs}`)
+    if (res) { setClients(res.items); setTotal(res.total) }
+    setLoading(false)
+  }, [page, search, statusFilter])
+
+  // Initial + filter-driven load
+  useEffect(() => { load() }, [load])
+
+  // Real-time: refresh silently when another user touches clients
+  useEffect(() => wsOn('clients_updated', () => load(true)), [load])
+
+  function changeSearch(v: string) { setSearch(v); setPage(1) }
+  function changeStatus(v: string) { setStatusFilter(v); setPage(1) }
+
+  return { clients, total, page, setPage, search, changeSearch, statusFilter, changeStatus, loading, load }
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
+
+export default function Clients() {
+  const {
+    clients, total, page, setPage,
+    search, changeSearch, statusFilter, changeStatus,
+    loading, load,
+  } = useClients()
+
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState<Client | null>(null)
   const [viewClient, setViewClient] = useState<Client | null>(null)
-
-  async function load() {
-    setLoading(true)
-    try {
-      const params: any = { page, page_size: 15 }
-      if (search) params.q = search
-      if (statusFilter) params.status = statusFilter
-      const { data } = await api.get('/clients', { params })
-      setClients(data.items)
-      setTotal(data.total)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { load() }, [page, search, statusFilter])
 
   function openAdd() { setSelected(null); setShowForm(true) }
   function openEdit(c: Client) { setSelected(c); setShowForm(true) }
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="page-header">
         <div>
           <h2 className="page-title">العملاء</h2>
@@ -58,7 +76,6 @@ export default function Clients() {
         </button>
       </div>
 
-      {/* Filters */}
       <div className="card p-4 flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -66,16 +83,15 @@ export default function Clients() {
             className="input pr-9"
             placeholder="بحث بالاسم أو الرقم الضريبي أو الهاتف..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            onChange={(e) => changeSearch(e.target.value)}
           />
         </div>
-        <select className="input w-auto" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}>
+        <select className="input w-auto" value={statusFilter} onChange={(e) => changeStatus(e.target.value)}>
           <option value="">كل الحالات</option>
           {Object.entries(clientStatusLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
 
-      {/* Table */}
       <div className="table-container">
         <table className="table">
           <thead>
@@ -93,11 +109,7 @@ export default function Clients() {
           </thead>
           <tbody>
             {loading && (
-              <tr>
-                <td colSpan={9} className="text-center py-16">
-                  <PageLoader />
-                </td>
-              </tr>
+              <tr><td colSpan={9} className="text-center py-16"><PageLoader /></td></tr>
             )}
             {!loading && clients.length === 0 && (
               <tr>
@@ -140,20 +152,18 @@ export default function Clients() {
         </table>
       </div>
 
-      {/* Pagination */}
-      {total > 15 && (
+      {total > PAGE_SIZE && (
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-500">
-            عرض {(page - 1) * 15 + 1}–{Math.min(page * 15, total)} من {total}
+            عرض {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} من {total}
           </span>
           <div className="flex gap-2">
             <button className="btn-secondary btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>السابق</button>
-            <button className="btn-secondary btn-sm" disabled={page * 15 >= total} onClick={() => setPage(p => p + 1)}>التالي</button>
+            <button className="btn-secondary btn-sm" disabled={page * PAGE_SIZE >= total} onClick={() => setPage(p => p + 1)}>التالي</button>
           </div>
         </div>
       )}
 
-      {/* Form Modal */}
       {showForm && (
         <ClientFormModal
           client={selected}
@@ -162,7 +172,6 @@ export default function Clients() {
         />
       )}
 
-      {/* View Modal */}
       {viewClient && (
         <ClientViewModal
           client={viewClient}
@@ -174,48 +183,56 @@ export default function Clients() {
   )
 }
 
-// ──────────────────────────────────────────
-// Client Form Modal
-// ──────────────────────────────────────────
+// ─── form modal ───────────────────────────────────────────────────────────────
+
 function ClientFormModal({ client, onClose, onSaved }: {
-  client: Client | null; onClose: () => void; onSaved: () => void
+  client: Client | null
+  onClose: () => void
+  onSaved: () => void
 }) {
   const isEdit = !!client
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    name: client?.name || '',
-    name_en: client?.name_en || '',
-    client_type: client?.client_type || 'company',
-    status: client?.status || 'active',
-    email: client?.email || '',
-    phone: client?.phone || '',
-    phone2: client?.phone2 || '',
-    address: client?.address || '',
-    governorate: client?.governorate || '',
-    commercial_register: client?.commercial_register || '',
-    tax_number: client?.tax_number || '',
-    national_id: client?.national_id || '',
-    activity: client?.activity || '',
-    tax_type: client?.tax_type || 'vat',
-    contract_value: client?.contract_value || 0,
-    payment_terms: client?.payment_terms || 30,
-    notes: client?.notes || '',
+    name: client?.name ?? '',
+    name_en: client?.name_en ?? '',
+    client_type: client?.client_type ?? 'company',
+    status: client?.status ?? 'active',
+    email: client?.email ?? '',
+    phone: client?.phone ?? '',
+    phone2: client?.phone2 ?? '',
+    address: client?.address ?? '',
+    governorate: client?.governorate ?? '',
+    commercial_register: client?.commercial_register ?? '',
+    tax_number: client?.tax_number ?? '',
+    national_id: client?.national_id ?? '',
+    activity: client?.activity ?? '',
+    tax_type: client?.tax_type ?? 'vat',
+    contract_value: client?.contract_value ?? 0,
+    payment_terms: client?.payment_terms ?? 30,
+    notes: client?.notes ?? '',
   })
 
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSave() {
     if (!form.name.trim()) { toast('اسم العميل مطلوب', 'error'); return }
     setSaving(true)
     try {
       if (isEdit) {
-        await api.put(`/clients/${client!.id}`, form)
-        toast('تم تحديث بيانات العميل')
+        // Pass updated_at as conflictTs → X-If-Unmodified-Since header injected automatically
+        const res = await coreApi('PUT', EP.CLIENT(client!.id), form, {
+          conflictTs: client!.updated_at ?? null,
+          queue: true,
+          queueLabel: 'تعديل بيانات عميل',
+        })
+        if (res !== null) { toast('تم تحديث بيانات العميل'); onSaved() }
       } else {
-        await api.post('/clients', form)
-        toast('تم إضافة العميل بنجاح')
+        const res = await coreApi('POST', EP.CLIENTS, form, {
+          queue: true,
+          queueLabel: 'إضافة عميل جديد',
+        })
+        if (res !== null) { toast('تم إضافة العميل بنجاح'); onSaved() }
       }
-      onSaved()
     } catch (e: any) {
       toast(e.message, 'error')
     } finally {
@@ -239,7 +256,6 @@ function ClientFormModal({ client, onClose, onSaved }: {
       }
     >
       <div className="space-y-6">
-        {/* Basic */}
         <div>
           <h4 className="section-title"><Building2 className="w-4 h-4 text-primary-600" />البيانات الأساسية</h4>
           <div className="form-row grid-cols-1 md:grid-cols-2">
@@ -278,7 +294,6 @@ function ClientFormModal({ client, onClose, onSaved }: {
           </div>
         </div>
 
-        {/* Contact */}
         <div>
           <h4 className="section-title"><Phone className="w-4 h-4 text-primary-600" />بيانات التواصل</h4>
           <div className="form-row grid-cols-1 md:grid-cols-2">
@@ -308,7 +323,6 @@ function ClientFormModal({ client, onClose, onSaved }: {
           </div>
         </div>
 
-        {/* Business */}
         <div>
           <h4 className="section-title"><Building2 className="w-4 h-4 text-primary-600" />البيانات التجارية والضريبية</h4>
           <div className="form-row grid-cols-1 md:grid-cols-2">
@@ -339,7 +353,6 @@ function ClientFormModal({ client, onClose, onSaved }: {
           </div>
         </div>
 
-        {/* Notes */}
         <div className="form-group">
           <label className="label">ملاحظات</label>
           <textarea className="input" rows={3} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="أي ملاحظات خاصة بالعميل..." />
@@ -349,18 +362,28 @@ function ClientFormModal({ client, onClose, onSaved }: {
   )
 }
 
-// ──────────────────────────────────────────
-// Client View Modal
-// ──────────────────────────────────────────
+// ─── view modal ───────────────────────────────────────────────────────────────
+
 function ClientViewModal({ client, onClose, onEdit }: {
-  client: Client; onClose: () => void; onEdit: () => void
+  client: Client
+  onClose: () => void
+  onEdit: () => void
 }) {
   return (
-    <Modal isOpen onClose={onClose} title={client.name} size="lg"
-      footer={<><button className="btn-secondary" onClick={onClose}>إغلاق</button><button className="btn-primary" onClick={onEdit}><Edit className="w-4 h-4" />تعديل</button></>}
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={client.name}
+      size="lg"
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onClose}>إغلاق</button>
+          <button className="btn-primary" onClick={onEdit}><Edit className="w-4 h-4" />تعديل</button>
+        </>
+      }
     >
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-        {[
+        {([
           ['الكود', client.code],
           ['النوع', clientTypeLabels[client.client_type]],
           ['الحالة', clientStatusLabels[client.status]],
@@ -376,8 +399,8 @@ function ClientViewModal({ client, onClose, onEdit }: {
           ['النشاط', client.activity],
           ['المحاسب المسؤول', client.assigned_accountant],
           ['تاريخ الإنشاء', formatDate(client.created_at)],
-        ].map(([k, v]) => v ? (
-          <div key={k as string}>
+        ] as [string, string | undefined][]).map(([k, v]) => v ? (
+          <div key={k}>
             <span className="text-gray-400">{k}:</span>
             <span className="font-medium text-gray-800 mr-2">{v}</span>
           </div>
