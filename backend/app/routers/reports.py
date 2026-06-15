@@ -14,7 +14,7 @@ from app.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.invoice import Invoice, Payment, InvoiceStatus
-from app.models.client import Client
+from app.models.client import Client, ClientStatus
 from app.models.collection import CollectionPayment
 from app.models.accounting import AccTreasuryTx, AccTreasury
 
@@ -172,7 +172,7 @@ def financial_summary(
         status_counts[s] = cnt_q.scalar() or 0
 
     total_clients = db.query(func.count(Client.id)).scalar() or 0
-    active_clients = db.query(func.count(Client.id)).filter(Client.status == "active").scalar() or 0
+    active_clients = db.query(func.count(Client.id)).filter(Client.status == ClientStatus.ACTIVE).scalar() or 0
 
     return {
         "year": year,
