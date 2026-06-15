@@ -117,21 +117,12 @@ def get_collections(
 ):
     q = db.query(FinanceCollection)
 
-    if _is_owner(current_user):
-        if month:
-            q = q.filter(FinanceCollection.billing_month == month)
-        if year:
-            q = q.filter(FinanceCollection.billing_year == year)
-        if collection_type:
-            q = q.filter(FinanceCollection.collection_type == collection_type)
-    else:
-        q = q.filter(FinanceCollection.created_by == current_user.id)
-        if month:
-            q = q.filter(FinanceCollection.billing_month == month)
-        if year:
-            q = q.filter(FinanceCollection.billing_year == year)
-        if collection_type:
-            q = q.filter(FinanceCollection.collection_type == collection_type)
+    if month:
+        q = q.filter(FinanceCollection.billing_month == month)
+    if year:
+        q = q.filter(FinanceCollection.billing_year == year)
+    if collection_type:
+        q = q.filter(FinanceCollection.collection_type == collection_type)
 
     rows = q.order_by(FinanceCollection.date.desc(), FinanceCollection.created_at.desc()).all()
     return [_coll_dict(r, current_user.id) for r in rows]
