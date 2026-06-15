@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Bell, CheckCircle2, Clock, AlertTriangle, RefreshCw, Calendar } from 'lucide-react'
-import api from '../api/client'
+import { coreApi, EP, wsOn } from '../core'
 import { toast } from '../hooks/useToast'
 import { Modal } from '../components/ui/Modal'
 import { PageLoader } from '../components/ui/Spinner'
@@ -23,28 +23,38 @@ const FREQ_LABELS: Record<string, string> = {
   monthly: 'شهري', quarterly: 'ربعي', annual: 'سنوي',
 }
 
-export default function Obligations() {
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
+function useObligations(days: number) {
   const [upcoming, setUpcoming] = useState<any[]>([])
   const [obligations, setObligations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [days, setDays] = useState(30)
-  const [tab, setTab] = useState<'upcoming' | 'all'>('upcoming')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [upRes, oblRes] = await Promise.all([
-        api.get(`/api/obligations/upcoming?days=${days}`),
-        api.get('/api/obligations'),
-      ])
-      setUpcoming(upRes.data)
-      setObligations(oblRes.data.items)
-    } catch { toast('خطأ في تحميل البيانات', 'error') }
-    finally { setLoading(false) }
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const [upRes, oblRes] = await Promise.all([
+      coreApi<any[]>('GET', `/obligations/upcoming?days=${days}`),
+      coreApi<{ items: any[] }>('GET', '/obligations'),
+    ])
+    if (upRes) setUpcoming(upRes)
+    if (oblRes) setObligations(oblRes.items)
+    setLoading(false)
   }, [days])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => wsOn('obligations_updated', () => load(true)), [load])
+
+  return { upcoming, obligations, loading, load }
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
+
+export default function Obligations() {
+  const [days, setDays] = useState(30)
+  const [tab, setTab] = useState<'upcoming' | 'all'>('upcoming')
+  const [showAdd, setShowAdd] = useState(false)
+
+  const { upcoming, obligations, loading, load } = useObligations(days)
 
   if (loading && !upcoming.length && !obligations.length) return <PageLoader />
 
@@ -59,12 +69,11 @@ export default function Obligations() {
           <p className="page-subtitle">متابعة مواعيد تقديم الإقرارات الضريبية للعملاء</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-secondary" onClick={load}><RefreshCw className="w-4 h-4" /></button>
+          <button className="btn-secondary" onClick={() => load()}><RefreshCw className="w-4 h-4" /></button>
           <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus className="w-4 h-4" /> إضافة التزام</button>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'إجمالي الالتزامات', value: obligations.length, color: 'bg-blue-50 text-blue-600', icon: Bell },
@@ -74,12 +83,14 @@ export default function Obligations() {
         ].map(({ label, value, color, icon: Icon }) => (
           <div key={label} className="stat-card">
             <div className={`stat-icon ${color}`}><Icon className="w-5 h-5" /></div>
-            <div><div className="text-2xl font-bold text-gray-900">{value}</div><div className="text-xs text-gray-500">{label}</div></div>
+            <div>
+              <div className="text-2xl font-bold text-gray-900">{value}</div>
+              <div className="text-xs text-gray-500">{label}</div>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {[
           { id: 'upcoming', label: `المواعيد القادمة (${upcoming.length})` },
@@ -87,7 +98,7 @@ export default function Obligations() {
         ].map(t => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id as any)}
+            onClick={() => setTab(t.id as 'upcoming' | 'all')}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === t.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
@@ -118,7 +129,7 @@ export default function Obligations() {
               {upcoming.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-10 text-gray-400">لا توجد مواعيد قادمة</td></tr>
               ) : upcoming.map(inst => (
-                <InstanceRow key={inst.id} inst={inst} onUpdated={load} />
+                <InstanceRow key={inst.id} inst={inst} onUpdated={() => load(true)} />
               ))}
             </tbody>
           </table>
@@ -149,25 +160,35 @@ export default function Obligations() {
         </div>
       )}
 
-      {showAdd && <AddObligationModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load() }} />}
+      {showAdd && (
+        <AddObligationModal
+          onClose={() => setShowAdd(false)}
+          onSaved={() => { setShowAdd(false); load() }}
+        />
+      )}
     </div>
   )
 }
+
+// ─── instance row — mark submitted ────────────────────────────────────────────
 
 function InstanceRow({ inst, onUpdated }: { inst: any; onUpdated: () => void }) {
   const [updating, setUpdating] = useState(false)
 
   async function markSubmitted() {
     setUpdating(true)
-    try {
-      await api.put(`/api/obligations/instances/${inst.id}`, {
-        status: 'submitted',
-        submitted_at: new Date().toISOString(),
-      })
-      toast('تم تسجيل التقديم')
-      onUpdated()
-    } catch { toast('خطأ', 'error') }
-    finally { setUpdating(false) }
+    const res = await coreApi(
+      'PUT',
+      EP.OBLIGATION_INSTANCE(inst.id),
+      { status: 'submitted', submitted_at: new Date().toISOString() },
+      {
+        conflictTs: inst.updated_at ?? null,
+        queue: true,
+        queueLabel: `تسجيل تقديم التزام — ${inst.client_name}`,
+      },
+    )
+    if (res !== null) { toast('تم تسجيل التقديم'); onUpdated() }
+    setUpdating(false)
   }
 
   const isOverdue = inst.days_remaining < 0
@@ -192,7 +213,11 @@ function InstanceRow({ inst, onUpdated }: { inst: any; onUpdated: () => void }) 
           </span>
         )}
       </td>
-      <td><span className={`badge ${INSTANCE_STATUS_BADGE[inst.status] || 'badge-gray'}`}>{INSTANCE_STATUS_LABELS[inst.status] || inst.status}</span></td>
+      <td>
+        <span className={`badge ${INSTANCE_STATUS_BADGE[inst.status] || 'badge-gray'}`}>
+          {INSTANCE_STATUS_LABELS[inst.status] || inst.status}
+        </span>
+      </td>
       <td>
         {inst.status !== 'submitted' && (
           <button className="btn-success btn-sm" onClick={markSubmitted} disabled={updating}>
@@ -204,32 +229,38 @@ function InstanceRow({ inst, onUpdated }: { inst: any; onUpdated: () => void }) 
   )
 }
 
+// ─── add obligation modal ─────────────────────────────────────────────────────
+
 function AddObligationModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [saving, setSaving] = useState(false)
   const [clients, setClients] = useState<any[]>([])
   const [form, setForm] = useState({
-    client_id: '', obligation_type: 'vat_monthly',
-    frequency: 'monthly', due_day: '15', notes: '',
+    client_id: '',
+    obligation_type: 'vat_monthly',
+    frequency: 'monthly',
+    due_day: '15',
+    notes: '',
   })
 
   useEffect(() => {
-    api.get('/api/clients?limit=200').then(r => setClients(r.data.items || [])).catch(() => {})
+    coreApi<{ items: any[] }>('GET', `${EP.CLIENTS}?page_size=200`)
+      .then(r => { if (r) setClients(r.items) })
   }, [])
 
-  function set(key: string, val: string) { setForm(f => ({ ...f, [key]: val })) }
+  const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
 
   async function handleSave() {
     if (!form.client_id) { toast('اختر العميل', 'error'); return }
     setSaving(true)
     try {
-      await api.post('/api/obligations', {
-        ...form,
-        client_id: +form.client_id,
-        due_day: +form.due_day,
-      })
-      toast('تم إنشاء الالتزام')
-      onSaved()
-    } catch (e: any) { toast(e.response?.data?.detail || 'خطأ', 'error') }
+      const res = await coreApi(
+        'POST',
+        '/obligations',
+        { ...form, client_id: +form.client_id, due_day: +form.due_day },
+        { queue: true, queueLabel: 'إضافة التزام ضريبي' },
+      )
+      if (res !== null) { toast('تم إنشاء الالتزام'); onSaved() }
+    } catch (e: any) { toast(e.message || 'خطأ', 'error') }
     finally { setSaving(false) }
   }
 
@@ -242,7 +273,9 @@ function AddObligationModal({ onClose, onSaved }: { onClose: () => void; onSaved
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>إلغاء</button>
-          <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'جاري الحفظ...' : 'إضافة'}</button>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'جاري الحفظ...' : 'إضافة'}
+          </button>
         </>
       }
     >
