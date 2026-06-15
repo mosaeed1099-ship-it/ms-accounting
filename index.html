@@ -19894,6 +19894,13 @@ function _mfStatus(r) {
   return 'unpaid';
 }
 
+// ── helper: days overdue (days since end of record's month) ─
+function _mfOverdueDays(r) {
+  const endOfMonth = new Date(r.year, r.month, 0);
+  const today = new Date();
+  return Math.floor((today - endOfMonth) / (1000*60*60*24));
+}
+
 // ── helper: recompute dashboard summary from local records ─
 function _mfRecomputeDash(records) {
   const dash = window._mfLastDash ? JSON.parse(JSON.stringify(window._mfLastDash)) : {summary:{},clients:{},top_debtors:[]};
@@ -19933,10 +19940,13 @@ function mfRenderPage(dash, records) {
   // Apply filter
   const q = (mfSearchQuery||'').trim().toLowerCase();
   let filtered = records;
-  if (mfTableFilter === 'paid')    filtered = records.filter(r=>_mfStatus(r)==='paid');
+  if (mfTableFilter === 'paid')         filtered = records.filter(r=>_mfStatus(r)==='paid');
   else if (mfTableFilter === 'unpaid')  filtered = records.filter(r=>_mfStatus(r)==='unpaid');
   else if (mfTableFilter === 'partial') filtered = records.filter(r=>_mfStatus(r)==='partial');
   else if (mfTableFilter === 'overdue') filtered = records.filter(r=>_mfStatus(r)==='overdue');
+  else if (mfTableFilter === 'ov30')    filtered = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>30);
+  else if (mfTableFilter === 'ov60')    filtered = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>60);
+  else if (mfTableFilter === 'ov90')    filtered = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>90);
   if (q) filtered = filtered.filter(r=>(r.client_name||'').toLowerCase().includes(q));
 
   // Stats for filter buttons
@@ -19945,6 +19955,9 @@ function mfRenderPage(dash, records) {
   const countUnpaid  = records.filter(r=>_mfStatus(r)==='unpaid').length;
   const countPartial = records.filter(r=>_mfStatus(r)==='partial').length;
   const countOverdue = records.filter(r=>_mfStatus(r)==='overdue').length;
+  const countOv30    = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>30).length;
+  const countOv60    = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>60).length;
+  const countOv90    = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>90).length;
 
   const kpis = [
     {l:'إجمالي المستحقات', v:fmt(s.total_due),              c:'#3b82f6', bg:'#eff6ff', filter:null},
@@ -19956,16 +19969,20 @@ function mfRenderPage(dash, records) {
   ];
 
   const filterBtns = [
-    {f:'all',     l:`الكل (${countAll})`,           c:'#64748b', ac:'#1e293b'},
-    {f:'paid',    l:`✅ مدفوع (${countPaid})`,       c:'#64748b', ac:'#10b981'},
-    {f:'partial', l:`🟡 جزئي (${countPartial})`,    c:'#64748b', ac:'#f59e0b'},
-    {f:'unpaid',  l:`❌ غير مدفوع (${countUnpaid})`,c:'#64748b', ac:'#ef4444'},
-    {f:'overdue', l:`⏰ متأخر (${countOverdue})`,   c:'#64748b', ac:'#dc2626'},
+    {f:'all',     l:`الكل (${countAll})`,              c:'#64748b', ac:'#1e293b'},
+    {f:'paid',    l:`✅ مدفوع (${countPaid})`,          c:'#64748b', ac:'#10b981'},
+    {f:'partial', l:`🟡 جزئي (${countPartial})`,       c:'#64748b', ac:'#f59e0b'},
+    {f:'unpaid',  l:`❌ غير مدفوع (${countUnpaid})`,   c:'#64748b', ac:'#ef4444'},
+    {f:'overdue', l:`⏰ متأخر (${countOverdue})`,      c:'#64748b', ac:'#dc2626'},
+    {f:'ov30',    l:`🔶 +30 يوم (${countOv30})`,       c:'#64748b', ac:'#b45309'},
+    {f:'ov60',    l:`🔴 +60 يوم (${countOv60})`,       c:'#64748b', ac:'#b91c1c'},
+    {f:'ov90',    l:`💀 +90 يوم (${countOv90})`,       c:'#64748b', ac:'#7f1d1d'},
   ];
 
   const tableTitle = {
     all:'جدول العملاء', paid:'✅ دفعوا',
-    partial:'🟡 مدفوع جزئياً', unpaid:'❌ لم يدفعوا', overdue:'⏰ المتأخرون'
+    partial:'🟡 مدفوع جزئياً', unpaid:'❌ لم يدفعوا', overdue:'⏰ المتأخرون',
+    ov30:'🔶 متأخر أكثر من 30 يوم', ov60:'🔴 متأخر أكثر من 60 يوم', ov90:'💀 متأخر أكثر من 90 يوم'
   }[mfTableFilter] || 'جدول العملاء';
 
   main.innerHTML = `
@@ -20034,7 +20051,10 @@ function mfRenderPage(dash, records) {
   <div style="background:white;border-radius:16px;border:1px solid #e8edf3;overflow:hidden">
     <div style="padding:12px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center">
       <div style="font-size:14px;font-weight:700;color:#1e293b">${tableTitle} — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</div>
-      <div style="font-size:12px;color:#64748b">${filtered.length} عميل</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="font-size:12px;color:#64748b">${filtered.length} عميل</div>
+        <button onclick="mfExportCSV()" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;color:#374151;font-family:inherit">📥 CSV</button>
+      </div>
     </div>
     <div style="overflow-x:auto">
     <table class="data-table" style="width:100%">
@@ -20084,6 +20104,8 @@ function mfRenderPage(dash, records) {
                 style="font-size:12px;padding:4px 10px;border-radius:6px;border:none;cursor:pointer;background:${r.paid_amount>0?'#6366f1':'#3b82f6'};color:white;margin-left:4px;font-family:inherit">
                 ${r.paid_amount>0?'✏️ تعديل':'💳 دفع'}
               </button>
+              ${r.remaining>0?`<button onclick="mfQuickPay(${r.id},${r.total_due},'${safeName}',${r.remaining},${r.paid_amount||0})" style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#10b981;color:white;margin-left:4px" title="دفع كامل المتبقي فوراً">🚀</button>`:''}
+
               <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${safeName}','${(r.bayan||'').replace(/'/g,"\\'")}','${(r.notes||'').replace(/'/g,"\\'")}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">✏️</button>
               ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${safeName}')"
@@ -20093,6 +20115,13 @@ function mfRenderPage(dash, records) {
           </tr>`;}).join('')
           : `<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
       </tbody>
+      ${filtered.length>0?`<tfoot><tr style="background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0">
+        <td colspan="4" style="padding:10px 12px;font-size:12px;color:#64748b">الإجمالي (${filtered.length} عميل)</td>
+        <td style="padding:10px 12px;color:#3b82f6">${filtered.reduce((a,r)=>a+(r.total_due||0),0).toLocaleString('ar-EG')} ج.م</td>
+        <td style="padding:10px 12px;color:#10b981">${filtered.reduce((a,r)=>a+(r.paid_amount||0),0).toLocaleString('ar-EG')} ج.م</td>
+        <td style="padding:10px 12px;color:#ef4444">${filtered.reduce((a,r)=>a+(r.remaining||0),0).toLocaleString('ar-EG')} ج.م</td>
+        <td colspan="5"></td>
+      </tr></tfoot>`:''}
     </table>
     </div>
   </div>`;
@@ -20441,6 +20470,47 @@ window.mfSaveEditRecord = async function(recordId) {
     if(e._queued){document.getElementById('mfEditRecordModalEl')?.remove();toast('⏳ '+e.message,'warning');}
     else{ toast(e.message,'error'); }
   }
+};
+
+// ── Monthly Fees: Quick Pay (full remaining, no modal) ───────
+window.mfQuickPay = async function(recordId, totalDue, clientName, remaining, currentPaid) {
+  if (!confirm('دفع ' + (remaining||0).toLocaleString('ar-EG') + ' ج.م لـ ' + clientName + '؟')) return;
+  const newPaid = (currentPaid||0) + (remaining||0);
+  const pdate = new Date().toISOString().slice(0,10);
+  try {
+    await api('PUT', '/api/monthly-fees/records/' + recordId + '/pay',
+      {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'},
+      {queue: true, queueLabel: 'دفع سريع أتعاب'});
+    toast('✅ تم التسجيل');
+    _mfUpdateLocalRecord(recordId, {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'});
+  } catch(e) {
+    if (e._queued) { toast('⏳ ' + e.message, 'warning'); _mfUpdateLocalRecord(recordId, {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'}); }
+    else toast(e.message, 'error');
+  }
+};
+
+// ── Monthly Fees: Export visible table as CSV ────────────────
+window.mfExportCSV = function() {
+  const q = (mfSearchQuery||'').trim().toLowerCase();
+  let data = _mfAllRecords;
+  if (mfTableFilter === 'paid')         data = data.filter(r=>_mfStatus(r)==='paid');
+  else if (mfTableFilter === 'unpaid')  data = data.filter(r=>_mfStatus(r)==='unpaid');
+  else if (mfTableFilter === 'partial') data = data.filter(r=>_mfStatus(r)==='partial');
+  else if (mfTableFilter === 'overdue') data = data.filter(r=>_mfStatus(r)==='overdue');
+  else if (mfTableFilter === 'ov30')    data = data.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>30);
+  else if (mfTableFilter === 'ov60')    data = data.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>60);
+  else if (mfTableFilter === 'ov90')    data = data.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>90);
+  if (q) data = data.filter(r=>(r.client_name||'').toLowerCase().includes(q));
+  const header = ['اسم الشركة','الأتعاب','رصيد سابق','إجمالي المطلوب','المدفوع','المتبقي','تاريخ الدفع','آخر دفعة','عدد الدفعات','الحالة'];
+  const rows = data.map(r=>[
+    r.client_name||'', r.fee_amount||0, r.balance_carried||0, r.total_due||0,
+    r.paid_amount||0, r.remaining||0, r.paid_date||'', r.last_paid_date||'', r.payment_count||0, _mfStatus(r)
+  ]);
+  const csv = '﻿' + [header,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'أتعاب_' + MF_MONTHS[mfCurrentMonth] + '_' + mfCurrentYear + '.csv';
+  a.click();
 };
 
 // Apply saved language on load
