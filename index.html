@@ -20099,18 +20099,15 @@ function mfRenderPage(dash, records) {
                 : `<span style="background:#fef2f2;color:#ef4444;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✗ غير مدفوع</span>`}
             </td>
             <td onclick="event.stopPropagation()" style="white-space:nowrap">
-              ${currentUser?.role==='admin'?`
               <button id="mfPayBtn_${r.id}" onclick="mfPayModal(${r.id},${r.total_due},'${safeName}',${r.remaining},${r.paid_amount||0})"
                 style="font-size:12px;padding:4px 10px;border-radius:6px;border:none;cursor:pointer;background:${r.paid_amount>0?'#6366f1':'#3b82f6'};color:white;margin-left:4px;font-family:inherit">
                 ${r.paid_amount>0?'✏️ تعديل':'💳 دفع'}
               </button>
               ${r.remaining>0?`<button onclick="mfQuickPay(${r.id},${r.total_due},'${safeName}',${r.remaining},${r.paid_amount||0})" style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#10b981;color:white;margin-left:4px" title="دفع كامل المتبقي فوراً">🚀</button>`:''}
-
               <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${safeName}','${(r.bayan||'').replace(/'/g,"\\'")}','${(r.notes||'').replace(/'/g,"\\'")}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">✏️</button>
               ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${safeName}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">🗑️</button>`:''}
-              `:'<span style="color:#94a3b8;font-size:12px">—</span>'}
             </td>
           </tr>`;}).join('')
           : `<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
