@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Search, Phone, Mail, MapPin, User, TrendingUp, XCircle, Clock, CheckCircle2, RefreshCw } from 'lucide-react'
-import api from '../api/client'
+import { coreApi, EP, wsOn } from '../core'
 import { toast } from '../hooks/useToast'
 import { Modal } from '../components/ui/Modal'
 import { PageLoader } from '../components/ui/Spinner'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 
 const STATUS_LABELS: Record<string, string> = {
   new: 'جديد', interested: 'مهتم', meeting: 'اجتماع',
@@ -34,58 +35,67 @@ const SERVICE_LABELS: Record<string, string> = {
   accounting: 'محاسبة', audit: 'مراجعة', payroll: 'مرتبات', other: 'أخرى',
 }
 
-export default function Leads() {
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
+function useLeads() {
   const [leads, setLeads] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [showAdd, setShowAdd] = useState(false)
-  const [selected, setSelected] = useState<any>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params: any = { limit: 100 }
-      if (search) params.q = search
-      if (statusFilter) params.status = statusFilter
-      const [leadsRes, statsRes] = await Promise.all([
-        api.get('/api/leads', { params }),
-        api.get('/api/leads/stats'),
-      ])
-      setLeads(leadsRes.data.items)
-      setStats(statsRes.data)
-    } catch { toast('خطأ في تحميل البيانات', 'error') }
-    finally { setLoading(false) }
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    const qs = new URLSearchParams({ limit: '100' })
+    if (search) qs.set('q', search)
+    if (statusFilter) qs.set('status', statusFilter)
+    const [leadsRes, statsRes] = await Promise.all([
+      coreApi<{ items: any[] }>('GET', `${EP.LEADS}?${qs}`),
+      coreApi<any>('GET', '/leads/stats'),
+    ])
+    if (leadsRes) setLeads(leadsRes.items)
+    if (statsRes) setStats(statsRes)
+    setLoading(false)
   }, [search, statusFilter])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => wsOn('leads_updated', () => load(true)), [load])
 
-  async function deleteLead(id: number) {
-    if (!confirm('حذف هذا العميل المحتمل؟')) return
-    try {
-      await api.delete(`/api/leads/${id}`)
-      toast('تم الحذف')
-      load()
-    } catch { toast('خطأ في الحذف', 'error') }
+  return { leads, stats, loading, search, setSearch, statusFilter, setStatusFilter, load }
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
+
+export default function Leads() {
+  const { leads, stats, loading, search, setSearch, statusFilter, setStatusFilter, load } = useLeads()
+  const [showForm, setShowForm] = useState(false)
+  const [selected, setSelected] = useState<any>(null)
+  const [deleting, setDeleting] = useState<any>(null)
+
+  async function handleDelete() {
+    if (!deleting) return
+    const res = await coreApi('DELETE', EP.LEAD(deleting.id), null, {
+      queue: true,
+      queueLabel: 'حذف عميل محتمل',
+    })
+    if (res !== undefined) { toast('تم الحذف'); load() }
+    setDeleting(null)
   }
 
   if (loading && !leads.length) return <PageLoader />
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="page-header">
         <div>
           <h2 className="page-title">إدارة العملاء المحتملين (CRM)</h2>
           <p className="page-subtitle">تتبع وإدارة الفرص البيعية</p>
         </div>
-        <button className="btn-primary" onClick={() => { setSelected(null); setShowAdd(true) }}>
+        <button className="btn-primary" onClick={() => { setSelected(null); setShowForm(true) }}>
           <Plus className="w-4 h-4" /> إضافة عميل محتمل
         </button>
       </div>
 
-      {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[
@@ -106,7 +116,6 @@ export default function Leads() {
         </div>
       )}
 
-      {/* Filters */}
       <div className="card p-4">
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-48">
@@ -122,25 +131,18 @@ export default function Leads() {
             <option value="">كل الحالات</option>
             {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <button className="btn-secondary" onClick={load}>
+          <button className="btn-secondary" onClick={() => load()}>
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Table */}
       <div className="table-container">
         <table className="table">
           <thead>
             <tr>
-              <th>الكود</th>
-              <th>الاسم</th>
-              <th>الهاتف</th>
-              <th>الخدمة المطلوبة</th>
-              <th>المصدر</th>
-              <th>الحالة</th>
-              <th>المحافظة</th>
-              <th></th>
+              <th>الكود</th><th>الاسم</th><th>الهاتف</th>
+              <th>الخدمة المطلوبة</th><th>المصدر</th><th>الحالة</th><th>المحافظة</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -154,9 +156,11 @@ export default function Leads() {
                   {lead.company_name && <div className="text-xs text-gray-400">{lead.company_name}</div>}
                 </td>
                 <td>
-                  <div className="flex items-center gap-1 text-sm">
-                    {lead.phone && <><Phone className="w-3.5 h-3.5 text-gray-400" />{lead.phone}</>}
-                  </div>
+                  {lead.phone && (
+                    <div className="flex items-center gap-1 text-sm">
+                      <Phone className="w-3.5 h-3.5 text-gray-400" />{lead.phone}
+                    </div>
+                  )}
                   {lead.email && (
                     <div className="flex items-center gap-1 text-xs text-gray-400">
                       <Mail className="w-3 h-3" />{lead.email}
@@ -175,8 +179,8 @@ export default function Leads() {
                 </td>
                 <td>
                   <div className="flex gap-2">
-                    <button className="btn-sm btn-secondary" onClick={() => { setSelected(lead); setShowAdd(true) }}>تعديل</button>
-                    <button className="btn-sm btn-danger" onClick={() => deleteLead(lead.id)}>حذف</button>
+                    <button className="btn-sm btn-secondary" onClick={() => { setSelected(lead); setShowForm(true) }}>تعديل</button>
+                    <button className="btn-sm btn-danger" onClick={() => setDeleting(lead)}>حذف</button>
                   </div>
                 </td>
               </tr>
@@ -185,46 +189,69 @@ export default function Leads() {
         </table>
       </div>
 
-      {showAdd && (
+      {showForm && (
         <LeadModal
           lead={selected}
-          onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); load() }}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); load() }}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={handleDelete}
+        title="حذف العميل المحتمل"
+        message={`هل تريد حذف "${deleting?.name}"؟`}
+        danger
+        confirmLabel="حذف"
+      />
     </div>
   )
 }
 
+// ─── modal ────────────────────────────────────────────────────────────────────
+
 function LeadModal({ lead, onClose, onSaved }: { lead: any; onClose: () => void; onSaved: () => void }) {
+  const isEdit = !!lead
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    name: lead?.name || '',
-    phone: lead?.phone || '',
-    email: lead?.email || '',
-    company_name: lead?.company_name || '',
-    governorate: lead?.governorate || '',
-    status: lead?.status || 'new',
-    source: lead?.source || 'other',
-    service_requested: lead?.service_requested || 'establishment',
-    company_type: lead?.company_type || '',
-    estimated_capital: lead?.estimated_capital || '',
-    notes: lead?.notes || '',
-    lost_reason: lead?.lost_reason || '',
+    name: lead?.name ?? '',
+    phone: lead?.phone ?? '',
+    email: lead?.email ?? '',
+    company_name: lead?.company_name ?? '',
+    governorate: lead?.governorate ?? '',
+    status: lead?.status ?? 'new',
+    source: lead?.source ?? 'other',
+    service_requested: lead?.service_requested ?? 'establishment',
+    company_type: lead?.company_type ?? '',
+    estimated_capital: lead?.estimated_capital ?? '',
+    notes: lead?.notes ?? '',
+    lost_reason: lead?.lost_reason ?? '',
   })
 
-  function set(key: string, val: string) { setForm(f => ({ ...f, [key]: val })) }
+  const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
 
   async function handleSave() {
     if (!form.name) { toast('الاسم مطلوب', 'error'); return }
     setSaving(true)
     try {
       const payload = { ...form, estimated_capital: form.estimated_capital ? +form.estimated_capital : null }
-      if (lead) await api.put(`/api/leads/${lead.id}`, payload)
-      else await api.post('/api/leads', payload)
-      toast(lead ? 'تم التحديث' : 'تم الإضافة')
-      onSaved()
-    } catch (e: any) { toast(e.response?.data?.detail || 'خطأ', 'error') }
+      if (isEdit) {
+        const res = await coreApi('PUT', EP.LEAD(lead.id), payload, {
+          conflictTs: lead.updated_at ?? null,
+          queue: true,
+          queueLabel: 'تعديل عميل محتمل',
+        })
+        if (res !== null) { toast('تم التحديث'); onSaved() }
+      } else {
+        const res = await coreApi('POST', EP.LEADS, payload, {
+          queue: true,
+          queueLabel: 'إضافة عميل محتمل',
+        })
+        if (res !== null) { toast('تم الإضافة'); onSaved() }
+      }
+    } catch (e: any) { toast(e.message || 'خطأ', 'error') }
     finally { setSaving(false) }
   }
 
@@ -232,7 +259,7 @@ function LeadModal({ lead, onClose, onSaved }: { lead: any; onClose: () => void;
     <Modal
       isOpen
       onClose={onClose}
-      title={lead ? 'تعديل عميل محتمل' : 'إضافة عميل محتمل جديد'}
+      title={isEdit ? 'تعديل عميل محتمل' : 'إضافة عميل محتمل جديد'}
       size="lg"
       footer={
         <>
