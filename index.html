@@ -20547,8 +20547,7 @@ async function renderDailyRevenuesPage() {
     el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b7280">جاري التحميل...</div>';
     let data;
     try {
-      const res = await apiFetch('/api/office/revenues?year=' + selYear + '&month=' + selMonth + '&page_size=500');
-      data = await res.json();
+      data = await api('GET', '/api/office/revenues?year=' + selYear + '&month=' + selMonth + '&page_size=500');
     } catch(e) {
       el.innerHTML = '<div style="padding:20px;color:#dc2626">حدث خطأ في التحميل</div>'; return;
     }
