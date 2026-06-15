@@ -30,10 +30,17 @@ async def dashboard_stats(db: Session = Depends(get_db), current_user: User = De
             Client.status == ClientStatus.ACTIVE,
             func.date(Client.created_at) >= month_start
         ).scalar() or 0
-        all_active = db.query(Client).filter(Client.status == ClientStatus.ACTIVE).all()
-        income_clients  = sum(1 for c in all_active if c.tax_obligations and 'income_annual'  in c.tax_obligations)
-        vat_clients     = sum(1 for c in all_active if c.tax_obligations and 'vat_monthly'    in c.tax_obligations)
-        payroll_clients = sum(1 for c in all_active if c.tax_obligations and 'payroll_monthly' in c.tax_obligations)
+        from sqlalchemy import text as _text
+        obl_counts = db.execute(_text("""
+            SELECT
+                COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%income_annual%')   AS income,
+                COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%vat_monthly%')     AS vat,
+                COUNT(*) FILTER (WHERE tax_obligations::text LIKE '%payroll_monthly%') AS payroll
+            FROM clients WHERE status = 'active'
+        """)).fetchone()
+        income_clients  = obl_counts[0] if obl_counts else 0
+        vat_clients     = obl_counts[1] if obl_counts else 0
+        payroll_clients = obl_counts[2] if obl_counts else 0
     except Exception as e:
         db.rollback(); errors.append(f"clients: {e}"); active_clients=total_clients=new_clients_month=income_clients=vat_clients=payroll_clients=0
 
