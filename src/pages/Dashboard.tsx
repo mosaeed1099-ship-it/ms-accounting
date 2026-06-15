@@ -1,23 +1,20 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Users, FileText, CheckSquare, Calculator, TrendingUp, AlertCircle,
-  Banknote, ArrowUpRight, UserPlus, RefreshCw,
-  BarChart2, AlertTriangle, Zap,
+  Banknote, ArrowUpRight, UserPlus, RefreshCw, BarChart2, AlertTriangle, Zap,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, PieChart, Pie, Cell,
 } from 'recharts'
-import api from '../api/client'
+import { coreApi, EP, wsOn } from '../core'
 import type { DashboardStats } from '../types'
 import { useAuthStore } from '../store/authStore'
 import { PageLoader } from '../components/ui/Spinner'
 import { formatMoney, formatDate } from '../utils/format'
 
-const API_BASE = import.meta.env.PROD
-  ? (import.meta.env.VITE_API_URL || 'https://ms-accounting-api-production.up.railway.app')
-  : 'http://localhost:8000'
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function daysUntil(dateStr: string) {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000)
@@ -28,6 +25,8 @@ function urgencyClass(days: number) {
   if (days <= 3) return 'text-orange-600 bg-orange-50'
   return 'text-gray-500 bg-gray-50'
 }
+
+// ─── sub-components (unchanged UI, extracted for clarity) ─────────────────────
 
 function KpiCard({
   label, value, sub, icon: Icon, color, badge, onClick,
@@ -234,55 +233,61 @@ function AccountantWidget({ stats }: { stats: DashboardStats }) {
   )
 }
 
-export default function Dashboard() {
-  const { user } = useAuthStore()
-  const navigate = useNavigate()
+// ─── custom hook ──────────────────────────────────────────────────────────────
+
+function useDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [chartData, setChartData] = useState<any[]>([])
-  const [deadlines, setDeadlines] = useState<any>({ tasks: [], tax_returns: [] })
+  const [deadlines, setDeadlines] = useState<{ tasks: any[]; tax_returns: any[] }>({ tasks: [], tax_returns: [] })
   const [activity, setActivity] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const wsRef = useRef<WebSocket | null>(null)
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
     else setLoading(true)
     try {
       const [s, c, d, a] = await Promise.all([
-        api.get('/dashboard/stats'),
-        api.get('/dashboard/revenue-chart'),
-        api.get('/dashboard/upcoming-deadlines?days=14'),
-        api.get('/dashboard/recent-activity?limit=15'),
+        coreApi<DashboardStats>('GET', EP.DASHBOARD_STATS),
+        coreApi<any[]>('GET', '/dashboard/revenue-chart'),
+        coreApi<{ tasks: any[]; tax_returns: any[] }>('GET', '/dashboard/upcoming-deadlines?days=14'),
+        coreApi<any[]>('GET', '/dashboard/recent-activity?limit=15'),
       ])
-      setStats(s.data)
-      setChartData(c.data)
-      setDeadlines(d.data)
-      setActivity(a.data)
+      if (s) setStats(s)
+      if (c) setChartData(c)
+      if (d) setDeadlines(d)
+      if (a) setActivity(a)
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
   }, [])
 
+  // Initial load
   useEffect(() => { load() }, [load])
 
+  // Real-time updates via shared singleton WebSocket
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (!token) return
-    const wsUrl = `${API_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/ws?token=${token}`
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
-    const TRIGGER = new Set(['clients', 'invoices', 'tasks', 'collections', 'obligations'])
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data)
-        if (msg.entity && TRIGGER.has(msg.entity)) load(true)
-      } catch {}
-    }
-    ws.onerror = () => {}
-    return () => { ws.close() }
+    const refresh = () => load(true)
+    const unsubs = [
+      wsOn('clients_updated', refresh),
+      wsOn('tasks_updated', refresh),
+      wsOn('obligations_updated', refresh),
+      wsOn('collections_updated', refresh),
+      wsOn('dashboard_updated', refresh),
+    ]
+    return () => unsubs.forEach((off) => off())
   }, [load])
+
+  return { stats, chartData, deadlines, activity, loading, refreshing, load }
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
+
+export default function Dashboard() {
+  const { user } = useAuthStore()
+  const navigate = useNavigate()
+  const { stats, chartData, deadlines, activity, loading, refreshing, load } = useDashboard()
 
   if (loading) return <PageLoader />
 
@@ -441,7 +446,6 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-
         {stats && (
           role === 'admin' ? <AdminWidget stats={stats} /> :
           role === 'manager' ? <ManagerWidget stats={stats} /> :
