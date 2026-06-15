@@ -1,6 +1,6 @@
 """
 Monthly Fees — المدفوعات الشهرية
-All authenticated users can view. Admin only can create/edit/import.
+All authenticated users can view and edit.
 """
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional, List
@@ -161,7 +161,7 @@ class ClientIn(BaseModel):
 def create_client(
     data: ClientIn,
     db: Session = Depends(get_db),
-    cu: User = Depends(_admin),
+    cu: User = Depends(_auth),
 ):
     existing = db.query(MonthlyFeeClient).filter(MonthlyFeeClient.name == data.name).first()
     if existing:
@@ -194,7 +194,7 @@ def update_client(
     client_id: int,
     data: ClientUpdateIn,
     db: Session = Depends(get_db),
-    cu: User = Depends(_admin),
+    cu: User = Depends(_auth),
 ):
     c = db.query(MonthlyFeeClient).filter(MonthlyFeeClient.id == client_id).first()
     if not c:
@@ -314,7 +314,7 @@ def record_payment(
     record_id: int,
     data: PaymentIn,
     db: Session = Depends(get_db),
-    cu: User = Depends(_admin),
+    cu: User = Depends(_auth),
     x_if_unmodified_since: Optional[str] = Header(None),
 ):
     r = db.query(MonthlyFeeRecord).filter(MonthlyFeeRecord.id == record_id).first()
@@ -347,7 +347,7 @@ def update_record(
     record_id: int,
     data: RecordUpdateIn,
     db: Session = Depends(get_db),
-    cu: User = Depends(_admin),
+    cu: User = Depends(_auth),
     x_if_unmodified_since: Optional[str] = Header(None),
 ):
     r = db.query(MonthlyFeeRecord).filter(MonthlyFeeRecord.id == record_id).first()
@@ -384,7 +384,7 @@ def generate_month_records(
     year: int = Query(...),
     month: int = Query(...),
     db: Session = Depends(get_db),
-    cu: User = Depends(_admin),
+    cu: User = Depends(_auth),
 ):
     """Create MonthlyFeeRecord rows for all active clients if they don't exist yet."""
     active = db.query(MonthlyFeeClient).filter(
@@ -458,7 +458,7 @@ class BulkImportIn(BaseModel):
 def bulk_import(
     data: BulkImportIn,
     db: Session = Depends(get_db),
-    cu: User = Depends(_admin),
+    cu: User = Depends(_auth),
 ):
     name_to_id = {}
     for ci in data.clients:
