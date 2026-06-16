@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v2.9 — fix: revert default month to May 2026 -->
+<!-- v3.0 — under_establishment page enhanced + company name generator banned words -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -1252,6 +1252,7 @@ const navItems = [
   {id:'dashboard'    ,icon:'📊',label:'الرئيسية'},
   {id:'clients'      ,icon:'👥',label:'عملاء المكتب'},
   {id:'leads'        ,icon:'🎯',label:'العملاء المحتملين'},
+  {id:'under_establishment_clients',icon:'⭐',label:'تحت التأسيس'},
   {id:'establishment',icon:'🏗️',label:'تأسيس الشركات'},
   {id:'collections'  ,icon:'💵',label:'الإيرادات اليومية'},
   {id:'tax'          ,icon:'🧾',label:'الإقرارات'},
@@ -1275,7 +1276,7 @@ const navItems = [
 // Grouped navigation for sidebar display
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
-  {label:'CRM & المبيعات', items:['clients','leads','establishment','company_names']},
+  {label:'CRM & المبيعات', items:['clients','leads','under_establishment_clients','establishment','company_names']},
   {label:'المالية', items:['collections','monthly_fees','tax','obligations']},
   {label:'التشغيل', items:['tasks','documents']},
   {label:'الموارد البشرية', items:['settlements']},
@@ -1978,13 +1979,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات',daily_revenues:'الإيرادات اليومية',company_names:'🏢 مولّد أسماء الشركات'};
+  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات',daily_revenues:'الإيرادات اليومية',company_names:'🏢 مولّد أسماء الشركات',under_establishment_clients:'⭐ عملاء تحت التأسيس'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames,under_establishment_clients:loadUnderEstablishmentClients};
   if(pages[page]) pages[page]();
 }
 
@@ -6933,6 +6934,11 @@ function _buildLeadRow(l,idx=0){
         <button onclick="sendLeadEmailDirect(${l.id})"
           style="background:#1a2472;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center"
           title="بريد إلكتروني">✉️</button>
+        ${l.status !== 'under_establishment' ? `<button onclick="markLeadUnderEstablishment(${l.id},event)"
+          style="background:#0891b2;color:white;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center"
+          title="بدء التأسيس — تحويل لقيد التأسيس">⭐</button>` : `<button onclick="navigate('under_establishment_clients')"
+          style="background:#ecfeff;color:#0891b2;border:1px solid #0891b2;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center"
+          title="قيد التأسيس — اضغط لعرض الصفحة">🏗️</button>`}
       </div>` : `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
         <span style="font-size:9px;color:#94a3b8;line-height:1.2">اكتب الاسم للحفظ 💾</span>
         <button onclick="saveLeadAsNotAnswered(this)" style="background:#6b7280;color:white;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='#4b5563'" onmouseout="this.style.background='#6b7280'" title="احفظ برقم لم يرد وأرسل واتساب">📵 لم يرد</button>
@@ -12483,6 +12489,172 @@ window.setLeadsDateFrom=v=>{leadsDateFrom=v;loadLeads();};
 window.setLeadsDateTo=v=>{leadsDateTo=v;loadLeads();};
 window.setLeadsSearch=v=>{leadsSearch=v;loadLeads();};
 
+// ── بدء التأسيس — تحويل عميل محتمل إلى قيد التأسيس ──────────────────────────
+async function markLeadUnderEstablishment(id, e) {
+  if(e) e.stopPropagation();
+  if(!confirm('تحويل هذا العميل إلى "قيد التأسيس"؟')) return;
+  try {
+    const res = await api('PATCH', `/api/leads/${id}`, {status:'under_establishment'});
+    const lead = leadsData.find(l=>l.id===id);
+    if(lead) lead.status = 'under_establishment';
+    // إعادة بناء الصف في الجدول
+    const tbody = document.getElementById('leadsGridBody');
+    const oldRow = tbody?.querySelector(`tr[data-id="${id}"]`);
+    if(oldRow && lead) {
+      const tmp = document.createElement('tbody');
+      tmp.innerHTML = _buildLeadRow(lead, Array.from(tbody.querySelectorAll('tr[data-id]')).indexOf(oldRow));
+      oldRow.replaceWith(...tmp.children);
+    }
+    toast('✅ تم تحويل العميل إلى قيد التأسيس', 'success');
+  } catch(err) { toast('حدث خطأ: ' + (err.message||err), 'error'); }
+}
+window.markLeadUnderEstablishment = markLeadUnderEstablishment;
+
+// ── صفحة عملاء تحت التأسيس ────────────────────────────────────────────────────
+async function loadUnderEstablishmentClients(silent=false) {
+  if(!silent) showPageLoading();
+  try {
+    const [data, stats] = await Promise.all([
+      api('GET', '/api/leads?status=under_establishment&limit=500'),
+      api('GET', '/api/leads/stats')
+    ]);
+    const leads = Array.isArray(data) ? data : (data.items || data.leads || []);
+    renderUnderEstablishmentClients(leads, stats);
+  } catch(err) { showError('فشل تحميل البيانات'); }
+}
+
+function renderUnderEstablishmentClients(leads, stats) {
+  const count = leads.length;
+  const withDeposit = leads.filter(l=>l.quote_total_fees>0).length;
+  const withName    = leads.filter(l=>l.suggested_name).length;
+  setPageContent(`
+    <div style="padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="margin:0;font-size:22px;font-weight:800;color:#0891b2">⭐ عملاء تحت التأسيس</h2>
+          <p style="margin:4px 0 0;font-size:13px;color:#64748b">العملاء الذين بدأت معهم إجراءات التأسيس الفعلية</p>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button onclick="navigate('leads')" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">← العملاء المحتملين</button>
+          <button onclick="navigate('establishment')" style="background:#0891b2;color:white;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📋 ملفات التأسيس</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
+        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">${count}</div><div style="font-size:11px;color:#64748b;margin-top:2px">تحت التأسيس ⭐</div></div>
+        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#15803d">${leads.filter(l=>l.assigned_to).length}</div><div style="font-size:11px;color:#64748b;margin-top:2px">مسند لموظف ✅</div></div>
+        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#d97706">${leads.filter(l=>!l.assigned_to).length}</div><div style="font-size:11px;color:#64748b;margin-top:2px">غير مسند ⚠️</div></div>
+        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#7c3aed">${withDeposit}</div><div style="font-size:11px;color:#64748b;margin-top:2px">لهم أتعاب محددة 📄</div></div>
+        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">${withName}</div><div style="font-size:11px;color:#64748b;margin-top:2px">لهم اسم مقترح 🏷️</div></div>
+      </div>
+
+      ${count === 0 ? `
+        <div style="text-align:center;padding:80px 20px;color:#94a3b8">
+          <div style="font-size:48px;margin-bottom:12px">⭐</div>
+          <div style="font-size:16px;font-weight:700;color:#475569;margin-bottom:6px">لا يوجد عملاء تحت التأسيس حالياً</div>
+          <div style="font-size:13px;margin-bottom:20px">اضغط زر ⭐ على أي عميل محتمل لبدء التأسيس معه</div>
+          <button onclick="navigate('leads')" style="background:#0891b2;color:white;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">← العملاء المحتملين</button>
+        </div>` : `
+      <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 1px 4px #0001">
+        <table style="width:100%;border-collapse:collapse;min-width:1000px">
+          <thead>
+            <tr style="background:#0891b2;color:white;font-size:12px">
+              <th style="padding:10px 12px;text-align:right;font-weight:700">الاسم</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:700">الهاتف</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:700">الكيان</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:700">الموظف المسؤول</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:700">الاسم المقترح</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:700">الأتعاب المقدرة</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:700">ملاحظات التأسيس</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:700">تاريخ التحويل</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:700">إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${leads.map((l,i)=>`
+            <tr style="background:${i%2===0?'#f0fdf4':'#dcfce7'};border-bottom:1px solid #bbf7d0;transition:filter .15s" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
+              <td style="padding:10px 12px;font-weight:700;color:#15803d">${escH(l.name||'—')}</td>
+              <td style="padding:8px 12px;text-align:center;direction:ltr;font-size:12px">${escH(l.phone||'—')}</td>
+              <td style="padding:8px 12px;text-align:center;font-size:11px;white-space:nowrap">${escH(l.quote_legal_entity||l.company_type||'—')}</td>
+              <td style="padding:8px 12px;text-align:center;font-size:12px">${escH(l.assigned_user_name||l.assigned_to_name||'—')}</td>
+              <td style="padding:8px 12px;text-align:center">
+                ${l.suggested_name
+                  ? `<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${escH(l.suggested_name)}</span>`
+                  : `<button onclick="ueSetName(${l.id})" style="background:#f0fdf4;color:#15803d;border:1px dashed #86efac;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:inherit">+ إضافة</button>`}
+              </td>
+              <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0891b2;direction:ltr">${l.quote_total_fees?money(l.quote_total_fees):'—'}</td>
+              <td style="padding:8px 12px;max-width:200px">
+                <div style="font-size:11px;color:#475569;line-height:1.4">${escH((l.notes||'').substring(0,80))}${(l.notes||'').length>80?'...':''}</div>
+                <button onclick="ueEditNotes(${l.id},'${escH((l.notes||'').replace(/'/g,"\\'"))}')" style="background:none;border:none;color:#0891b2;font-size:10px;cursor:pointer;padding:2px 0;font-family:inherit">✏️ تعديل</button>
+              </td>
+              <td style="padding:8px 12px;text-align:center;font-size:11px;color:#64748b">${l.updated_at?new Date(l.updated_at).toLocaleDateString('ar-EG'):'—'}</td>
+              <td style="padding:8px 12px;text-align:center">
+                <div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap">
+                  <button onclick="openLeadDetail(${l.id})" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit" title="تفاصيل">👁️</button>
+                  <button onclick="sendUEWhatsApp(${l.id},'${escH((l.phone||'').replace(/\D/g,''))}')" style="background:#25d366;color:white;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="واتساب">📱</button>
+                  <button onclick="navigate('company_names')" style="background:#7c3aed;color:white;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="مولد الأسماء">🏢</button>
+                  <button onclick="revertLeadToLead(${l.id})" style="background:#fff7ed;color:#d97706;border:1px solid #fed7aa;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit" title="إعادة لعميل محتمل">↩️</button>
+                </div>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>
+  `);
+}
+
+async function ueEditNotes(id, currentNotes) {
+  const newNotes = prompt('ملاحظات التأسيس:', currentNotes);
+  if(newNotes === null) return;
+  try {
+    await api('PATCH', `/api/leads/${id}`, {notes: newNotes});
+    toast('✅ تم حفظ الملاحظات', 'success');
+    loadUnderEstablishmentClients(true);
+  } catch(err) { toast('حدث خطأ', 'error'); }
+}
+
+async function ueSetName(id) {
+  const name = prompt('الاسم التجاري المقترح للشركة:');
+  if(!name || !name.trim()) return;
+  try {
+    await api('PATCH', `/api/leads/${id}`, {suggested_name: name.trim()});
+    toast('✅ تم حفظ الاسم المقترح', 'success');
+    loadUnderEstablishmentClients(true);
+  } catch(err) { toast('حدث خطأ', 'error'); }
+}
+
+function openLeadDetail(id) {
+  navigate('leads');
+  setTimeout(() => {
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if(row) row.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 400);
+}
+
+window.ueEditNotes = ueEditNotes;
+window.ueSetName = ueSetName;
+window.openLeadDetail = openLeadDetail;
+
+async function revertLeadToLead(id) {
+  if(!confirm('إعادة هذا العميل إلى "العملاء المحتملين"؟')) return;
+  try {
+    await api('PATCH', `/api/leads/${id}`, {status:'interested'});
+    toast('✅ تم إعادة العميل للعملاء المحتملين', 'success');
+    loadUnderEstablishmentClients();
+  } catch(err) { toast('حدث خطأ', 'error'); }
+}
+
+function sendUEWhatsApp(id, phone) {
+  if(!phone) { toast('لا يوجد رقم هاتف', 'warning'); return; }
+  const p = phone.startsWith('0') ? '2' + phone : (phone.startsWith('20') ? phone : '20'+phone);
+  window.open(`https://wa.me/${p}`, '_blank');
+}
+
+window.loadUnderEstablishmentClients = loadUnderEstablishmentClients;
+window.revertLeadToLead = revertLeadToLead;
+window.sendUEWhatsApp = sendUEWhatsApp;
+
 // ── Manual Refresh Button ─────────────────────────────────────────────────────
 // Cache prefixes per page — cleared before force-reload so we never get stale data
 const _PAGE_CACHE_PREFIXES = {
@@ -12524,6 +12696,7 @@ const _REFRESH_FN_MAP = {
   dashboard:            ()=>loadDashboard(),
   clients:              ()=>loadClients(),
   leads:                ()=>loadLeads(),
+  under_establishment_clients: ()=>loadUnderEstablishmentClients(),
   invoices:             ()=>loadInvoices(),
   collections:          ()=>loadCollections(),
   tasks:                ()=>loadTasks(),
