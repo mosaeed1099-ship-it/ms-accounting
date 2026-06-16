@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v2.8 — company name generator: split name parts, free text activity, company type -->
+<!-- v2.9 — fix: revert default month to May 2026 -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -19893,8 +19893,8 @@ async function fcRenderGrid(el) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MF_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-let mfCurrentYear = new Date().getFullYear();
-let mfCurrentMonth = new Date().getMonth() + 1;
+let mfCurrentYear = 2026;
+let mfCurrentMonth = 5; // مايو — آخر شهر فيه بيانات
 
 async function loadMonthlyFees() {
   const main = document.getElementById('main');
