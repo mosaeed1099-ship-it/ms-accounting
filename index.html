@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v2.7 — client type filter, remove contract/balance columns, remove تسهيلات card -->
+<!-- v2.9 — fix: revert default month to May 2026 -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -8,15 +8,22 @@
   <meta http-equiv="Expires" content="0"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <script>
-    // Force reload if served from cache (no v= param)
-    (function(){
-      const V = '1781366931';
-      const u = new URL(location.href);
-      if(u.searchParams.get('v') !== V){
-        u.searchParams.set('v', V);
-        location.replace(u.toString());
-      }
-    })();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/ms-accounting/sw.js', {updateViaCache:'none'})
+        .then(function(reg) {
+          // If new SW is waiting, activate it immediately
+          if (reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+          reg.addEventListener('updatefound', function() {
+            var sw = reg.installing;
+            sw.addEventListener('statechange', function() {
+              if (sw.state === 'installed' && reg.waiting) {
+                reg.waiting.postMessage({type:'SKIP_WAITING'});
+              }
+            });
+          });
+        })
+        .catch(function(){});
+    }
   </script>
   <title>MS Accounting — نظام إدارة مكتب المحاسبة</title>
   <script src="config.js"></script>
@@ -68,7 +75,7 @@
     tbody tr:hover{background:#fafbff}
     tbody tr:last-child td{border-bottom:none}
     /* Modal */
-    .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;backdrop-filter:blur(4px)}
+    .modal-overlay,.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;backdrop-filter:blur(4px)}
     .modal{background:white;border-radius:18px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.25)}
     /* Toast */
     .toasts{position:fixed;top:16px;left:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
@@ -449,9 +456,9 @@ const _RT_ENTITY_MAP = {
   leads:                { pages:['leads'],                  fn:()=>loadLeads(true),               dash:true  },
   invoices:             { pages:['invoices'],               fn:()=>loadInvoices(true),            dash:true  },
   collections:          { pages:['collections'],            fn:()=>loadCollections(true),                         dash:true },
-  tasks:                { pages:['tasks'],                  fn:()=>loadTasks(true),               dash:true  },
+  tasks:                { pages:['tasks'],                  fn:()=>{ loadTasks(true); loadNotifCount(); }, dash:true  },
   establishment:        { pages:['establishment'],          fn:()=>loadEstablishment(true),       dash:false },
-  obligations:          { pages:['obligations'],            fn:()=>loadObligations(true),         dash:true  },
+  obligations:          { pages:['obligations'],            fn:()=>{ loadObligations(true); loadNotifCount(); }, dash:true  },
   formation_obligations:{ pages:['formation_obligations'],  fn:()=>loadFormationObligations(true),dash:false },
   documents:            { pages:['documents'],              fn:()=>loadDocuments(true),           dash:false },
   payroll:              { pages:['payroll'],                fn:()=>loadPayroll(true),             dash:false },
@@ -467,6 +474,9 @@ const _RT_ENTITY_MAP = {
   office_services:      { pages:['office_services'],        fn:()=>loadOfficeServices(),          dash:false },
   assets:               { pages:['fin_reports'],            fn:()=>loadFinReports(true),          dash:false },
   accounting:           { pages:['accounting'],             fn:()=>typeof accRender==='function'&&accRender(), dash:false },
+  monthly_fees:         { pages:['monthly_fees'],           fn:()=>typeof renderMFPage==='function'&&renderMFPage(), dash:false },
+  daily_revenues:       { pages:['daily_revenues'],         fn:()=>typeof renderDailyRevenuesPage==='function'&&renderDailyRevenuesPage(), dash:false },
+  notifications:        { pages:[],                         fn:()=>loadNotifCount(),              dash:false },
 };
 
 // Polished action labels for toast notifications
@@ -886,10 +896,18 @@ function emptyStateRow(colspan, icon, title, sub='') {
 
 /** Wrap a save button in a loading state while async fn runs */
 async function withSaving(btn, fn) {
+  if (!btn) { try { await fn(); } catch(e) { toast(e.message,'error'); } return; }
   const orig = btn.innerHTML;
+  const origBg = btn.style.background;
   btn.disabled = true; btn.textContent = 'جاري الحفظ...';
-  try { await fn(); }
-  catch(e) { toast(e.message,'error'); btn.disabled=false; btn.innerHTML=orig; }
+  try {
+    await fn();
+    btn.textContent = '✓ تم الحفظ';
+    btn.style.background = '#16a34a';
+    btn.style.color = '#fff';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; btn.style.background = origBg; btn.style.color = ''; }, 2000);
+  }
+  catch(e) { toast(e.message,'error'); btn.disabled=false; btn.innerHTML=orig; btn.style.background=origBg; btn.style.color=''; }
 }
 
 // ── FAB Functions ──────────────────────────────────────
@@ -1252,11 +1270,12 @@ const navItems = [
   {id:'system_logs'       ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
   {id:'backup'            ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
   {id:'migration_dashboard',icon:'🚀',label:'تقدم الـ Migration', adminOnly: true},
+  {id:'company_names',icon:'🏢',label:'مولّد أسماء الشركات'},
 ];
 // Grouped navigation for sidebar display
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
-  {label:'CRM & المبيعات', items:['clients','leads','establishment']},
+  {label:'CRM & المبيعات', items:['clients','leads','establishment','company_names']},
   {label:'المالية', items:['collections','monthly_fees','tax','obligations']},
   {label:'التشغيل', items:['tasks','documents']},
   {label:'الموارد البشرية', items:['settlements']},
@@ -1959,13 +1978,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات'};
+  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات',daily_revenues:'الإيرادات اليومية',company_names:'🏢 مولّد أسماء الشركات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames};
   if(pages[page]) pages[page]();
 }
 
@@ -3585,26 +3604,25 @@ function renderDailySheet() {
     const init=(u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2);
     const phone=String(u.phone||u.mobile||u.whatsapp_phone||'').replace(/\D/g,'');
 
-    const rows=mine.map((t,i)=>{
-      const carried=t.carry_over_days>0&&t.status!=='done';
-      const isDone=t.status==='done';
+    // pending rows only (main table)
+    const rows=pendingT.map((t,i)=>{
+      const carried=t.carry_over_days>0;
       const doneAt=_taskDoneAt[t.id]||'';
-      const rowBg=isDone?'#f0f0f0':carried?'#fffde7':i%2===0?'#ffffff':'#f7fbf0';
+      const rowBg=carried?'#fffde7':i%2===0?'#ffffff':'#f7fbf0';
       const taskMsg=`السلام عليكم ${u.name} 👋\n\nتذكير بمهمة:\n*${t.title}*${t.client_name?'\n🏢 '+t.client_name:''}\n\n— MS Accounting`;
-      const waHref=phone?`https://wa.me/${phone}?text=${encodeURIComponent(taskMsg)}`:'';
       return `<tr style="background:${rowBg}">
         <td style="${xl('text-align:center;font-size:10px;color:#555;width:3%')}">${i+1}</td>
         <td style="${xl('width:36%')}">
           ${carried?`<span style="background:#ff6d00;color:white;border-radius:2px;padding:0 4px;font-size:8px;font-weight:700;margin-left:4px">مرحّل</span>`:''}
-          <span style="${isDone?'text-decoration:line-through;color:#888':'color:#1a1a1a'};font-size:11.5px">${escH(t.title)}</span>
+          <span style="color:#1a1a1a;font-size:11.5px">${escH(t.title)}</span>
           ${t.client_name?`<span style="color:#666;font-size:10px"> · ${escH(t.client_name)}</span>`:''}
         </td>
         <td style="${xl('text-align:center;font-size:10px;color:#555;width:8%')}">${t.created_at?t.created_at.slice(5,10).replace('-','/'):'—'}</td>
-        <td style="${xl('text-align:center;font-size:10px;color:'+(!isDone&&t.due_date&&new Date(t.due_date)<new Date()?'#c00':'#555')+';width:9%')}">${t.due_date||'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:'+(t.due_date&&new Date(t.due_date)<new Date()?'#c00':'#555')+';width:9%')}">${t.due_date||'—'}</td>
         <td style="${xl('text-align:center;font-size:10px;color:#555;width:12%')}">${doneAt}</td>
         <td style="${xl('text-align:center;width:6%')}">
           <div onclick="window._markDone(${t.id})"
-            style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all .12s;${isDone?'background:#1e7e34;color:white;border:1px solid #155724':'background:white;border:1.5px solid #999;color:transparent'}">
+            style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all .12s;background:white;border:1.5px solid #999;color:transparent">
             ✓
           </div>
         </td>
@@ -3623,6 +3641,47 @@ function renderDailySheet() {
         </td>
       </tr>`;
     }).join('');
+
+    // completed tasks section
+    const completedRows=doneT.map((t,i)=>{
+      const doneAt=_taskDoneAt[t.id]||t.updated_at?.slice(11,16)||'';
+      return `<tr style="background:#f6fef9">
+        <td style="${xl('text-align:center;font-size:10px;color:#888;width:3%')}">${i+1}</td>
+        <td style="${xl('width:36%')}">
+          <span style="text-decoration:line-through;color:#888;font-size:11.5px">${escH(t.title)}</span>
+          ${t.client_name?`<span style="color:#aaa;font-size:10px"> · ${escH(t.client_name)}</span>`:''}
+        </td>
+        <td style="${xl('text-align:center;font-size:10px;color:#aaa;width:8%')}">${t.created_at?t.created_at.slice(5,10).replace('-','/'):'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:#aaa;width:9%')}">${t.due_date||'—'}</td>
+        <td style="${xl('text-align:center;font-size:10px;color:#15803d;font-weight:600;width:12%')}">${doneAt||'✓'}</td>
+        <td style="${xl('text-align:center;width:6%')}">
+          <div onclick="window._markDone(${t.id})" title="إلغاء الإنجاز"
+            style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#1e7e34;color:white;border:1px solid #155724">
+            ✓
+          </div>
+        </td>
+        <td style="${xl('text-align:center;width:8%')}"></td>
+        <td style="${xl('text-align:center;width:6%')}">
+          <button onclick="showTaskModal(${t.id})" style="background:#e8f0fe;border:1px solid #aac4ff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#1a2472">✏️</button>
+        </td>
+        <td style="${xl('text-align:center;width:6%')}">
+          <button onclick="deleteTask(${t.id},null)" style="background:#fce8e6;border:1px solid #f5c6c2;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#c00">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const completedSection=doneT.length===0?'': `
+      <details style="border-top:2px solid #bbf7d0">
+        <summary style="padding:8px 14px;font-size:11px;font-weight:700;color:#15803d;cursor:pointer;background:#f0fdf4;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px">✅</span> المهام المكتملة (${doneT.length})
+          <span style="margin-right:auto;font-size:10px;color:#94a3b8">اضغط للعرض</span>
+        </summary>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px">
+            <tbody>${completedRows}</tbody>
+          </table>
+        </div>
+      </details>`;
 
     return `<div style="background:white;border:1px solid #b0b0b0;border-radius:6px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
       <div style="background:#1a2472;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -3653,11 +3712,12 @@ function renderDailySheet() {
             <th style="${xlH('text-align:center;width:6%')}">حذف</th>
           </tr></thead>
           <tbody>
-            ${mine.length===0?`<tr><td colspan="9" style="text-align:center;padding:12px;font-size:11px;color:#888;border:${XL_BORDER}">لا توجد مهام — أضف مهمة أدناه</td></tr>`:''}
+            ${pendingT.length===0?`<tr><td colspan="9" style="text-align:center;padding:12px;font-size:11px;color:#15803d;font-weight:600;border:${XL_BORDER}">🎉 جميع المهام مكتملة</td></tr>`:''}
             ${rows}
           </tbody>
         </table>
       </div>
+      ${completedSection}
       <div style="padding:8px 12px;background:var(--color-background-secondary);border-top:0.5px dashed var(--color-border-tertiary);display:flex;align-items:center;gap:8px">
         <input id="newt_${u.id}" class="input" placeholder="اكتب مهمة جديدة واضغط Enter..."
           style="flex:1;font-size:11px;padding:6px 10px"
@@ -6645,6 +6705,18 @@ async function loadLeads(silent=false) {
     if(!data) return;
     leadsData=data.items||[];
     leadsUsersData=Array.isArray(users)?users:[];
+    // Auto-convert any 'new' leads: with fees → interested, without → not_answered
+    const newLeads = leadsData.filter(l => l.status === 'new');
+    if(newLeads.length > 0) {
+      await Promise.all(newLeads.map(async l => {
+        const derived = (l.quote_total_fees > 0) ? 'interested' : 'not_answered';
+        l.status = derived; // update locally first
+        try { await api('PUT', `/api/leads/${l.id}`, {status: derived}); } catch(e) {}
+      }));
+      // Re-fetch stats after bulk update
+      const newStats = await api('GET', `/api/leads/stats?${statsP}`).catch(()=>stats);
+      return renderLeads(newStats||stats);
+    }
     renderLeads(stats);
   } catch(e){toast(e.message,'error')}
 }
@@ -9489,8 +9561,8 @@ let _collMonth = new Date().getMonth() + 1;
 let _collYear  = new Date().getFullYear();
 let _collRows  = [];   // loaded rows from server
 const _COLL_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-const _COLL_PAY = {cash:'كاش',transfer:'تحويل بنكي',instapay:'إنستاباي',check:'شيك'};
-const _COLL_PAY_BADGE = {cash:'background:#f1f5f9;color:#475569',transfer:'background:#faeeda;color:#854f0b',instapay:'background:#eeedfe;color:#534ab7',check:'background:#f1f5f9;color:#475569'};
+const _COLL_PAY = {cash:'كاش',transfer:'تحويل بنكي',instapay:'إنستاباي',check:'شيك',wallet:'محفظة إلكترونية'};
+const _COLL_PAY_BADGE = {cash:'background:#f1f5f9;color:#475569',transfer:'background:#faeeda;color:#854f0b',instapay:'background:#eeedfe;color:#534ab7',check:'background:#f1f5f9;color:#475569',wallet:'background:#e0f2fe;color:#0369a1'};
 
 async function loadCollections(silent=false) {
   const main = document.getElementById('main');
@@ -9621,7 +9693,9 @@ function _collRender() {
     <td style="padding:0"><input value="${escH(r.client_name)}" onchange="window._collUpdate(${r.id},'client_name',this.value)" style="width:100%;height:36px;padding:0 10px;font-size:12px;border:none;background:transparent;outline:none;font-weight:600;color:#1e293b" /></td>
     <td style="padding:0"><input value="${r.billing_month_label||''}" style="width:100%;height:36px;padding:0 8px;font-size:12px;border:none;background:transparent;outline:none;color:#475569" /></td>
     <td style="padding:0"><input value="${r.amount}" onchange="window._collUpdate(${r.id},'amount',this.value)" style="width:100%;height:36px;padding:0 8px;font-size:13px;font-weight:700;color:#0f6e56;border:none;background:transparent;outline:none;text-align:center" /></td>
-    <td style="padding:4px 8px"><span style="font-size:10px;padding:3px 8px;border-radius:8px;font-weight:600;${_COLL_PAY_BADGE[r.payment_method]||'background:#f1f5f9;color:#475569'}">${_COLL_PAY[r.payment_method]||r.payment_method}</span></td>
+    <td style="padding:2px 6px"><select onchange="window._collUpdate(${r.id},'payment_method',this.value)" style="width:100%;height:28px;font-size:11px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#1e293b">
+      ${Object.entries(_COLL_PAY).map(([v,l])=>`<option value="${v}" ${r.payment_method===v?'selected':''}>${l}</option>`).join('')}
+    </select></td>
     <td style="padding:0"><input value="${escH(r.note||'')}" style="width:100%;height:36px;padding:0 8px;font-size:11px;border:none;background:transparent;outline:none;color:#94a3b8" /></td>
     <td style="padding:0;text-align:center"><button onclick="window._collDel(${r.id})" style="background:none;border:none;color:#e2e8f0;cursor:pointer;font-size:14px;padding:4px" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#e2e8f0'">✕</button></td>
   </tr>`).join('');
@@ -9637,12 +9711,13 @@ function _collRender() {
       <option value="transfer">تحويل بنكي</option>
       <option value="instapay">إنستاباي</option>
       <option value="check">شيك</option>
+      <option value="wallet">محفظة إلكترونية</option>
     </select></td>
     <td style="padding:0"><input id="nr-note" placeholder="ملاحظة..." onkeydown="window._collNewKey(event)" style="width:100%;height:36px;padding:0 8px;font-size:11px;border:none;background:transparent;outline:none;color:#94a3b8" /></td>
     <td></td>
   </tr>`;
 
-  tbEl.innerHTML = rowsHTML + newRowHTML;
+  tbEl.innerHTML = newRowHTML + rowsHTML;
 
   // tfoot
   const tfEl = document.getElementById('collTfoot');
@@ -9706,10 +9781,16 @@ window._collDel = async function(id) {
   toast('تم الحذف');
 };
 
+const _collSaveTimers = {};
 window._collUpdate = function(id, field, val) {
-  // local update only (no separate PUT endpoint needed for now)
   const row = _collRows.find(r=>r.id===id);
-  if (row) row[field] = val;
+  if (row) row[field] = field === 'amount' ? parseFloat(val)||0 : val;
+  clearTimeout(_collSaveTimers[id]);
+  _collSaveTimers[id] = setTimeout(async () => {
+    try {
+      await api('PUT', `/api/finance/collections/${id}`, {[field]: field==='amount'?parseFloat(val)||0:val});
+    } catch(e) { toast(e.message||'خطأ في الحفظ','error'); }
+  }, 600);
 };
 
 // keep old refs working (modal functions still referenced elsewhere)
@@ -15356,33 +15437,57 @@ async function renderEmpSettlements() {
             </tr>
           </thead>
           <tbody>
-            ${settlements.map((s,idx)=>`
-            <tr style="border-top:1px solid #f1f5f9;${idx%2===1?'background:#fafbfc':''}">
-              <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">${dateAr(s.date)}</td>
-              <td style="padding:10px 14px;vertical-align:top;min-width:200px">
-                ${(s.expense_items||[]).map(item=>`
-                <div style="display:grid;grid-template-columns:90px 1fr 1fr 80px;gap:4px;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9">
-                  <span style="color:#94a3b8">${item.expense_date||''}</span>
-                  <span style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(item.client_name||'—')}</span>
-                  <span style="color:#1e293b;font-weight:600">${escH(item.description||'—')}</span>
-                  <span style="color:#1a2472;font-weight:700;text-align:left">${money(item.amount)}</span>
-                </div>`).join('')}
-              </td>
-              <td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626;vertical-align:top;white-space:nowrap">${money(s.total_spent||0)}</td>
-              <td style="padding:10px 14px;text-align:center;color:#475569;vertical-align:top;white-space:nowrap">${money(s.opening_balance||0)}</td>
-              <td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">${s.custody_added?money(s.custody_added):'—'}</td>
-              <td style="padding:10px 14px;text-align:center;font-weight:800;vertical-align:top;white-space:nowrap;color:${(s.closing_balance||0)>=0?'#15803d':'#dc2626'}">${money(s.closing_balance||0)}</td>
-              <td style="padding:10px 14px;text-align:center;vertical-align:top">
-                <div style="display:flex;gap:4px;justify-content:center">
-                  <button onclick="printSettlement(${JSON.stringify(s).replace(/"/g,'&quot;')})" title="طباعة"
-                    style="background:#f0fdf4;border:none;border-radius:6px;color:#15803d;cursor:pointer;font-size:13px;padding:5px 8px">🖨️</button>
-                  <button onclick="showEditSettlement(${s.id})" title="تعديل"
-                    style="background:#eef1fb;border:none;border-radius:6px;color:#1a2472;cursor:pointer;font-size:13px;padding:5px 8px">✏️</button>
-                  <button onclick="deleteSettlement(${s.id})" title="حذف"
-                    style="background:#fee2e2;border:none;border-radius:6px;color:#ef4444;cursor:pointer;font-size:13px;padding:5px 8px">🗑️</button>
-                </div>
-              </td>
-            </tr>`).join('')}
+            ${(()=>{
+              const topups = detail.custody_topups || [];
+              const allRows = [
+                ...settlements.map(s=>({type:'settlement',date:s.date,data:s})),
+                ...topups.map(t=>({type:'topup',date:t.date,data:t}))
+              ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+              return allRows.map((row,idx)=>{
+                if(row.type==='topup'){
+                  const t=row.data;
+                  return '<tr style="border-top:1px solid #d1fae5;background:#f0fdf4">' +
+                    '<td style="padding:10px 14px;color:#15803d;font-weight:700;white-space:nowrap;vertical-align:middle">' + dateAr(t.date) + '</td>' +
+                    '<td style="padding:10px 14px;vertical-align:middle">' +
+                      '<div style="display:flex;align-items:center;gap:8px">' +
+                        '<span style="background:#15803d;color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">💰 عهدة جديدة</span>' +
+                        (t.notes ? '<span style="font-size:12px;color:#374151">' + escH(t.notes) + '</span>' : '') +
+                      '</div>' +
+                    '</td>' +
+                    '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
+                    '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
+                    '<td style="padding:10px 14px;text-align:center;font-weight:800;color:#15803d;font-size:15px">' + money(t.amount) + '</td>' +
+                    '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
+                    '<td></td>' +
+                  '</tr>';
+                }
+                const s=row.data;
+                return '<tr style="border-top:1px solid #f1f5f9;' + (idx%2===1?'background:#fafbfc':'') + '">' +
+                  '<td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">' + dateAr(s.date) + '</td>' +
+                  '<td style="padding:10px 14px;vertical-align:top;min-width:200px">' +
+                    (s.expense_items||[]).map(item=>
+                      '<div style="display:grid;grid-template-columns:90px 1fr 1fr 80px;gap:4px;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9">' +
+                        '<span style="color:#94a3b8">' + (item.expense_date||'') + '</span>' +
+                        '<span style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escH(item.client_name||'—') + '</span>' +
+                        '<span style="color:#1e293b;font-weight:600">' + escH(item.description||'—') + '</span>' +
+                        '<span style="color:#1a2472;font-weight:700;text-align:left">' + money(item.amount) + '</span>' +
+                      '</div>'
+                    ).join('') +
+                  '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626;vertical-align:top;white-space:nowrap">' + money(s.total_spent||0) + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;color:#475569;vertical-align:top;white-space:nowrap">' + money(s.opening_balance||0) + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">' + (s.custody_added?money(s.custody_added):'—') + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;font-weight:800;vertical-align:top;white-space:nowrap;color:' + ((s.closing_balance||0)>=0?'#15803d':'#dc2626') + '">' + money(s.closing_balance||0) + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;vertical-align:top">' +
+                    '<div style="display:flex;gap:4px;justify-content:center">' +
+                      '<button onclick="printSettlement(' + JSON.stringify(s).replace(/"/g,'&quot;') + ')" title="طباعة" style="background:#f0fdf4;border:none;border-radius:6px;color:#15803d;cursor:pointer;font-size:13px;padding:5px 8px">🖨️</button>' +
+                      '<button onclick="showEditSettlement(' + s.id + ')" title="تعديل" style="background:#eef1fb;border:none;border-radius:6px;color:#1a2472;cursor:pointer;font-size:13px;padding:5px 8px">✏️</button>' +
+                      '<button onclick="deleteSettlement(' + s.id + ')" title="حذف" style="background:#fee2e2;border:none;border-radius:6px;color:#ef4444;cursor:pointer;font-size:13px;padding:5px 8px">🗑️</button>' +
+                    '</div>' +
+                  '</td>' +
+                '</tr>';
+              }).join('');
+            })()}
           </tbody>
           <tfoot>
             <tr style="background:#1a2472;color:white">
@@ -19798,7 +19903,8 @@ async function loadMonthlyFees() {
   await renderMFPage();
 }
 
-let mfTableFilter = 'all'; // 'all' | 'paid' | 'unpaid'
+let mfTableFilter = 'all'; // 'all' | 'paid' | 'unpaid' | 'partial' | 'overdue'
+let mfSearchQuery = '';
 let _mfAllRecords = [];
 
 async function renderMFPage() {
@@ -19812,25 +19918,105 @@ async function renderMFPage() {
   mfRenderPage(dash, records);
 }
 
+// ── helper: classify a record's status ────────────────────
+function _mfStatus(r) {
+  if (r.paid || r.remaining <= 0) return 'paid';
+  if (r.paid_amount > 0 && r.remaining > 0) return 'partial';
+  const isOverdue = r.year < mfCurrentYear || (r.year === mfCurrentYear && r.month < mfCurrentMonth);
+  if (isOverdue) return 'overdue';
+  return 'unpaid';
+}
+
+// ── helper: days overdue (days since end of record's month) ─
+function _mfOverdueDays(r) {
+  const endOfMonth = new Date(r.year, r.month, 0);
+  const today = new Date();
+  return Math.floor((today - endOfMonth) / (1000*60*60*24));
+}
+
+// ── helper: recompute dashboard summary from local records ─
+function _mfRecomputeDash(records) {
+  const dash = window._mfLastDash ? JSON.parse(JSON.stringify(window._mfLastDash)) : {summary:{},clients:{},top_debtors:[]};
+  const s = dash.summary;
+  s.total_due       = records.reduce((a,r)=>a+(r.total_due||0), 0);
+  s.total_paid      = records.reduce((a,r)=>a+(r.paid_amount||0), 0);
+  s.total_remaining = records.reduce((a,r)=>a+(r.remaining||0), 0);
+  s.collection_pct  = s.total_due > 0 ? (s.total_paid / s.total_due * 100) : 0;
+  dash.clients.paid_this_month   = records.filter(r=>r.paid).length;
+  dash.clients.unpaid_this_month = records.filter(r=>!r.paid).length;
+  dash.top_debtors = records
+    .filter(r=>r.remaining>0)
+    .sort((a,b)=>(b.remaining||0)-(a.remaining||0))
+    .slice(0,5)
+    .map(r=>({name:r.client_name, remaining:r.remaining}));
+  return dash;
+}
+
+// ── helper: update one record in-place and re-render ───────
+function _mfUpdateLocalRecord(recordId, updates) {
+  const idx = _mfAllRecords.findIndex(r=>r.id===recordId);
+  if (idx === -1) return;
+  const r = {..._mfAllRecords[idx], ...updates};
+  r.remaining = (r.total_due||0) - (r.paid_amount||0);
+  r.paid      = r.remaining <= 0;
+  _mfAllRecords[idx] = r;
+  window._mfLastDash = _mfRecomputeDash(_mfAllRecords);
+  mfRenderPage(window._mfLastDash, _mfAllRecords);
+}
+
 function mfRenderPage(dash, records) {
   const main = document.getElementById('main');
   const fmt = n => (n||0).toLocaleString('ar-EG') + ' ج.م';
   const s = dash?.summary || {};
   const cl = dash?.clients || {};
 
-  const filtered = mfTableFilter === 'paid'   ? records.filter(r=>r.paid)
-                 : mfTableFilter === 'unpaid' ? records.filter(r=>!r.paid)
-                 : records;
+  // Apply filter
+  const q = (mfSearchQuery||'').trim().toLowerCase();
+  let filtered = records;
+  if (mfTableFilter === 'paid')         filtered = records.filter(r=>_mfStatus(r)==='paid');
+  else if (mfTableFilter === 'unpaid')  filtered = records.filter(r=>_mfStatus(r)==='unpaid');
+  else if (mfTableFilter === 'partial') filtered = records.filter(r=>_mfStatus(r)==='partial');
+  else if (mfTableFilter === 'overdue') filtered = records.filter(r=>_mfStatus(r)==='overdue');
+  else if (mfTableFilter === 'ov30')    filtered = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>30);
+  else if (mfTableFilter === 'ov60')    filtered = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>60);
+  else if (mfTableFilter === 'ov90')    filtered = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>90);
+  if (q) filtered = filtered.filter(r=>(r.client_name||'').toLowerCase().includes(q));
+
+  // Stats for filter buttons
+  const countAll     = records.length;
+  const countPaid    = records.filter(r=>_mfStatus(r)==='paid').length;
+  const countUnpaid  = records.filter(r=>_mfStatus(r)==='unpaid').length;
+  const countPartial = records.filter(r=>_mfStatus(r)==='partial').length;
+  const countOverdue = records.filter(r=>_mfStatus(r)==='overdue').length;
+  const countOv30    = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>30).length;
+  const countOv60    = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>60).length;
+  const countOv90    = records.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>90).length;
 
   const kpis = [
     {l:'إجمالي المستحقات', v:fmt(s.total_due),              c:'#3b82f6', bg:'#eff6ff', filter:null},
-    {l:'إجمالي المحصّل',   v:fmt(s.total_paid),             c:'#10b981', bg:'#ecfdf5', filter:null},
-    {l:'إجمالي المتبقي',   v:fmt(s.total_remaining),        c:'#ef4444', bg:'#fef2f2', filter:null},
+    {l:'إجمالي المحصّل',   v:fmt(s.total_paid),             c:'#10b981', bg:'#ecfdf5', filter:'paid'},
+    {l:'إجمالي المتبقي',   v:fmt(s.total_remaining),        c:'#ef4444', bg:'#fef2f2', filter:'unpaid'},
     {l:'نسبة التحصيل',     v:(s.collection_pct||0).toFixed(1)+'%', c:'#8b5cf6', bg:'#f5f3ff', filter:null},
-    {l:'عملاء نشطون',      v:cl.active||0,                  c:'#1e293b', bg:'#f1f5f9', filter:'all'},
-    {l:'دفعوا هذا الشهر',  v:cl.paid_this_month||0,         c:'#10b981', bg:'#ecfdf5', filter:'paid'},
+    {l:'دفعوا',            v:cl.paid_this_month||0,         c:'#10b981', bg:'#ecfdf5', filter:'paid'},
     {l:'لم يدفعوا',        v:cl.unpaid_this_month||0,       c:'#ef4444', bg:'#fef2f2', filter:'unpaid'},
   ];
+
+  const filterBtns = [
+    {f:'all',     l:`الكل (${countAll})`,              c:'#64748b', ac:'#1e293b'},
+    {f:'paid',    l:`✅ مدفوع (${countPaid})`,          c:'#64748b', ac:'#10b981'},
+    {f:'partial', l:`🟡 جزئي (${countPartial})`,       c:'#64748b', ac:'#f59e0b'},
+    {f:'unpaid',  l:`❌ غير مدفوع (${countUnpaid})`,   c:'#64748b', ac:'#ef4444'},
+    {f:'overdue', l:`⏰ متأخر (${countOverdue})`,      c:'#64748b', ac:'#dc2626'},
+    {f:'ov30',    l:`🔶 +30 يوم (${countOv30})`,       c:'#64748b', ac:'#b45309'},
+    {f:'ov60',    l:`🔴 +60 يوم (${countOv60})`,       c:'#64748b', ac:'#b91c1c'},
+    {f:'ov90',    l:`💀 +90 يوم (${countOv90})`,       c:'#64748b', ac:'#7f1d1d'},
+  ];
+
+  const tableTitle = {
+    all:'جدول العملاء', paid:'✅ دفعوا',
+    partial:'🟡 مدفوع جزئياً', unpaid:'❌ لم يدفعوا', overdue:'⏰ المتأخرون',
+    ov30:'🔶 متأخر أكثر من 30 يوم', ov60:'🔴 متأخر أكثر من 60 يوم', ov90:'💀 متأخر أكثر من 90 يوم'
+  }[mfTableFilter] || 'جدول العملاء';
 
   main.innerHTML = `
   <!-- Header -->
@@ -19850,14 +20036,14 @@ function mfRenderPage(dash, records) {
     </div>
   </div>
 
-  <!-- KPI Cards (clickable) -->
+  <!-- KPI Cards -->
   ${dash ? `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
     ${kpis.map(k=>`
-      <div onclick="${k.filter!==null ? `mfSetFilter('${k.filter}')` : ''}"
-           style="background:${k.bg};border-radius:12px;padding:14px 16px;border:2px solid ${mfTableFilter===k.filter&&k.filter!==null?k.c:k.c+'22'};${k.filter!==null?'cursor:pointer;':''}transition:border .2s">
-        <div style="font-size:11px;color:#64748b;margin-bottom:4px">${k.l}${k.filter!==null?` <span style="font-size:10px;opacity:.6">اضغط للفلترة</span>`:''}</div>
-        <div style="font-size:20px;font-weight:700;color:${k.c}">${k.v}</div>
+      <div onclick="${k.filter?`mfSetFilter('${k.filter}')`:''}"
+           style="background:${k.bg};border-radius:12px;padding:14px 16px;border:2px solid ${mfTableFilter===k.filter&&k.filter?k.c:k.c+'22'};${k.filter?'cursor:pointer;':''}transition:border .2s">
+        <div style="font-size:11px;color:#64748b;margin-bottom:4px">${k.l}</div>
+        <div style="font-size:20px;font-weight:700;color:${k.c}" id="mfKpi_${k.filter||'stat'}">${k.v}</div>
       </div>`).join('')}
   </div>
   ${dash.top_debtors?.length ? `
@@ -19873,22 +20059,34 @@ function mfRenderPage(dash, records) {
   <div style="background:white;border-radius:12px;padding:16px;border:1px solid #e8edf3;margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:6px">
       <span>نسبة التحصيل — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</span>
-      <span style="font-weight:700;color:#10b981">${(s.collection_pct||0).toFixed(1)}%</span>
+      <span style="font-weight:700;color:#10b981" id="mfProgressPct">${(s.collection_pct||0).toFixed(1)}%</span>
     </div>
     <div style="background:#f1f5f9;border-radius:20px;height:10px;overflow:hidden">
-      <div style="background:linear-gradient(90deg,#10b981,#059669);height:100%;border-radius:20px;width:${Math.min(100,s.collection_pct||0)}%;transition:width .5s"></div>
+      <div id="mfProgressBar" style="background:linear-gradient(90deg,#10b981,#059669);height:100%;border-radius:20px;width:${Math.min(100,s.collection_pct||0)}%;transition:width .5s"></div>
     </div>
   </div>` : ''}
 
+  <!-- Filters + Search -->
+  <div style="background:white;border-radius:12px;border:1px solid #e8edf3;padding:12px 16px;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    ${filterBtns.map(b=>`
+      <button onclick="mfSetFilter('${b.f}')"
+        style="padding:6px 14px;border-radius:20px;border:1.5px solid ${mfTableFilter===b.f?b.ac:'#e2e8f0'};background:${mfTableFilter===b.f?b.ac+'18':'#f8fafc'};color:${mfTableFilter===b.f?b.ac:'#64748b'};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s">
+        ${b.l}
+      </button>`).join('')}
+    <div style="flex:1;min-width:160px;max-width:280px;position:relative">
+      <input id="mfSearch" class="input" placeholder="🔍 بحث باسم الشركة..." value="${escH(mfSearchQuery)}"
+        oninput="mfSearchQuery=this.value;mfRenderPage(window._mfLastDash,_mfAllRecords)"
+        style="padding-right:12px;font-size:13px"/>
+    </div>
+  </div>
+
   <!-- Clients Table -->
   <div style="background:white;border-radius:16px;border:1px solid #e8edf3;overflow:hidden">
-    <div style="padding:14px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div style="font-size:14px;font-weight:700;color:#1e293b">
-        ${mfTableFilter==='paid'?'✅ دفعوا':mfTableFilter==='unpaid'?'❌ لم يدفعوا':'جدول العملاء'} — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        ${mfTableFilter!=='all'?`<button onclick="mfSetFilter('all')" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;color:#64748b">✕ إلغاء الفلتر</button>`:''}
+    <div style="padding:12px 18px;border-bottom:1px solid #e8edf3;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:14px;font-weight:700;color:#1e293b">${tableTitle} — ${MF_MONTHS[mfCurrentMonth]} ${mfCurrentYear}</div>
+      <div style="display:flex;gap:8px;align-items:center">
         <div style="font-size:12px;color:#64748b">${filtered.length} عميل</div>
+        <button onclick="mfExportCSV()" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;color:#374151;font-family:inherit">📥 CSV</button>
       </div>
     </div>
     <div style="overflow-x:auto">
@@ -19902,12 +20100,18 @@ function mfRenderPage(dash, records) {
         <th>المدفوع</th>
         <th>المتبقي</th>
         <th>تاريخ الدفع</th>
+        <th>آخر دفعة</th>
+        <th>الدفعات</th>
         <th>الحالة</th>
         <th>إجراءات</th>
       </tr></thead>
       <tbody>
-        ${filtered.length ? filtered.map((r,i)=>`
-          <tr style="cursor:pointer;background:${r.paid?'#f0fdf4':'white'}" onclick="mfShowClientHistory(${r.client_id},'${(r.client_name||'').replace(/'/g,"\\'")}')">
+        ${filtered.length ? filtered.map((r,i)=>{
+          const st = _mfStatus(r);
+          const rowBg = st==='paid'?'#f0fdf4' : st==='partial'?'#fffbeb' : st==='overdue'?'#fff1f2' : 'white';
+          const safeName = (r.client_name||'').replace(/'/g,"\\'");
+          return `
+          <tr id="mfRow_${r.id}" style="cursor:pointer;background:${rowBg};transition:background .3s" onclick="mfShowClientHistory(${r.client_id},'${safeName}')">
             <td style="color:#94a3b8">${i+1}</td>
             <td style="font-weight:600">${r.client_name||'—'}</td>
             <td>${(r.fee_amount||0).toLocaleString('ar-EG')} ج.م</td>
@@ -19916,30 +20120,42 @@ function mfRenderPage(dash, records) {
             <td style="color:#10b981">${(r.paid_amount||0).toLocaleString('ar-EG')} ج.م</td>
             <td style="color:${r.remaining>0?'#ef4444':'#10b981'};font-weight:600">${(r.remaining||0).toLocaleString('ar-EG')} ج.م</td>
             <td style="font-size:12px;color:#64748b">${r.paid_date||'—'}</td>
+            <td style="font-size:12px;color:#64748b">${r.last_paid_date||'—'}</td>
+            <td style="font-size:12px;color:#64748b;text-align:center">${r.payment_count||0}</td>
             <td>
-              ${r.paid
+              ${st==='paid'
                 ? `<span style="background:#ecfdf5;color:#10b981;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✓ مدفوع</span>`
+                : st==='partial'
+                ? `<span style="background:#fffbeb;color:#d97706;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">◑ جزئي</span>`
+                : st==='overdue'
+                ? `<span style="background:#fff1f2;color:#dc2626;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">⏰ متأخر</span>`
                 : `<span style="background:#fef2f2;color:#ef4444;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✗ غير مدفوع</span>`}
             </td>
             <td onclick="event.stopPropagation()" style="white-space:nowrap">
-              ${currentUser?.role==='admin'?`
-              <button onclick="mfPayModal(${r.id},${r.total_due},'${(r.client_name||'').replace(/'/g,"\\'")}',${r.remaining},${r.paid_amount})"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#3b82f6;color:white;margin-left:4px">
-                ${r.paid?'✏️ تعديل دفعة':'💳 دفع'}
+              <button id="mfPayBtn_${r.id}" onclick="mfPayModal(${r.id},${r.total_due},'${safeName}',${r.remaining},${r.paid_amount||0})"
+                style="font-size:12px;padding:4px 10px;border-radius:6px;border:none;cursor:pointer;background:${r.paid_amount>0?'#6366f1':'#3b82f6'};color:white;margin-left:4px;font-family:inherit">
+                ${r.paid_amount>0?'✏️ تعديل':'💳 دفع'}
               </button>
-              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},'${(r.client_name||'').replace(/'/g,"\\'")}','${r.bayan||''}','${r.notes||''}')"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل الأتعاب">
-                ✏️
-              </button>
-              ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${(r.client_name||'').replace(/'/g,"\\'")}')"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">
-                🗑️
-              </button>`:''}
-              `:'<span style="color:#94a3b8;font-size:12px">—</span>'}
+              ${r.remaining>0?`<button onclick="mfQuickPay(${r.id},${r.total_due},'${safeName}',${r.remaining},${r.paid_amount||0})" style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#10b981;color:white;margin-left:4px" title="دفع كامل المتبقي فوراً">🚀</button>`:''}
+              <button onclick="mfPrepayModal(${r.client_id},'${safeName}',${r.fee_amount||0})"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #8b5cf6;cursor:pointer;background:#f5f3ff;color:#7c3aed;margin-left:4px;font-family:inherit" title="دفع مقدم لشهور قادمة">⏩</button>
+              <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${safeName}','${(r.bayan||'').replace(/'/g,"\\'")}','${(r.notes||'').replace(/'/g,"\\'")}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">✏️</button>
+              ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${safeName}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626;margin-left:4px">↩️</button>`:''}
+              ${currentUser?.role==='admin'?`<button onclick="mfDeleteClientModal(${r.client_id},'${safeName}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fef2f2;color:#dc2626;margin-left:4px;font-family:inherit" title="حذف من المدفوعات الشهرية">🗑️</button>`:''}
             </td>
-          </tr>`).join('')
-          : `<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
+          </tr>`;}).join('')
+          : `<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
       </tbody>
+      ${filtered.length>0?`<tfoot><tr style="background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0">
+        <td colspan="4" style="padding:10px 12px;font-size:12px;color:#64748b">الإجمالي (${filtered.length} عميل)</td>
+        <td style="padding:10px 12px;color:#3b82f6">${filtered.reduce((a,r)=>a+(r.total_due||0),0).toLocaleString('ar-EG')} ج.م</td>
+        <td style="padding:10px 12px;color:#10b981">${filtered.reduce((a,r)=>a+(r.paid_amount||0),0).toLocaleString('ar-EG')} ج.م</td>
+        <td style="padding:10px 12px;color:#ef4444">${filtered.reduce((a,r)=>a+(r.remaining||0),0).toLocaleString('ar-EG')} ج.م</td>
+        <td colspan="5"></td>
+      </tr></tfoot>`:''}
     </table>
     </div>
   </div>`;
@@ -19954,56 +20170,145 @@ window.mfFilterChange = function() {
   mfCurrentYear  = parseInt(document.getElementById('mfYear').value);
   mfCurrentMonth = parseInt(document.getElementById('mfMonth').value);
   mfTableFilter  = 'all';
+  mfSearchQuery  = '';
   renderMFPage();
 };
 
 window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
   document.getElementById('mfPayModalEl')?.remove();
   const isEdit = (currentPaid||0) > 0;
+  // remaining relative to totalDue (not to previous partial)
+  const trueRemaining = (totalDue||0) - (currentPaid||0);
+  const defaultVal = currentPaid > 0 ? currentPaid : (remaining > 0 ? remaining : totalDue);
+
   const html = `
   <div class="modal-backdrop" id="mfPayModalEl" onclick="if(event.target===this)this.remove()">
-    <div class="modal" style="max-width:420px">
+    <div class="modal" style="max-width:440px">
       <div class="modal-header">
-        <h3>${isEdit?'✏️ تعديل الدفعة':'💳 تسجيل دفعة'} — ${clientName}</h3>
+        <h3 style="font-size:15px">${isEdit?'✏️ تعديل الدفعة':'💳 تسجيل دفعة'} — ${escH(clientName)}</h3>
         <button onclick="document.getElementById('mfPayModalEl').remove()" class="modal-close">✕</button>
       </div>
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
-        <div style="background:#eff6ff;border-radius:10px;padding:12px;font-size:13px;color:#1e40af">
-          إجمالي المطلوب: <strong>${(totalDue||0).toLocaleString('ar-EG')} ج.م</strong>
-          ${isEdit?`<br>مدفوع حالياً: <strong style="color:#10b981">${(currentPaid||0).toLocaleString('ar-EG')} ج.م</strong>`:''}
+
+        <!-- Summary row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+          <div style="background:#eff6ff;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px">المطلوب</div>
+            <div style="font-size:15px;font-weight:700;color:#3b82f6">${(totalDue||0).toLocaleString('ar-EG')}</div>
+            <div style="font-size:10px;color:#94a3b8">ج.م</div>
+          </div>
+          <div style="background:#ecfdf5;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px">مدفوع سابقاً</div>
+            <div style="font-size:15px;font-weight:700;color:#10b981">${(currentPaid||0).toLocaleString('ar-EG')}</div>
+            <div style="font-size:10px;color:#94a3b8">ج.م</div>
+          </div>
+          <div style="background:#fef2f2;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px">المتبقي</div>
+            <div id="mfPayPreviewRemaining" style="font-size:15px;font-weight:700;color:#ef4444">${trueRemaining.toLocaleString('ar-EG')}</div>
+            <div style="font-size:10px;color:#94a3b8">ج.م</div>
+          </div>
         </div>
-        <div><label class="label">المبلغ المدفوع (ج.م)</label>
-          <input id="mfPayAmount" class="input" type="number" min="0" step="0.01" value="${currentPaid||remaining||totalDue||''}"/></div>
+
+        <!-- Status badge (live) -->
+        <div id="mfPayStatusBadge" style="text-align:center;font-size:13px;font-weight:600;padding:8px;border-radius:8px;background:#f8fafc;color:#64748b">
+          أدخل المبلغ لمعرفة الحالة
+        </div>
+
+        <div><label class="label">المبلغ المدفوع الآن (ج.م)</label>
+          <input id="mfPayAmount" class="input" type="number" min="0" step="0.01"
+            value="${defaultVal||''}"
+            oninput="mfPayPreview(${totalDue||0},${currentPaid||0})"/></div>
         <div><label class="label">تاريخ الدفع</label>
           <input id="mfPayDate" class="input" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
-        <div><label class="label">البيان</label>
+        <div><label class="label">البيان / ملاحظة (اختياري)</label>
           <input id="mfPayBayan" class="input" value="تم دفع"/></div>
       </div>
       <div class="modal-footer">
-        <button onclick="mfSavePay(${recordId})" class="btn btn-primary">💾 حفظ</button>
+        <button id="mfPaySaveBtn" onclick="mfSavePay(${recordId},${totalDue||0},${currentPaid||0})" class="btn btn-primary">💾 حفظ</button>
         <button onclick="document.getElementById('mfPayModalEl').remove()" class="btn">إلغاء</button>
       </div>
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+  // Trigger initial preview
+  setTimeout(()=>{ mfPayPreview(totalDue||0, currentPaid||0); document.getElementById('mfPayAmount')?.focus(); }, 30);
+};
+
+window.mfPayPreview = function(totalDue, currentPaid) {
+  const amountEl = document.getElementById('mfPayAmount');
+  const remEl    = document.getElementById('mfPayPreviewRemaining');
+  const badge    = document.getElementById('mfPayStatusBadge');
+  const saveBtn  = document.getElementById('mfPaySaveBtn');
+  if (!amountEl || !remEl || !badge) return;
+  const amount = parseFloat(amountEl.value) || 0;
+  const remaining = totalDue - amount;
+  remEl.textContent = Math.max(0, remaining).toLocaleString('ar-EG');
+  if (amount <= 0) {
+    badge.textContent = 'أدخل المبلغ لمعرفة الحالة';
+    badge.style.background = '#f8fafc'; badge.style.color = '#64748b';
+    remEl.style.color = '#ef4444';
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+  } else if (amount > totalDue) {
+    badge.textContent = '⚠️ المبلغ أكبر من المطلوب — لا يمكن الحفظ';
+    badge.style.background = '#fff1f2'; badge.style.color = '#dc2626';
+    remEl.style.color = '#dc2626';
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '.5'; }
+  } else if (remaining <= 0) {
+    badge.textContent = '✅ مدفوع بالكامل';
+    badge.style.background = '#ecfdf5'; badge.style.color = '#10b981';
+    remEl.style.color = '#10b981';
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+  } else {
+    badge.textContent = `◑ مدفوع جزئياً — سيبقى ${remaining.toLocaleString('ar-EG')} ج.م`;
+    badge.style.background = '#fffbeb'; badge.style.color = '#d97706';
+    remEl.style.color = '#f59e0b';
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+  }
 };
 
 window.mfResetPay = async function(recordId, clientName) {
   if(!confirm(`هل تريد حذف الدفعة لـ ${clientName}؟`)) return;
-  await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'});
-  toast('تم حذف الدفعة','success');
-  await renderMFPage();
+  try {
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`,
+      {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'},
+      {queue:true, queueLabel:'إلغاء دفعة أتعاب'});
+    toast('تم حذف الدفعة', 'success');
+    _mfUpdateLocalRecord(recordId, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'});
+  } catch(e) {
+    if (e._queued) { toast('⏳ '+e.message, 'warning'); _mfUpdateLocalRecord(recordId, {paid_amount:0, paid_date:null}); }
+    else toast(e.message, 'error');
+  }
 };
 
-window.mfSavePay = async function(recordId) {
-  const amount = parseFloat(document.getElementById('mfPayAmount').value||0);
-  const pdate  = document.getElementById('mfPayDate').value;
-  const bayan  = document.getElementById('mfPayBayan').value;
-  if(!amount){ toast('ادخل المبلغ','error'); return; }
-  await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:amount, paid_date:pdate, bayan});
-  document.getElementById('mfPayModalEl')?.remove();
-  toast('✅ تم تسجيل الدفعة');
-  await renderMFPage();
+window.mfSavePay = async function(recordId, totalDue, currentPaid) {
+  const amount = parseFloat(document.getElementById('mfPayAmount')?.value||0);
+  const pdate  = document.getElementById('mfPayDate')?.value;
+  const bayan  = document.getElementById('mfPayBayan')?.value || 'تم دفع';
+  if (!amount || amount <= 0) { toast('ادخل مبلغ صحيح', 'error'); return; }
+  if (amount > (totalDue||0)) { toast('المبلغ أكبر من المطلوب', 'error'); return; }
+
+  const saveBtn = document.getElementById('mfPaySaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⏳</span> جاري الحفظ...'; }
+
+  try {
+    await api('PUT', `/api/monthly-fees/records/${recordId}/pay`,
+      {paid_amount: amount, paid_date: pdate, bayan},
+      {queue: true, queueLabel: 'تسجيل دفعة أتعاب'});
+    document.getElementById('mfPayModalEl')?.remove();
+    toast('✅ تم تسجيل الدفعة');
+    // Instant local update — no full page refresh
+    _mfUpdateLocalRecord(recordId, {paid_amount: amount, paid_date: pdate||null, bayan});
+  } catch(e) {
+    if (e._queued) {
+      document.getElementById('mfPayModalEl')?.remove();
+      toast('⏳ '+e.message, 'warning');
+      // Optimistic update even while queued
+      _mfUpdateLocalRecord(recordId, {paid_amount: amount, paid_date: pdate||null, bayan});
+    } else {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 حفظ'; }
+      toast(e.message, 'error');
+    }
+  }
 };
 
 window.mfShowClientHistory = async function(clientId, clientName) {
@@ -20120,6 +20425,8 @@ window.mfEditClientModal = function(clientId, clientName, monthlyFee, notes) {
       </div>
       <div class="modal-footer">
         <button onclick="mfSaveEditClient(${clientId})" class="btn btn-primary">💾 حفظ التعديلات</button>
+        <button onclick="document.getElementById('mfEditClientModalEl').remove();mfDeleteClientModal(${clientId},'${clientName.replace(/'/g,"\\'")}')"
+          style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;font-family:inherit">🗑️ حذف من المدفوعات</button>
         <button onclick="document.getElementById('mfEditClientModalEl').remove()" class="btn">إلغاء</button>
       </div>
     </div>
@@ -20141,11 +20448,11 @@ window.mfSaveEditClient = async function(clientId) {
 };
 
 // ── Monthly Fees: Edit Record (fee amount) Modal ─────────
-window.mfEditRecordModal = function(recordId, feeAmount, clientName, bayan, notes) {
+window.mfEditRecordModal = function(recordId, feeAmount, balanceCarried, paidAmount, paidDate, clientName, bayan, notes, updatedAt) {
   document.getElementById('mfEditRecordModalEl')?.remove();
   const html = `
   <div class="modal-backdrop" id="mfEditRecordModalEl" onclick="if(event.target===this)this.remove()">
-    <div class="modal" style="max-width:420px">
+    <div class="modal" style="max-width:460px">
       <div class="modal-header">
         <h3>✏️ تعديل السجل — ${clientName}</h3>
         <button onclick="document.getElementById('mfEditRecordModalEl').remove()" class="modal-close">✕</button>
@@ -20153,8 +20460,15 @@ window.mfEditRecordModal = function(recordId, feeAmount, clientName, bayan, note
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
         <div><label class="label">الأتعاب هذا الشهر (ج.م)</label>
           <input id="mfEditRecFee" class="input" type="number" min="0" step="0.01" value="${feeAmount||0}" /></div>
+        <div><label class="label">الرصيد السابق المرحّل (ج.م)</label>
+          <input id="mfEditRecCarry" class="input" type="number" min="0" step="0.01" value="${balanceCarried||0}" /></div>
+        <div><label class="label">المبلغ المدفوع (ج.م)</label>
+          <input id="mfEditRecPaid" class="input" type="number" min="0" step="0.01" value="${paidAmount||0}" /></div>
+        <div><label class="label">تاريخ الدفع</label>
+          <input id="mfEditRecPaidDate" class="input" type="date" value="${paidDate||''}" /></div>
         <div><label class="label">البيان</label>
           <input id="mfEditRecBayan" class="input" value="${bayan||''}" /></div>
+        <input type="hidden" id="mfEditRecUpdatedAt" value="${updatedAt||''}"/>
         <div><label class="label">ملاحظات</label>
           <input id="mfEditRecNotes" class="input" value="${notes||''}" /></div>
       </div>
@@ -20168,16 +20482,185 @@ window.mfEditRecordModal = function(recordId, feeAmount, clientName, bayan, note
 };
 
 window.mfSaveEditRecord = async function(recordId) {
-  const fee   = parseFloat(document.getElementById('mfEditRecFee')?.value);
-  const bayan = document.getElementById('mfEditRecBayan')?.value?.trim();
-  const notes = document.getElementById('mfEditRecNotes')?.value?.trim();
-  if(isNaN(fee)){ toast('ادخل قيمة صحيحة','error'); return; }
+  const fee       = parseFloat(document.getElementById('mfEditRecFee')?.value);
+  const carry     = parseFloat(document.getElementById('mfEditRecCarry')?.value);
+  const paid      = parseFloat(document.getElementById('mfEditRecPaid')?.value);
+  const paidDate  = document.getElementById('mfEditRecPaidDate')?.value?.trim();
+  const bayan     = document.getElementById('mfEditRecBayan')?.value?.trim();
+  const notes     = document.getElementById('mfEditRecNotes')?.value?.trim();
+  if(isNaN(fee)){ toast('ادخل قيمة صحيحة للأتعاب','error'); return; }
   try {
-    await api('PUT', `/api/monthly-fees/records/${recordId}`, { fee_amount: fee, bayan: bayan||null, notes: notes||null });
+    const _mfEditTs = document.getElementById('mfEditRecUpdatedAt')?.value||null;
+    await api('PUT', `/api/monthly-fees/records/${recordId}`, {
+      fee_amount: fee,
+      balance_carried: isNaN(carry) ? undefined : carry,
+      paid_amount: isNaN(paid) ? undefined : paid,
+      paid_date: paidDate || null,
+      bayan: bayan || null,
+      notes: notes || null,
+    }, {queue:true, queueLabel:'تعديل سجل أتعاب', conflictTs:_mfEditTs});
     document.getElementById('mfEditRecordModalEl')?.remove();
     toast('✅ تم تعديل السجل');
     await renderMFPage();
-  } catch(e){ toast(e.message,'error'); }
+  } catch(e){
+    if(e._queued){document.getElementById('mfEditRecordModalEl')?.remove();toast('⏳ '+e.message,'warning');}
+    else{ toast(e.message,'error'); }
+  }
+};
+
+// ── Monthly Fees: Quick Pay (full remaining, no modal) ───────
+window.mfQuickPay = async function(recordId, totalDue, clientName, remaining, currentPaid) {
+  if (!confirm('دفع ' + (remaining||0).toLocaleString('ar-EG') + ' ج.م لـ ' + clientName + '؟')) return;
+  const newPaid = (currentPaid||0) + (remaining||0);
+  const pdate = new Date().toISOString().slice(0,10);
+  try {
+    await api('PUT', '/api/monthly-fees/records/' + recordId + '/pay',
+      {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'},
+      {queue: true, queueLabel: 'دفع سريع أتعاب'});
+    toast('✅ تم التسجيل');
+    _mfUpdateLocalRecord(recordId, {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'});
+  } catch(e) {
+    if (e._queued) { toast('⏳ ' + e.message, 'warning'); _mfUpdateLocalRecord(recordId, {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'}); }
+    else toast(e.message, 'error');
+  }
+};
+
+// ── Monthly Fees: Delete Client (archive + remove future unpaid) ──────────
+window.mfDeleteClientModal = function(clientId, clientName) {
+  document.getElementById('mfDeleteClientModalEl')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfDeleteClientModalEl" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <h3 style="color:#dc2626">🗑️ حذف من المدفوعات الشهرية</h3>
+        <button onclick="document.getElementById('mfDeleteClientModalEl').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠️ تأكيد الحذف</div>
+          <div style="font-size:13px;color:#374151;line-height:1.7">
+            سيتم <strong>أرشفة "${escH(clientName)}"</strong> وحذفها من الشهر الحالي وكل الأشهر القادمة.
+          </div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;font-size:12px;color:#15803d;line-height:1.8">
+          ✅ كل الدفعات والبيانات التاريخية السابقة محفوظة بالكامل<br/>
+          ✅ السجلات المدفوعة في الشهر الحالي لن تُحذف<br/>
+          ✅ يمكن إعادة تفعيلها لاحقاً إذا لزم الأمر
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfConfirmDeleteClient(${clientId},'${escH(clientName).replace(/'/g,"\\'")}',${mfCurrentYear},${mfCurrentMonth})"
+          style="background:#dc2626;color:white;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+          🗑️ نعم، احذف من المدفوعات الشهرية
+        </button>
+        <button onclick="document.getElementById('mfDeleteClientModalEl').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfConfirmDeleteClient = async function(clientId, clientName, fromYear, fromMonth) {
+  try {
+    const res = await api('DELETE', `/api/monthly-fees/clients/${clientId}?from_year=${fromYear}&from_month=${fromMonth}`);
+    document.getElementById('mfDeleteClientModalEl')?.remove();
+    document.getElementById('mfHistoryModal')?.remove();
+    toast(`✅ تم أرشفة "${clientName}" وحذف ${res.deleted_records} سجل مستقبلي`);
+    await renderMFPage();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// ── Monthly Fees: Prepay Modal ────────────────────────────────
+window.mfPrepayModal = function(clientId, clientName, feeAmount) {
+  document.getElementById('mfPrepayModalEl')?.remove();
+  const today = new Date();
+  const nextMo = today.getMonth() + 2 > 12 ? 1 : today.getMonth() + 2;
+  const nextYr = today.getMonth() + 2 > 12 ? today.getFullYear() + 1 : today.getFullYear();
+  const html = `
+  <div class="modal-backdrop" id="mfPrepayModalEl" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-header">
+        <h3 style="color:#7c3aed">⏩ دفع مقدم — ${escH(clientName)}</h3>
+        <button onclick="document.getElementById('mfPrepayModalEl').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#f5f3ff;border-radius:10px;padding:12px;font-size:13px;color:#5b21b6;line-height:1.6">
+          💡 سيتم تسجيل الشهور المقدمة كمدفوعة تلقائياً — وتظهر بالأخضر عند فتح كل شهر
+        </div>
+        <div>
+          <label class="label">الشهر الأول للدفع المقدم *</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <select id="mfPrepayYear" class="input">
+              ${[2026,2027,2028].map(y=>`<option value="${y}" ${y===nextYr?'selected':''}>${y}</option>`).join('')}
+            </select>
+            <select id="mfPrepayMonth" class="input">
+              ${['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'].slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===nextMo?'selected':''}>${m}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="label">عدد الشهور المقدمة *</label>
+          <select id="mfPrepayMonths" class="input">
+            ${[1,2,3,4,5,6,12].map(n=>`<option value="${n}">${n} ${n===1?'شهر':'شهور'} — إجمالي ${((feeAmount||0)*n).toLocaleString('ar-EG')} ج.م</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="label">تاريخ استلام الدفعة</label>
+          <input id="mfPrepayDate" class="input" type="date" value="${today.toISOString().slice(0,10)}"/>
+        </div>
+        <div>
+          <label class="label">البيان</label>
+          <input id="mfPrepayBayan" class="input" value="دفع مقدم"/>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSavePrepay(${clientId},'${escH(clientName).replace(/'/g,"\\'")}')" class="btn" style="background:#7c3aed;color:white;border:none">⏩ تسجيل الدفع المقدم</button>
+        <button onclick="document.getElementById('mfPrepayModalEl').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfSavePrepay = async function(clientId, clientName) {
+  const months     = parseInt(document.getElementById('mfPrepayMonths')?.value || 1);
+  const startYear  = parseInt(document.getElementById('mfPrepayYear')?.value);
+  const startMonth = parseInt(document.getElementById('mfPrepayMonth')?.value);
+  const paidDate   = document.getElementById('mfPrepayDate')?.value;
+  const bayan      = document.getElementById('mfPrepayBayan')?.value || 'دفع مقدم';
+  try {
+    const res = await api('POST', `/api/monthly-fees/clients/${clientId}/prepay`, {
+      months, start_year: startYear, start_month: startMonth,
+      paid_date: paidDate || null, bayan
+    });
+    document.getElementById('mfPrepayModalEl')?.remove();
+    toast(`✅ ${res.message}`);
+    await renderMFPage();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// ── Monthly Fees: Export visible table as CSV ────────────────
+window.mfExportCSV = function() {
+  const q = (mfSearchQuery||'').trim().toLowerCase();
+  let data = _mfAllRecords;
+  if (mfTableFilter === 'paid')         data = data.filter(r=>_mfStatus(r)==='paid');
+  else if (mfTableFilter === 'unpaid')  data = data.filter(r=>_mfStatus(r)==='unpaid');
+  else if (mfTableFilter === 'partial') data = data.filter(r=>_mfStatus(r)==='partial');
+  else if (mfTableFilter === 'overdue') data = data.filter(r=>_mfStatus(r)==='overdue');
+  else if (mfTableFilter === 'ov30')    data = data.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>30);
+  else if (mfTableFilter === 'ov60')    data = data.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>60);
+  else if (mfTableFilter === 'ov90')    data = data.filter(r=>_mfStatus(r)==='overdue' && _mfOverdueDays(r)>90);
+  if (q) data = data.filter(r=>(r.client_name||'').toLowerCase().includes(q));
+  const header = ['اسم الشركة','الأتعاب','رصيد سابق','إجمالي المطلوب','المدفوع','المتبقي','تاريخ الدفع','آخر دفعة','عدد الدفعات','الحالة'];
+  const rows = data.map(r=>[
+    r.client_name||'', r.fee_amount||0, r.balance_carried||0, r.total_due||0,
+    r.paid_amount||0, r.remaining||0, r.paid_date||'', r.last_paid_date||'', r.payment_count||0, _mfStatus(r)
+  ]);
+  const csv = '﻿' + [header,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'أتعاب_' + MF_MONTHS[mfCurrentMonth] + '_' + mfCurrentYear + '.csv';
+  a.click();
 };
 
 // Apply saved language on load
@@ -20188,6 +20671,81 @@ window.addEventListener('ms-app-ready', ()=>{
 window.toggleLanguage = toggleLanguage;
 window.t = t;
 
+// ── Daily Revenues Page ───────────────────────────────────────────────────────
+async function loadDailyRevenues() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+  await renderDailyRevenuesPage();
+}
+
+async function renderDailyRevenuesPage() {
+  const el = document.getElementById('main');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b7280">جاري التحميل...</div>';
+
+  const now = new Date();
+  let selYear = now.getFullYear(), selMonth = now.getMonth() + 1;
+
+  async function load() {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b7280">جاري التحميل...</div>';
+    let data;
+    try {
+      data = await api('GET', '/api/office/revenues?year=' + selYear + '&month=' + selMonth + '&page_size=500');
+    } catch(e) {
+      el.innerHTML = '<div style="padding:20px;color:#dc2626">حدث خطأ في التحميل</div>'; return;
+    }
+
+    const MONTHS_AR = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const years = [now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1];
+    const yearOpts = years.map(function(y){ return '<option value="'+y+'"'+(y===selYear?' selected':'')+'>'+y+'</option>'; }).join('');
+    const monthOpts = MONTHS_AR.slice(1).map(function(m,i){ return '<option value="'+(i+1)+'"'+((i+1)===selMonth?' selected':'')+'>'+m+'</option>'; }).join('');
+
+    const items = data.items || [];
+    const rows = items.length ? items.map(function(r) {
+      var d = new Date(r.date||r.tx_date||'');
+      var dateStr = isNaN(d) ? (r.date||'') : d.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'});
+      var cat = r.category_label || r.category || '';
+      return '<tr style="border-bottom:1px solid #f1f5f9">'
+        + '<td style="padding:10px 12px">'+dateStr+'</td>'
+        + '<td style="padding:10px 12px">'+(r.client_name||'—')+'</td>'
+        + '<td style="padding:10px 12px">'+cat+'</td>'
+        + '<td style="padding:10px 12px">'+(r.description||'—')+'</td>'
+        + '<td style="padding:10px 12px;font-weight:600;color:#059669">'+Number(r.amount||0).toLocaleString('ar-EG')+' ج.م</td>'
+        + '<td style="padding:10px 12px;color:#6b7280;font-size:12px">'+(r.notes||'')+'</td>'
+        + '</tr>';
+    }).join('') : '<tr><td colspan="6" style="padding:30px;text-align:center;color:#9ca3af">لا توجد إيرادات لهذا الشهر</td></tr>';
+
+    var total = Number(data.total_amount||0).toLocaleString('ar-EG');
+
+    el.innerHTML = '<div style="padding:16px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb">'
+      + '<select id="dr-year" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+yearOpts+'</select>'
+      + '<select id="dr-month" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+monthOpts+'</select>'
+      + '<button onclick="window._drLoad()" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit">عرض</button>'
+      + '<span style="margin-right:auto;font-weight:700;color:#059669">الإجمالي: '+total+' ج.م</span>'
+      + '<span style="color:#6b7280;font-size:13px">('+items.length+' إيراد)</span>'
+      + '</div>'
+      + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px">'
+      + '<thead><tr style="background:#f8fafc;font-weight:600;color:#374151">'
+      + '<th style="padding:10px 12px;text-align:right">التاريخ</th>'
+      + '<th style="padding:10px 12px;text-align:right">العميل</th>'
+      + '<th style="padding:10px 12px;text-align:right">الفئة</th>'
+      + '<th style="padding:10px 12px;text-align:right">البيان</th>'
+      + '<th style="padding:10px 12px;text-align:right">المبلغ</th>'
+      + '<th style="padding:10px 12px;text-align:right">ملاحظات</th>'
+      + '</tr></thead>'
+      + '<tbody>'+rows+'</tbody>'
+      + '</table></div>';
+  }
+
+  window._drLoad = function() {
+    selYear = parseInt(document.getElementById('dr-year').value);
+    selMonth = parseInt(document.getElementById('dr-month').value);
+    load();
+  };
+
+  await load();
+}
 // ── System Logs Screen ────────────────────────────────────────────────────────
 const _LOG_COLORS = {
   js:      { bg:'#fee2e2', text:'#dc2626', label:'JS Error' },
@@ -20881,6 +21439,348 @@ window.downloadBaselineReport = async function() {
   URL.revokeObjectURL(a.href);
   toast('تم تنزيل التقرير', 'success');
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTO ERROR-GUARD — يُغلّف كل دوال الحفظ غير المحمية بـ try/catch + toast
+// يعمل فقط إذا كانت الدالة لا تعالج الخطأ داخلياً (لا تُعيد الرمي)
+// ═══════════════════════════════════════════════════════════════════════════════
+(function _patchSaveFns() {
+  const savePat = /^(save|mfSave|vatSave|tcVatSave|tcCorpSave|etaSave|_saveFormationObl|saveFormationObl|savePortalCredentials|_saveLeadExpandField|_saveLeadExpandAll)./i;
+  Object.keys(window).forEach(k => {
+    if (!savePat.test(k) && k !== 'showCollectionPaymentModal') return;
+    if (typeof window[k] !== 'function') return;
+    const orig = window[k];
+    window[k] = async function(...args) {
+      try { return await orig.apply(this, args); }
+      catch(e) { toast(e.message || 'فشل الحفظ — حاول مجدداً', 'error'); }
+    };
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// COMPANY NAME GENERATOR & APPROVAL PREDICTOR
+// ══════════════════════════════════════════════════════════════════════════
+
+let _cnResults = [];
+let _cnRejected = [];
+let _cnLoading = false;
+
+async function loadCompanyNames() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  _cnResults = [];
+  try {
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+  } catch(e) { _cnRejected = []; }
+  _renderCompanyNamesPage();
+}
+
+function _cnToggleTypeWarning() {
+  const type = document.getElementById('cnCompanyType')?.value;
+  const warn = document.getElementById('cnTypeWarning');
+  if (warn) warn.style.display = (type === 'single') ? 'block' : 'none';
+}
+
+function _renderCompanyNamesPage() {
+  const main = document.getElementById('main');
+  if (!main) return;
+
+  main.innerHTML =
+    '<div style="max-width:900px;margin:0 auto">' +
+
+    // Header
+    '<div style="background:linear-gradient(135deg,#1a2472,#2563eb);border-radius:18px;padding:28px 32px;margin-bottom:24px;color:white">' +
+      '<div style="font-size:28px;margin-bottom:8px">🏢</div>' +
+      '<h1 style="margin:0 0 6px;font-size:22px;font-weight:800">مولّد أسماء الشركات</h1>' +
+      '<p style="margin:0;opacity:.8;font-size:14px">توليد أسماء مناسبة للسجل التجاري المصري مع تقييم احتمال القبول</p>' +
+    '</div>' +
+
+    // Form card
+    '<div style="background:white;border-radius:16px;border:1.5px solid #e2e8f0;padding:24px;margin-bottom:20px">' +
+      '<h2 style="margin:0 0 20px;font-size:16px;font-weight:700;color:#1e293b">📝 بيانات الشركة</h2>' +
+
+      // Name parts row
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">المقطع الأول من الاسم *</label>' +
+          '<input id="cnNamePart1" class="input" placeholder="مثال: KAO، النور، الفجر..." style="font-size:14px"/>' +
+          '<div style="font-size:11px;color:#94a3b8;margin-top:4px">الجزء الأساسي الذي يظهر في كل الأسماء</div>' +
+        '</div>' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">المقطع الثاني من الاسم</label>' +
+          '<input id="cnNamePart2" class="input" placeholder="مثال: Group، Plus، المتحدة... (اختياري)" style="font-size:14px"/>' +
+          '<div style="font-size:11px;color:#94a3b8;margin-top:4px">إضافة اختيارية تُكمل الاسم</div>' +
+        '</div>' +
+      '</div>' +
+
+      // Activity + Company type row
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">النشاط التجاري *</label>' +
+          '<input id="cnActivity" class="input" placeholder="مثال: استيراد وتصدير، خدمات لوجستية، مقاولات..." style="font-size:14px"/>' +
+          '<div style="font-size:11px;color:#94a3b8;margin-top:4px">اكتب النشاط بحرية — كلما كان دقيقاً كانت الأسماء أفضل</div>' +
+        '</div>' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">نوع الشركة *</label>' +
+          '<select id="cnCompanyType" class="input" onchange="_cnToggleTypeWarning()" style="font-size:14px">' +
+            '<option value="">— اختر نوع الشركة —</option>' +
+            '<option value="single">شركة شخص واحد</option>' +
+            '<option value="llc">شركة ذات مسئولية محدودة</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+
+      // Warning for single-person company
+      '<div id="cnTypeWarning" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e">' +
+        '⚠️ في شركات الشخص الواحد يُفضل أن يتضمن اسم الشركة النشاط التجاري — سيقوم النظام بتوليد أسماء تحتوي على النشاط تلقائياً' +
+      '</div>' +
+
+      // Keywords
+      '<div style="margin-bottom:16px">' +
+        '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">كلمات مفتاحية مفضلة (اختياري)</label>' +
+        '<input id="cnKeywords" class="input" placeholder="مثال: الدولية، المتحدة، النيل — افصل بفاصلة" style="font-size:14px"/>' +
+        '<div style="font-size:11px;color:#94a3b8;margin-top:4px">ادخل كلمات تحب ظهورها في الاسم — مفصولة بفاصلة</div>' +
+      '</div>' +
+
+      '<div style="display:flex;align-items:center;gap:12px">' +
+        '<button onclick="runCompanyNameGenerator()" id="cnGenerateBtn" class="btn btn-primary" style="font-size:14px;padding:10px 28px">✨ توليد الأسماء</button>' +
+        '<span style="font-size:12px;color:#64748b">سيتم توليد 25 اسم مع تقييم كل اسم</span>' +
+      '</div>' +
+    '</div>' +
+
+    // Results area
+    '<div id="cnResultsArea"></div>' +
+
+    // Rejected names panel
+    '<div style="background:white;border-radius:16px;border:1.5px solid #fee2e2;padding:20px;margin-top:20px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+        '<h3 style="margin:0;font-size:14px;font-weight:700;color:#dc2626">🚫 قاعدة الأسماء المرفوضة (' + _cnRejected.length + ')</h3>' +
+        '<button onclick="_cnShowAddRejected()" style="background:#fee2e2;border:none;border-radius:8px;padding:6px 14px;font-size:12px;color:#dc2626;cursor:pointer;font-weight:700;font-family:inherit">+ إضافة اسم مرفوض</button>' +
+      '</div>' +
+      (_cnRejected.length === 0
+        ? '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">لا توجد أسماء مرفوضة مسجّلة — سيتم تحديثها تلقائياً عند تسجيل أي رفض</div>'
+        : '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+            _cnRejected.map(function(r){
+              return '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:5px 10px;font-size:12px;display:flex;align-items:center;gap:6px">' +
+                '<span style="color:#374151;font-weight:600">' + escH(r.name) + '</span>' +
+                (r.activity ? '<span style="color:#94a3b8">· ' + escH(r.activity) + '</span>' : '') +
+                '<button onclick="_cnDeleteRejected(' + r.id + ')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:0;line-height:1">✕</button>' +
+              '</div>';
+            }).join('') +
+          '</div>'
+      ) +
+    '</div>' +
+
+    '</div>';
+}
+
+async function runCompanyNameGenerator() {
+  const namePart1   = document.getElementById('cnNamePart1')?.value?.trim();
+  const namePart2   = document.getElementById('cnNamePart2')?.value?.trim() || '';
+  const activity    = document.getElementById('cnActivity')?.value?.trim();
+  const companyType = document.getElementById('cnCompanyType')?.value;
+  const keywordsRaw = document.getElementById('cnKeywords')?.value?.trim();
+
+  if (!namePart1)    { toast('أدخل المقطع الأول من الاسم', 'error'); return; }
+  if (!activity)     { toast('أدخل النشاط التجاري', 'error'); return; }
+  if (!companyType)  { toast('اختر نوع الشركة', 'error'); return; }
+
+  const keywords = keywordsRaw ? keywordsRaw.split(/[,،]/).map(function(k){ return k.trim(); }).filter(Boolean) : [];
+
+  const btn = document.getElementById('cnGenerateBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block;margin-left:6px"></span> جاري التوليد...'; }
+
+  const area = document.getElementById('cnResultsArea');
+  if (area) area.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="margin-top:12px;font-size:13px;color:#64748b">جاري توليد الأسماء وتقييمها...</div></div>';
+
+  try {
+    const data = await api('POST', '/api/company-names/generate', {
+      name_part1:   namePart1,
+      name_part2:   namePart2,
+      activity:     activity,
+      company_type: companyType,
+      keywords:     keywords,
+      count:        25
+    });
+    _cnResults = data.names || [];
+    _renderCnResults(data);
+  } catch(e) {
+    if (area) area.innerHTML = '<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:20px;color:#dc2626;font-size:14px">❌ ' + escH(e.message) + '</div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✨ توليد الأسماء'; }
+  }
+}
+
+function _renderCnResults(data) {
+  const area = document.getElementById('cnResultsArea');
+  if (!area) return;
+  const names = data.names || [];
+  if (!names.length) {
+    area.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8">لم يتم توليد أسماء</div>';
+    return;
+  }
+
+  const highCount = names.filter(function(n){ return n.level === 'High'; }).length;
+  const medCount  = names.filter(function(n){ return n.level === 'Medium'; }).length;
+  const lowCount  = names.filter(function(n){ return n.level === 'Low'; }).length;
+
+  area.innerHTML =
+    '<div style="background:white;border-radius:16px;border:1.5px solid #e2e8f0;overflow:hidden">' +
+
+    // Summary bar
+    '<div style="background:#f8fafc;padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:20px;flex-wrap:wrap">' +
+      '<span style="font-size:14px;font-weight:700;color:#1e293b">✅ ' + names.length + ' اسم مقترح</span>' +
+      '<span style="background:#dcfce7;color:#15803d;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">🟢 عالي: ' + highCount + '</span>' +
+      '<span style="background:#fef9c3;color:#92400e;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">🟡 متوسط: ' + medCount + '</span>' +
+      '<span style="background:#fee2e2;color:#dc2626;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">🔴 منخفض: ' + lowCount + '</span>' +
+    '</div>' +
+
+    // Table
+    '<div style="overflow-x:auto">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+    '<thead><tr style="background:#f1f5f9">' +
+      '<th style="padding:10px 16px;text-align:right;color:#64748b;font-weight:700">#</th>' +
+      '<th style="padding:10px 16px;text-align:right;color:#64748b;font-weight:700">اسم الشركة</th>' +
+      '<th style="padding:10px 16px;text-align:center;color:#64748b;font-weight:700">الدرجة</th>' +
+      '<th style="padding:10px 16px;text-align:center;color:#64748b;font-weight:700">التقييم</th>' +
+      '<th style="padding:10px 16px;text-align:right;color:#64748b;font-weight:700">السبب</th>' +
+      '<th style="padding:10px 16px;text-align:center;color:#64748b;font-weight:700">إجراء</th>' +
+    '</tr></thead>' +
+    '<tbody>' +
+    names.map(function(n, i) {
+      var levelColor = n.level === 'High' ? '#15803d' : n.level === 'Medium' ? '#92400e' : '#dc2626';
+      var levelBg    = n.level === 'High' ? '#dcfce7'  : n.level === 'Medium' ? '#fef9c3'  : '#fee2e2';
+      var levelAr    = n.level === 'High' ? 'عالي' : n.level === 'Medium' ? 'متوسط' : 'منخفض';
+      var barWidth   = n.score + '%';
+      var barColor   = n.score >= 75 ? '#15803d' : n.score >= 50 ? '#d97706' : '#dc2626';
+      return '<tr style="border-top:1px solid #f1f5f9' + (n.is_rejected ? ';background:#fef2f2;opacity:.7' : '') + '">' +
+        '<td style="padding:10px 16px;color:#94a3b8;font-size:12px">' + (i+1) + '</td>' +
+        '<td style="padding:10px 16px">' +
+          '<div style="font-size:15px;font-weight:700;color:' + (n.is_rejected ? '#dc2626' : '#1e293b') + '">' +
+            (n.is_rejected ? '🚫 ' : '') + escH(n.name) +
+          '</div>' +
+        '</td>' +
+        '<td style="padding:10px 16px;text-align:center">' +
+          '<div style="font-size:16px;font-weight:800;color:' + barColor + '">' + n.score + '</div>' +
+          '<div style="background:#e2e8f0;border-radius:4px;height:4px;margin-top:4px;width:60px;margin:4px auto 0">' +
+            '<div style="background:' + barColor + ';height:4px;border-radius:4px;width:' + barWidth + '"></div>' +
+          '</div>' +
+        '</td>' +
+        '<td style="padding:10px 16px;text-align:center">' +
+          '<span style="background:' + levelBg + ';color:' + levelColor + ';border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700">' + levelAr + '</span>' +
+        '</td>' +
+        '<td style="padding:10px 16px;color:#475569;font-size:12px;max-width:250px">' + escH(n.reason || '') + '</td>' +
+        '<td style="padding:10px 16px;text-align:center">' +
+          (n.is_rejected
+            ? '<span style="font-size:11px;color:#dc2626">مرفوض</span>'
+            : '<button onclick="_cnMarkRejected(\'' + escH(n.name).replace(/'/g, "\\'") + '\')" ' +
+              'style="background:#fee2e2;border:none;border-radius:7px;padding:5px 10px;font-size:11px;color:#dc2626;cursor:pointer;font-weight:700;font-family:inherit;white-space:nowrap">🚫 سجّل رفض</button>'
+          ) +
+        '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table></div></div>';
+}
+
+function _cnMarkRejected(name) {
+  const activity = document.getElementById('cnActivity')?.value || '';
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML =
+    '<div class="modal" style="max-width:420px">' +
+      '<h3 style="margin:0 0 16px;font-size:15px;font-weight:800;color:#dc2626">🚫 تسجيل رفض الاسم</h3>' +
+      '<div style="background:#fef2f2;border-radius:10px;padding:12px;margin-bottom:16px">' +
+        '<div style="font-size:16px;font-weight:700;color:#1e293b">' + escH(name) + '</div>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:12px">' +
+        '<label class="label">سبب الرفض</label>' +
+        '<input id="cnRejectReason" class="input" placeholder="مثال: اسم مشابه موجود / غير مناسب للنشاط..."/>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:16px">' +
+        '<label class="label">ملاحظات إضافية</label>' +
+        '<input id="cnRejectNotes" class="input" placeholder="اختياري..."/>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button onclick="this.closest(\'.modal-overlay\').remove()" style="padding:8px 16px;background:#f1f5f9;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600">إلغاء</button>' +
+        '<button onclick="_cnConfirmReject(\'' + escH(name).replace(/'/g, "\\'") + '\',\'' + activity + '\')" class="btn" style="background:#dc2626;color:white;padding:8px 16px">تأكيد التسجيل</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+}
+
+async function _cnConfirmReject(name, activity) {
+  const reason = document.getElementById('cnRejectReason')?.value?.trim();
+  const notes  = document.getElementById('cnRejectNotes')?.value?.trim();
+  try {
+    await api('POST', '/api/company-names/reject', {name: name, activity: activity, rejection_reason: reason, notes: notes});
+    toast('✅ تم تسجيل الرفض — سيُستبعد من الاقتراحات مستقبلاً');
+    document.querySelector('.modal-overlay')?.remove();
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+    // Mark in current results
+    _cnResults = _cnResults.map(function(r){ return r.name === name ? Object.assign({}, r, {is_rejected:true, score:0, level:'Low', reason:'مرفوض مسبقاً في مصر الرقمية'}) : r; });
+    if (_cnResults.length) _renderCnResults({names: _cnResults});
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function _cnShowAddRejected() {
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML =
+    '<div class="modal" style="max-width:420px">' +
+      '<h3 style="margin:0 0 16px;font-size:15px;font-weight:800;color:#dc2626">➕ إضافة اسم مرفوض يدوياً</h3>' +
+      '<div class="form-group" style="margin-bottom:12px">' +
+        '<label class="label">اسم الشركة المرفوض *</label>' +
+        '<input id="cnManualName" class="input" placeholder="اسم الشركة الذي رُفض في مصر الرقمية"/>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:12px">' +
+        '<label class="label">النشاط</label>' +
+        '<input id="cnManualActivity" class="input" placeholder="تجارة / خدمات / مقاولات..."/>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:16px">' +
+        '<label class="label">سبب الرفض</label>' +
+        '<input id="cnManualReason" class="input" placeholder="اختياري..."/>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button onclick="this.closest(\'.modal-overlay\').remove()" style="padding:8px 16px;background:#f1f5f9;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600">إلغاء</button>' +
+        '<button onclick="_cnSaveManualReject()" class="btn" style="background:#dc2626;color:white;padding:8px 16px">حفظ</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+}
+
+async function _cnSaveManualReject() {
+  const name     = document.getElementById('cnManualName')?.value?.trim();
+  const activity = document.getElementById('cnManualActivity')?.value?.trim();
+  const reason   = document.getElementById('cnManualReason')?.value?.trim();
+  if (!name) { toast('أدخل اسم الشركة', 'error'); return; }
+  try {
+    await api('POST', '/api/company-names/reject', {name: name, activity: activity, rejection_reason: reason});
+    toast('✅ تم الحفظ');
+    document.querySelector('.modal-overlay')?.remove();
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+    _renderCompanyNamesPage();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function _cnDeleteRejected(id) {
+  if (!await confirmDlg('حذف هذا الاسم من قائمة المرفوضات؟')) return;
+  try {
+    await api('DELETE', '/api/company-names/rejected/' + id);
+    toast('تم الحذف');
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+    _renderCompanyNamesPage();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+window.loadCompanyNames = loadCompanyNames;
+window.runCompanyNameGenerator = runCompanyNameGenerator;
+window._cnMarkRejected = _cnMarkRejected;
+window._cnConfirmReject = _cnConfirmReject;
+window._cnShowAddRejected = _cnShowAddRejected;
+window._cnSaveManualReject = _cnSaveManualReject;
+window._cnDeleteRejected = _cnDeleteRejected;
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {
