@@ -123,6 +123,25 @@ def add_employee(
     return {"message": f"✅ تمت إضافة {c.employee_name} بعهدة {payload.amount:.2f} ج.م."}
 
 
+@router.delete("/custody/topup/{topup_id}")
+def delete_topup(
+    topup_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """حذف سجل عهدة وعكس أثره على الرصيد."""
+    t = db.query(CustodyTopupLog).filter(CustodyTopupLog.id == topup_id).first()
+    if not t:
+        raise HTTPException(404, "السجل غير موجود")
+    c = _get_or_create_custody(t.employee_name, db)
+    c.current_balance -= t.amount
+    c.total_given     -= t.amount
+    c.updated_at       = datetime.utcnow()
+    db.delete(t)
+    db.commit()
+    return {"message": "✅ تم حذف سجل العهدة وتصحيح الرصيد", "new_balance": c.current_balance}
+
+
 @router.post("/custody/topup")
 def topup_custody(
     payload: CustodyTopUp,
