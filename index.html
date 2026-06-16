@@ -19893,8 +19893,8 @@ async function fcRenderGrid(el) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MF_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-let mfCurrentYear = 2026;
-let mfCurrentMonth = 5; // مايو — آخر شهر فيه بيانات
+let mfCurrentYear = new Date().getFullYear();
+let mfCurrentMonth = new Date().getMonth() + 1;
 
 async function loadMonthlyFees() {
   const main = document.getElementById('main');
@@ -20137,10 +20137,14 @@ function mfRenderPage(dash, records) {
                 ${r.paid_amount>0?'✏️ تعديل':'💳 دفع'}
               </button>
               ${r.remaining>0?`<button onclick="mfQuickPay(${r.id},${r.total_due},'${safeName}',${r.remaining},${r.paid_amount||0})" style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#10b981;color:white;margin-left:4px" title="دفع كامل المتبقي فوراً">🚀</button>`:''}
+              <button onclick="mfPrepayModal(${r.client_id},'${safeName}',${r.fee_amount||0})"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #8b5cf6;cursor:pointer;background:#f5f3ff;color:#7c3aed;margin-left:4px;font-family:inherit" title="دفع مقدم لشهور قادمة">⏩</button>
               <button onclick="mfEditRecordModal(${r.id},${r.fee_amount},${r.balance_carried||0},${r.paid_amount||0},'${r.paid_date||''}','${safeName}','${(r.bayan||'').replace(/'/g,"\\'")}','${(r.notes||'').replace(/'/g,"\\'")}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#374151;margin-left:4px" title="تعديل السجل">✏️</button>
               ${r.paid_amount>0?`<button onclick="mfResetPay(${r.id},'${safeName}')"
-                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626">🗑️</button>`:''}
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626;margin-left:4px">↩️</button>`:''}
+              ${currentUser?.role==='admin'?`<button onclick="mfDeleteClientModal(${r.client_id},'${safeName}')"
+                style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fef2f2;color:#dc2626;margin-left:4px;font-family:inherit" title="حذف من المدفوعات الشهرية">🗑️</button>`:''}
             </td>
           </tr>`;}).join('')
           : `<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
@@ -20421,6 +20425,8 @@ window.mfEditClientModal = function(clientId, clientName, monthlyFee, notes) {
       </div>
       <div class="modal-footer">
         <button onclick="mfSaveEditClient(${clientId})" class="btn btn-primary">💾 حفظ التعديلات</button>
+        <button onclick="document.getElementById('mfEditClientModalEl').remove();mfDeleteClientModal(${clientId},'${clientName.replace(/'/g,"\\'")}')"
+          style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;font-family:inherit">🗑️ حذف من المدفوعات</button>
         <button onclick="document.getElementById('mfEditClientModalEl').remove()" class="btn">إلغاء</button>
       </div>
     </div>
@@ -20517,6 +20523,120 @@ window.mfQuickPay = async function(recordId, totalDue, clientName, remaining, cu
     if (e._queued) { toast('⏳ ' + e.message, 'warning'); _mfUpdateLocalRecord(recordId, {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'}); }
     else toast(e.message, 'error');
   }
+};
+
+// ── Monthly Fees: Delete Client (archive + remove future unpaid) ──────────
+window.mfDeleteClientModal = function(clientId, clientName) {
+  document.getElementById('mfDeleteClientModalEl')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfDeleteClientModalEl" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <h3 style="color:#dc2626">🗑️ حذف من المدفوعات الشهرية</h3>
+        <button onclick="document.getElementById('mfDeleteClientModalEl').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠️ تأكيد الحذف</div>
+          <div style="font-size:13px;color:#374151;line-height:1.7">
+            سيتم <strong>أرشفة "${escH(clientName)}"</strong> وحذفها من الشهر الحالي وكل الأشهر القادمة.
+          </div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;font-size:12px;color:#15803d;line-height:1.8">
+          ✅ كل الدفعات والبيانات التاريخية السابقة محفوظة بالكامل<br/>
+          ✅ السجلات المدفوعة في الشهر الحالي لن تُحذف<br/>
+          ✅ يمكن إعادة تفعيلها لاحقاً إذا لزم الأمر
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfConfirmDeleteClient(${clientId},'${escH(clientName).replace(/'/g,"\\'")}',${mfCurrentYear},${mfCurrentMonth})"
+          style="background:#dc2626;color:white;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+          🗑️ نعم، احذف من المدفوعات الشهرية
+        </button>
+        <button onclick="document.getElementById('mfDeleteClientModalEl').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfConfirmDeleteClient = async function(clientId, clientName, fromYear, fromMonth) {
+  try {
+    const res = await api('DELETE', `/api/monthly-fees/clients/${clientId}?from_year=${fromYear}&from_month=${fromMonth}`);
+    document.getElementById('mfDeleteClientModalEl')?.remove();
+    document.getElementById('mfHistoryModal')?.remove();
+    toast(`✅ تم أرشفة "${clientName}" وحذف ${res.deleted_records} سجل مستقبلي`);
+    await renderMFPage();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// ── Monthly Fees: Prepay Modal ────────────────────────────────
+window.mfPrepayModal = function(clientId, clientName, feeAmount) {
+  document.getElementById('mfPrepayModalEl')?.remove();
+  const today = new Date();
+  const nextMo = today.getMonth() + 2 > 12 ? 1 : today.getMonth() + 2;
+  const nextYr = today.getMonth() + 2 > 12 ? today.getFullYear() + 1 : today.getFullYear();
+  const html = `
+  <div class="modal-backdrop" id="mfPrepayModalEl" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-header">
+        <h3 style="color:#7c3aed">⏩ دفع مقدم — ${escH(clientName)}</h3>
+        <button onclick="document.getElementById('mfPrepayModalEl').remove()" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#f5f3ff;border-radius:10px;padding:12px;font-size:13px;color:#5b21b6;line-height:1.6">
+          💡 سيتم تسجيل الشهور المقدمة كمدفوعة تلقائياً — وتظهر بالأخضر عند فتح كل شهر
+        </div>
+        <div>
+          <label class="label">الشهر الأول للدفع المقدم *</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <select id="mfPrepayYear" class="input">
+              ${[2026,2027,2028].map(y=>`<option value="${y}" ${y===nextYr?'selected':''}>${y}</option>`).join('')}
+            </select>
+            <select id="mfPrepayMonth" class="input">
+              ${['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'].slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===nextMo?'selected':''}>${m}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="label">عدد الشهور المقدمة *</label>
+          <select id="mfPrepayMonths" class="input">
+            ${[1,2,3,4,5,6,12].map(n=>`<option value="${n}">${n} ${n===1?'شهر':'شهور'} — إجمالي ${((feeAmount||0)*n).toLocaleString('ar-EG')} ج.م</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="label">تاريخ استلام الدفعة</label>
+          <input id="mfPrepayDate" class="input" type="date" value="${today.toISOString().slice(0,10)}"/>
+        </div>
+        <div>
+          <label class="label">البيان</label>
+          <input id="mfPrepayBayan" class="input" value="دفع مقدم"/>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSavePrepay(${clientId},'${escH(clientName).replace(/'/g,"\\'")}')" class="btn" style="background:#7c3aed;color:white;border:none">⏩ تسجيل الدفع المقدم</button>
+        <button onclick="document.getElementById('mfPrepayModalEl').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfSavePrepay = async function(clientId, clientName) {
+  const months     = parseInt(document.getElementById('mfPrepayMonths')?.value || 1);
+  const startYear  = parseInt(document.getElementById('mfPrepayYear')?.value);
+  const startMonth = parseInt(document.getElementById('mfPrepayMonth')?.value);
+  const paidDate   = document.getElementById('mfPrepayDate')?.value;
+  const bayan      = document.getElementById('mfPrepayBayan')?.value || 'دفع مقدم';
+  try {
+    const res = await api('POST', `/api/monthly-fees/clients/${clientId}/prepay`, {
+      months, start_year: startYear, start_month: startMonth,
+      paid_date: paidDate || null, bayan
+    });
+    document.getElementById('mfPrepayModalEl')?.remove();
+    toast(`✅ ${res.message}`);
+    await renderMFPage();
+  } catch(e) { toast(e.message, 'error'); }
 };
 
 // ── Monthly Fees: Export visible table as CSV ────────────────
