@@ -21355,11 +21355,15 @@ async function loadCompanyNames() {
   _renderCompanyNamesPage();
 }
 
+function _cnToggleTypeWarning() {
+  const type = document.getElementById('cnCompanyType')?.value;
+  const warn = document.getElementById('cnTypeWarning');
+  if (warn) warn.style.display = (type === 'single') ? 'block' : 'none';
+}
+
 function _renderCompanyNamesPage() {
   const main = document.getElementById('main');
   if (!main) return;
-
-  const ACTIVITIES = ['تجارة','توريدات','مقاولات','خدمات','محاسبة','استشارات','صناعة','تقنية','عقارات','سياحة'];
 
   main.innerHTML =
     '<div style="max-width:900px;margin:0 auto">' +
@@ -21374,25 +21378,50 @@ function _renderCompanyNamesPage() {
     // Form card
     '<div style="background:white;border-radius:16px;border:1.5px solid #e2e8f0;padding:24px;margin-bottom:20px">' +
       '<h2 style="margin:0 0 20px;font-size:16px;font-weight:700;color:#1e293b">📝 بيانات الشركة</h2>' +
+
+      // Name parts row
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">' +
         '<div>' +
-          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">اسم العميل أو الاسم الأساسي *</label>' +
-          '<input id="cnClientName" class="input" placeholder="مثال: أحمد، النور، الفجر..." style="font-size:14px"/>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">المقطع الأول من الاسم *</label>' +
+          '<input id="cnNamePart1" class="input" placeholder="مثال: KAO، النور، الفجر..." style="font-size:14px"/>' +
+          '<div style="font-size:11px;color:#94a3b8;margin-top:4px">الجزء الأساسي الذي يظهر في كل الأسماء</div>' +
         '</div>' +
         '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">المقطع الثاني من الاسم</label>' +
+          '<input id="cnNamePart2" class="input" placeholder="مثال: Group، Plus، المتحدة... (اختياري)" style="font-size:14px"/>' +
+          '<div style="font-size:11px;color:#94a3b8;margin-top:4px">إضافة اختيارية تُكمل الاسم</div>' +
+        '</div>' +
+      '</div>' +
+
+      // Activity + Company type row
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">' +
+        '<div>' +
           '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">النشاط التجاري *</label>' +
-          '<select id="cnActivity" class="input" style="font-size:14px">' +
-            '<option value="">— اختر النشاط —</option>' +
-            ACTIVITIES.map(function(a){ return '<option value="' + a + '">' + a + '</option>'; }).join('') +
-            '<option value="أخرى">أخرى (اكتب في الكلمات المفتاحية)</option>' +
+          '<input id="cnActivity" class="input" placeholder="مثال: استيراد وتصدير، خدمات لوجستية، مقاولات..." style="font-size:14px"/>' +
+          '<div style="font-size:11px;color:#94a3b8;margin-top:4px">اكتب النشاط بحرية — كلما كان دقيقاً كانت الأسماء أفضل</div>' +
+        '</div>' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">نوع الشركة *</label>' +
+          '<select id="cnCompanyType" class="input" onchange="_cnToggleTypeWarning()" style="font-size:14px">' +
+            '<option value="">— اختر نوع الشركة —</option>' +
+            '<option value="single">شركة شخص واحد</option>' +
+            '<option value="llc">شركة ذات مسئولية محدودة</option>' +
           '</select>' +
         '</div>' +
       '</div>' +
+
+      // Warning for single-person company
+      '<div id="cnTypeWarning" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e">' +
+        '⚠️ في شركات الشخص الواحد يُفضل أن يتضمن اسم الشركة النشاط التجاري — سيقوم النظام بتوليد أسماء تحتوي على النشاط تلقائياً' +
+      '</div>' +
+
+      // Keywords
       '<div style="margin-bottom:16px">' +
         '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">كلمات مفتاحية مفضلة (اختياري)</label>' +
         '<input id="cnKeywords" class="input" placeholder="مثال: الدولية، المتحدة، النيل — افصل بفاصلة" style="font-size:14px"/>' +
         '<div style="font-size:11px;color:#94a3b8;margin-top:4px">ادخل كلمات تحب ظهورها في الاسم — مفصولة بفاصلة</div>' +
       '</div>' +
+
       '<div style="display:flex;align-items:center;gap:12px">' +
         '<button onclick="runCompanyNameGenerator()" id="cnGenerateBtn" class="btn btn-primary" style="font-size:14px;padding:10px 28px">✨ توليد الأسماء</button>' +
         '<span style="font-size:12px;color:#64748b">سيتم توليد 25 اسم مع تقييم كل اسم</span>' +
@@ -21426,12 +21455,15 @@ function _renderCompanyNamesPage() {
 }
 
 async function runCompanyNameGenerator() {
-  const clientName = document.getElementById('cnClientName')?.value?.trim();
-  const activity   = document.getElementById('cnActivity')?.value?.trim();
+  const namePart1   = document.getElementById('cnNamePart1')?.value?.trim();
+  const namePart2   = document.getElementById('cnNamePart2')?.value?.trim() || '';
+  const activity    = document.getElementById('cnActivity')?.value?.trim();
+  const companyType = document.getElementById('cnCompanyType')?.value;
   const keywordsRaw = document.getElementById('cnKeywords')?.value?.trim();
 
-  if (!clientName) { toast('أدخل اسم العميل', 'error'); return; }
-  if (!activity)   { toast('اختر النشاط التجاري', 'error'); return; }
+  if (!namePart1)    { toast('أدخل المقطع الأول من الاسم', 'error'); return; }
+  if (!activity)     { toast('أدخل النشاط التجاري', 'error'); return; }
+  if (!companyType)  { toast('اختر نوع الشركة', 'error'); return; }
 
   const keywords = keywordsRaw ? keywordsRaw.split(/[,،]/).map(function(k){ return k.trim(); }).filter(Boolean) : [];
 
@@ -21443,10 +21475,12 @@ async function runCompanyNameGenerator() {
 
   try {
     const data = await api('POST', '/api/company-names/generate', {
-      client_name: clientName,
-      activity: activity,
-      keywords: keywords,
-      count: 25
+      name_part1:   namePart1,
+      name_part2:   namePart2,
+      activity:     activity,
+      company_type: companyType,
+      keywords:     keywords,
+      count:        25
     });
     _cnResults = data.names || [];
     _renderCnResults(data);
