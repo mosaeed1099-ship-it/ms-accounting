@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.0 — under_establishment page enhanced + company name generator banned words -->
+<!-- v3.1 — fix under_establishment page backtick nesting -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -12523,85 +12523,74 @@ async function loadUnderEstablishmentClients(silent=false) {
   } catch(err) { showError('فشل تحميل البيانات'); }
 }
 
+function _ueRow(l, i) {
+  const bg = i % 2 === 0 ? '#f0fdf4' : '#dcfce7';
+  const notes80 = escH((l.notes || '').substring(0, 80)) + ((l.notes || '').length > 80 ? '...' : '');
+  const notesEsc = (l.notes || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const nameCell = l.suggested_name
+    ? '<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">' + escH(l.suggested_name) + '</span>'
+    : '<button onclick="ueSetName(' + l.id + ')" style="background:#f0fdf4;color:#15803d;border:1px dashed #86efac;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:inherit">+ إضافة</button>';
+  const phone = escH((l.phone || '').replace(/\D/g, ''));
+  const dt = l.updated_at ? new Date(l.updated_at).toLocaleDateString('ar-EG') : '—';
+  return '<tr style="background:' + bg + ';border-bottom:1px solid #bbf7d0;transition:filter .15s" onmouseover="this.style.filter=\'brightness(0.97)\'" onmouseout="this.style.filter=\'\'">'
+    + '<td style="padding:10px 12px;font-weight:700;color:#15803d">' + escH(l.name || '—') + '</td>'
+    + '<td style="padding:8px 12px;text-align:center;direction:ltr;font-size:12px">' + escH(l.phone || '—') + '</td>'
+    + '<td style="padding:8px 12px;text-align:center;font-size:11px;white-space:nowrap">' + escH(l.quote_legal_entity || l.company_type || '—') + '</td>'
+    + '<td style="padding:8px 12px;text-align:center;font-size:12px">' + escH(l.assigned_user_name || l.assigned_to_name || '—') + '</td>'
+    + '<td style="padding:8px 12px;text-align:center">' + nameCell + '</td>'
+    + '<td style="padding:8px 12px;text-align:center;font-weight:700;color:#0891b2;direction:ltr">' + (l.quote_total_fees ? money(l.quote_total_fees) : '—') + '</td>'
+    + '<td style="padding:8px 12px;max-width:200px"><div style="font-size:11px;color:#475569;line-height:1.4">' + notes80 + '</div>'
+    + '<button onclick="ueEditNotes(' + l.id + ',\'' + notesEsc + '\')" style="background:none;border:none;color:#0891b2;font-size:10px;cursor:pointer;padding:2px 0;font-family:inherit">✏️ تعديل</button></td>'
+    + '<td style="padding:8px 12px;text-align:center;font-size:11px;color:#64748b">' + dt + '</td>'
+    + '<td style="padding:8px 12px;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap">'
+    + '<button onclick="openLeadDetail(' + l.id + ')" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit" title="تفاصيل">👁️</button>'
+    + '<button onclick="sendUEWhatsApp(' + l.id + ',\'' + phone + '\')" style="background:#25d366;color:white;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="واتساب">📱</button>'
+    + '<button onclick="navigate(\'company_names\')" style="background:#7c3aed;color:white;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="مولد الأسماء">🏢</button>'
+    + '<button onclick="revertLeadToLead(' + l.id + ')" style="background:#fff7ed;color:#d97706;border:1px solid #fed7aa;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit" title="إعادة لعميل محتمل">↩️</button>'
+    + '</div></td></tr>';
+}
+
 function renderUnderEstablishmentClients(leads, stats) {
   const count = leads.length;
-  const withDeposit = leads.filter(l=>l.quote_total_fees>0).length;
-  const withName    = leads.filter(l=>l.suggested_name).length;
-  setPageContent(`
-    <div style="padding:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-        <div>
-          <h2 style="margin:0;font-size:22px;font-weight:800;color:#0891b2">⭐ عملاء تحت التأسيس</h2>
-          <p style="margin:4px 0 0;font-size:13px;color:#64748b">العملاء الذين بدأت معهم إجراءات التأسيس الفعلية</p>
-        </div>
-        <div style="display:flex;gap:10px">
-          <button onclick="navigate('leads')" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">← العملاء المحتملين</button>
-          <button onclick="navigate('establishment')" style="background:#0891b2;color:white;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📋 ملفات التأسيس</button>
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
-        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">${count}</div><div style="font-size:11px;color:#64748b;margin-top:2px">تحت التأسيس ⭐</div></div>
-        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#15803d">${leads.filter(l=>l.assigned_to).length}</div><div style="font-size:11px;color:#64748b;margin-top:2px">مسند لموظف ✅</div></div>
-        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#d97706">${leads.filter(l=>!l.assigned_to).length}</div><div style="font-size:11px;color:#64748b;margin-top:2px">غير مسند ⚠️</div></div>
-        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#7c3aed">${withDeposit}</div><div style="font-size:11px;color:#64748b;margin-top:2px">لهم أتعاب محددة 📄</div></div>
-        <div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">${withName}</div><div style="font-size:11px;color:#64748b;margin-top:2px">لهم اسم مقترح 🏷️</div></div>
-      </div>
-
-      ${count === 0 ? `
-        <div style="text-align:center;padding:80px 20px;color:#94a3b8">
-          <div style="font-size:48px;margin-bottom:12px">⭐</div>
-          <div style="font-size:16px;font-weight:700;color:#475569;margin-bottom:6px">لا يوجد عملاء تحت التأسيس حالياً</div>
-          <div style="font-size:13px;margin-bottom:20px">اضغط زر ⭐ على أي عميل محتمل لبدء التأسيس معه</div>
-          <button onclick="navigate('leads')" style="background:#0891b2;color:white;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">← العملاء المحتملين</button>
-        </div>` : `
-      <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 1px 4px #0001">
-        <table style="width:100%;border-collapse:collapse;min-width:1000px">
-          <thead>
-            <tr style="background:#0891b2;color:white;font-size:12px">
-              <th style="padding:10px 12px;text-align:right;font-weight:700">الاسم</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:700">الهاتف</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:700">الكيان</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:700">الموظف المسؤول</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:700">الاسم المقترح</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:700">الأتعاب المقدرة</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:700">ملاحظات التأسيس</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:700">تاريخ التحويل</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:700">إجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${leads.map((l,i)=>`
-            <tr style="background:${i%2===0?'#f0fdf4':'#dcfce7'};border-bottom:1px solid #bbf7d0;transition:filter .15s" onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter=''">
-              <td style="padding:10px 12px;font-weight:700;color:#15803d">${escH(l.name||'—')}</td>
-              <td style="padding:8px 12px;text-align:center;direction:ltr;font-size:12px">${escH(l.phone||'—')}</td>
-              <td style="padding:8px 12px;text-align:center;font-size:11px;white-space:nowrap">${escH(l.quote_legal_entity||l.company_type||'—')}</td>
-              <td style="padding:8px 12px;text-align:center;font-size:12px">${escH(l.assigned_user_name||l.assigned_to_name||'—')}</td>
-              <td style="padding:8px 12px;text-align:center">
-                ${l.suggested_name
-                  ? `<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${escH(l.suggested_name)}</span>`
-                  : `<button onclick="ueSetName(${l.id})" style="background:#f0fdf4;color:#15803d;border:1px dashed #86efac;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:inherit">+ إضافة</button>`}
-              </td>
-              <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0891b2;direction:ltr">${l.quote_total_fees?money(l.quote_total_fees):'—'}</td>
-              <td style="padding:8px 12px;max-width:200px">
-                <div style="font-size:11px;color:#475569;line-height:1.4">${escH((l.notes||'').substring(0,80))}${(l.notes||'').length>80?'...':''}</div>
-                <button onclick="ueEditNotes(${l.id},'${escH((l.notes||'').replace(/'/g,"\\'"))}')" style="background:none;border:none;color:#0891b2;font-size:10px;cursor:pointer;padding:2px 0;font-family:inherit">✏️ تعديل</button>
-              </td>
-              <td style="padding:8px 12px;text-align:center;font-size:11px;color:#64748b">${l.updated_at?new Date(l.updated_at).toLocaleDateString('ar-EG'):'—'}</td>
-              <td style="padding:8px 12px;text-align:center">
-                <div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap">
-                  <button onclick="openLeadDetail(${l.id})" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit" title="تفاصيل">👁️</button>
-                  <button onclick="sendUEWhatsApp(${l.id},'${escH((l.phone||'').replace(/\D/g,''))}')" style="background:#25d366;color:white;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="واتساب">📱</button>
-                  <button onclick="navigate('company_names')" style="background:#7c3aed;color:white;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center" title="مولد الأسماء">🏢</button>
-                  <button onclick="revertLeadToLead(${l.id})" style="background:#fff7ed;color:#d97706;border:1px solid #fed7aa;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit" title="إعادة لعميل محتمل">↩️</button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`}
-    </div>
-  `);
+  const withDeposit = leads.filter(function(l){return l.quote_total_fees>0;}).length;
+  const withName    = leads.filter(function(l){return l.suggested_name;}).length;
+  const emptyHtml = '<div style="text-align:center;padding:80px 20px;color:#94a3b8">'
+    + '<div style="font-size:48px;margin-bottom:12px">⭐</div>'
+    + '<div style="font-size:16px;font-weight:700;color:#475569;margin-bottom:6px">لا يوجد عملاء تحت التأسيس حالياً</div>'
+    + '<div style="font-size:13px;margin-bottom:20px">اضغط زر ⭐ على أي عميل محتمل لبدء التأسيس معه</div>'
+    + '<button onclick="navigate(\'leads\')" style="background:#0891b2;color:white;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">← العملاء المحتملين</button></div>';
+  const tableHtml = '<div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 1px 4px #0001">'
+    + '<table style="width:100%;border-collapse:collapse;min-width:1000px"><thead>'
+    + '<tr style="background:#0891b2;color:white;font-size:12px">'
+    + '<th style="padding:10px 12px;text-align:right;font-weight:700">الاسم</th>'
+    + '<th style="padding:10px 12px;text-align:center;font-weight:700">الهاتف</th>'
+    + '<th style="padding:10px 12px;text-align:center;font-weight:700">الكيان</th>'
+    + '<th style="padding:10px 12px;text-align:center;font-weight:700">الموظف المسؤول</th>'
+    + '<th style="padding:10px 12px;text-align:center;font-weight:700">الاسم المقترح</th>'
+    + '<th style="padding:10px 12px;text-align:center;font-weight:700">الأتعاب المقدرة</th>'
+    + '<th style="padding:10px 12px;text-align:right;font-weight:700">ملاحظات التأسيس</th>'
+    + '<th style="padding:10px 12px;text-align:center;font-weight:700">تاريخ التحويل</th>'
+    + '<th style="padding:10px 12px;text-align:center;font-weight:700">إجراءات</th>'
+    + '</tr></thead><tbody>'
+    + leads.map(_ueRow).join('')
+    + '</tbody></table></div>';
+  setPageContent('<div style="padding:20px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">'
+    + '<div><h2 style="margin:0;font-size:22px;font-weight:800;color:#0891b2">⭐ عملاء تحت التأسيس</h2>'
+    + '<p style="margin:4px 0 0;font-size:13px;color:#64748b">العملاء الذين بدأت معهم إجراءات التأسيس الفعلية</p></div>'
+    + '<div style="display:flex;gap:10px">'
+    + '<button onclick="navigate(\'leads\')" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">← العملاء المحتملين</button>'
+    + '<button onclick="navigate(\'establishment\')" style="background:#0891b2;color:white;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📋 ملفات التأسيس</button>'
+    + '</div></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">'
+    + '<div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">' + count + '</div><div style="font-size:11px;color:#64748b;margin-top:2px">تحت التأسيس ⭐</div></div>'
+    + '<div class="stat-card"><div style="font-size:24px;font-weight:800;color:#15803d">' + leads.filter(function(l){return l.assigned_to;}).length + '</div><div style="font-size:11px;color:#64748b;margin-top:2px">مسند لموظف</div></div>'
+    + '<div class="stat-card"><div style="font-size:24px;font-weight:800;color:#d97706">' + leads.filter(function(l){return !l.assigned_to;}).length + '</div><div style="font-size:11px;color:#64748b;margin-top:2px">غير مسند ⚠️</div></div>'
+    + '<div class="stat-card"><div style="font-size:24px;font-weight:800;color:#7c3aed">' + withDeposit + '</div><div style="font-size:11px;color:#64748b;margin-top:2px">لهم أتعاب 📄</div></div>'
+    + '<div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">' + withName + '</div><div style="font-size:11px;color:#64748b;margin-top:2px">اسم مقترح 🏷️</div></div>'
+    + '</div>'
+    + (count === 0 ? emptyHtml : tableHtml)
+    + '</div>');
 }
 
 async function ueEditNotes(id, currentNotes) {
