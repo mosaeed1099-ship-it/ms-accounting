@@ -15437,33 +15437,57 @@ async function renderEmpSettlements() {
             </tr>
           </thead>
           <tbody>
-            ${settlements.map((s,idx)=>`
-            <tr style="border-top:1px solid #f1f5f9;${idx%2===1?'background:#fafbfc':''}">
-              <td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">${dateAr(s.date)}</td>
-              <td style="padding:10px 14px;vertical-align:top;min-width:200px">
-                ${(s.expense_items||[]).map(item=>`
-                <div style="display:grid;grid-template-columns:90px 1fr 1fr 80px;gap:4px;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9">
-                  <span style="color:#94a3b8">${item.expense_date||''}</span>
-                  <span style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(item.client_name||'—')}</span>
-                  <span style="color:#1e293b;font-weight:600">${escH(item.description||'—')}</span>
-                  <span style="color:#1a2472;font-weight:700;text-align:left">${money(item.amount)}</span>
-                </div>`).join('')}
-              </td>
-              <td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626;vertical-align:top;white-space:nowrap">${money(s.total_spent||0)}</td>
-              <td style="padding:10px 14px;text-align:center;color:#475569;vertical-align:top;white-space:nowrap">${money(s.opening_balance||0)}</td>
-              <td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">${s.custody_added?money(s.custody_added):'—'}</td>
-              <td style="padding:10px 14px;text-align:center;font-weight:800;vertical-align:top;white-space:nowrap;color:${(s.closing_balance||0)>=0?'#15803d':'#dc2626'}">${money(s.closing_balance||0)}</td>
-              <td style="padding:10px 14px;text-align:center;vertical-align:top">
-                <div style="display:flex;gap:4px;justify-content:center">
-                  <button onclick="printSettlement(${JSON.stringify(s).replace(/"/g,'&quot;')})" title="طباعة"
-                    style="background:#f0fdf4;border:none;border-radius:6px;color:#15803d;cursor:pointer;font-size:13px;padding:5px 8px">🖨️</button>
-                  <button onclick="showEditSettlement(${s.id})" title="تعديل"
-                    style="background:#eef1fb;border:none;border-radius:6px;color:#1a2472;cursor:pointer;font-size:13px;padding:5px 8px">✏️</button>
-                  <button onclick="deleteSettlement(${s.id})" title="حذف"
-                    style="background:#fee2e2;border:none;border-radius:6px;color:#ef4444;cursor:pointer;font-size:13px;padding:5px 8px">🗑️</button>
-                </div>
-              </td>
-            </tr>`).join('')}
+            ${(()=>{
+              const topups = detail.custody_topups || [];
+              const allRows = [
+                ...settlements.map(s=>({type:'settlement',date:s.date,data:s})),
+                ...topups.map(t=>({type:'topup',date:t.date,data:t}))
+              ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+              return allRows.map((row,idx)=>{
+                if(row.type==='topup'){
+                  const t=row.data;
+                  return '<tr style="border-top:1px solid #d1fae5;background:#f0fdf4">' +
+                    '<td style="padding:10px 14px;color:#15803d;font-weight:700;white-space:nowrap;vertical-align:middle">' + dateAr(t.date) + '</td>' +
+                    '<td style="padding:10px 14px;vertical-align:middle">' +
+                      '<div style="display:flex;align-items:center;gap:8px">' +
+                        '<span style="background:#15803d;color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">💰 عهدة جديدة</span>' +
+                        (t.notes ? '<span style="font-size:12px;color:#374151">' + escH(t.notes) + '</span>' : '') +
+                      '</div>' +
+                    '</td>' +
+                    '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
+                    '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
+                    '<td style="padding:10px 14px;text-align:center;font-weight:800;color:#15803d;font-size:15px">' + money(t.amount) + '</td>' +
+                    '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
+                    '<td></td>' +
+                  '</tr>';
+                }
+                const s=row.data;
+                return '<tr style="border-top:1px solid #f1f5f9;' + (idx%2===1?'background:#fafbfc':'') + '">' +
+                  '<td style="padding:10px 14px;color:#1e293b;font-weight:600;white-space:nowrap;vertical-align:top">' + dateAr(s.date) + '</td>' +
+                  '<td style="padding:10px 14px;vertical-align:top;min-width:200px">' +
+                    (s.expense_items||[]).map(item=>
+                      '<div style="display:grid;grid-template-columns:90px 1fr 1fr 80px;gap:4px;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9">' +
+                        '<span style="color:#94a3b8">' + (item.expense_date||'') + '</span>' +
+                        '<span style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escH(item.client_name||'—') + '</span>' +
+                        '<span style="color:#1e293b;font-weight:600">' + escH(item.description||'—') + '</span>' +
+                        '<span style="color:#1a2472;font-weight:700;text-align:left">' + money(item.amount) + '</span>' +
+                      '</div>'
+                    ).join('') +
+                  '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626;vertical-align:top;white-space:nowrap">' + money(s.total_spent||0) + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;color:#475569;vertical-align:top;white-space:nowrap">' + money(s.opening_balance||0) + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">' + (s.custody_added?money(s.custody_added):'—') + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;font-weight:800;vertical-align:top;white-space:nowrap;color:' + ((s.closing_balance||0)>=0?'#15803d':'#dc2626') + '">' + money(s.closing_balance||0) + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;vertical-align:top">' +
+                    '<div style="display:flex;gap:4px;justify-content:center">' +
+                      '<button onclick="printSettlement(' + JSON.stringify(s).replace(/"/g,'&quot;') + ')" title="طباعة" style="background:#f0fdf4;border:none;border-radius:6px;color:#15803d;cursor:pointer;font-size:13px;padding:5px 8px">🖨️</button>' +
+                      '<button onclick="showEditSettlement(' + s.id + ')" title="تعديل" style="background:#eef1fb;border:none;border-radius:6px;color:#1a2472;cursor:pointer;font-size:13px;padding:5px 8px">✏️</button>' +
+                      '<button onclick="deleteSettlement(' + s.id + ')" title="حذف" style="background:#fee2e2;border:none;border-radius:6px;color:#ef4444;cursor:pointer;font-size:13px;padding:5px 8px">🗑️</button>' +
+                    '</div>' +
+                  '</td>' +
+                '</tr>';
+              }).join('');
+            })()}
           </tbody>
           <tfoot>
             <tr style="background:#1a2472;color:white">

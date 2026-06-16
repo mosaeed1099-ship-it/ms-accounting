@@ -66,6 +66,7 @@ import app.models.establishment       # noqa: F401
 import app.models.service_template    # noqa: F401
 import app.models.portal_credentials  # noqa: F401
 import app.models.monthly_fees        # noqa: F401
+import app.models.settlement          # noqa: F401  — registers CustodyTopupLog table
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.models.settlement import EmployeeSettlement, EmployeeCustody, Appointment, GovernmentPaper
+from app.models.settlement import EmployeeSettlement, EmployeeCustody, CustodyTopupLog, Appointment, GovernmentPaper
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settlements", tags=["Settlements"])
@@ -23,8 +23,10 @@ router = APIRouter(prefix="/api/settlements", tags=["Settlements"])
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class ExpenseItem(BaseModel):
-    description: str
-    amount:      float = 0
+    description:  str
+    amount:       float = 0
+    client_name:  Optional[str] = None
+    expense_date: Optional[str] = None
 
 class SettlementIn(BaseModel):
     employee_name:  str
@@ -132,6 +134,17 @@ def topup_custody(
     c.current_balance += payload.amount
     c.total_given     += payload.amount
     c.updated_at       = datetime.utcnow()
+    today = date.today()
+    log = CustodyTopupLog(
+        employee_name = payload.employee_name.strip(),
+        amount        = payload.amount,
+        topup_date    = today,
+        month         = today.month,
+        year          = today.year,
+        notes         = payload.notes,
+        created_by    = current_user.id,
+    )
+    db.add(log)
     db.commit()
     return {
         "message":         f"✅ تمت إضافة {payload.amount:.2f} ج.م. للعهدة",
@@ -181,6 +194,11 @@ def employee_detail(
     if year:  q = q.filter(EmployeeSettlement.year  == year)
     settlements = q.order_by(EmployeeSettlement.date.desc()).all()
 
+    tq = db.query(CustodyTopupLog).filter(CustodyTopupLog.employee_name == employee_name)
+    if month: tq = tq.filter(CustodyTopupLog.month == month)
+    if year:  tq = tq.filter(CustodyTopupLog.year  == year)
+    topups = tq.order_by(CustodyTopupLog.topup_date.desc()).all()
+
     return {
         "employee_name":   custody.employee_name,
         "current_balance": custody.current_balance,
@@ -188,6 +206,10 @@ def employee_detail(
         "total_spent":     custody.total_spent,
         "last_settlement": str(custody.last_settlement_date) if custody.last_settlement_date else None,
         "settlements": [_s_dict(s) for s in settlements],
+        "custody_topups": [
+            {"id": t.id, "date": str(t.topup_date), "amount": t.amount, "notes": t.notes}
+            for t in topups
+        ],
     }
 
 
@@ -206,7 +228,8 @@ def add_settlement(
     except ValueError:
         raise HTTPException(400, "تاريخ غير صحيح")
 
-    items      = [{"description": i.description, "amount": round(i.amount, 2)} for i in payload.expense_items]
+    items      = [{"description": i.description, "amount": round(i.amount, 2),
+                   "client_name": i.client_name or "", "expense_date": i.expense_date or ""} for i in payload.expense_items]
     total_spent = round(sum(i["amount"] for i in items), 2)
     opening     = custody.current_balance
     closing     = round(opening + payload.custody_added - total_spent, 2)
@@ -367,7 +390,8 @@ def update_settlement(
     custody.total_given     -= (s.custody_added or 0)
 
     # 2) احسب القيم الجديدة
-    items       = [{"description": i.description, "amount": round(i.amount, 2)} for i in payload.expense_items]
+    items       = [{"description": i.description, "amount": round(i.amount, 2),
+                    "client_name": i.client_name or "", "expense_date": i.expense_date or ""} for i in payload.expense_items]
     total_spent = round(sum(i["amount"] for i in items), 2)
     opening     = round(custody.current_balance, 2)
     closing     = round(opening + payload.custody_added - total_spent, 2)

@@ -53,6 +53,21 @@ class EmployeeSettlement(Base):
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class CustodyTopupLog(Base):
+    """سجل إضافات العهدة — Custody Topup History"""
+    __tablename__ = "employee_custody_topups"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    employee_name = Column(String(200), nullable=False, index=True)
+    amount        = Column(Float, nullable=False)
+    topup_date    = Column(Date, nullable=False, index=True)
+    month         = Column(Integer, index=True)
+    year          = Column(Integer, index=True)
+    notes         = Column(Text)
+    created_by    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow)
+
+
 class Appointment(Base):
     """جدول المواعيد — Appointments & Meetings"""
     __tablename__ = "appointments"
