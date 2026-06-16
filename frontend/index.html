@@ -1264,19 +1264,19 @@ const navItems = [
   {id:'client_portal' ,icon:'🔑',label:'بوابة العملاء'},
   {id:'permissions'   ,icon:'🛡️',label:'الصلاحيات'},
   {id:'monthly_fees'  ,icon:'📋',label:'المدفوعات الشهرية'},
-  {id:'daily_revenues',icon:'💵',label:'الإيرادات اليومية'},
   {id:'finance_center',icon:'💰',label:'المالية', adminOnly: true},
   {id:'owner'         ,icon:'👑',label:'إدارة المكتب المالية', adminOnly: true},
   {id:'settings'     ,icon:'⚙️',label:'الإعدادات'},
   {id:'system_logs'       ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
   {id:'backup'            ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
   {id:'migration_dashboard',icon:'🚀',label:'تقدم الـ Migration', adminOnly: true},
+  {id:'company_names',icon:'🏢',label:'مولّد أسماء الشركات'},
 ];
 // Grouped navigation for sidebar display
 const navGroups = [
   {label:'لوحة التحكم', items:['dashboard']},
-  {label:'CRM & المبيعات', items:['clients','leads','establishment']},
-  {label:'المالية', items:['collections','monthly_fees','daily_revenues','tax','obligations']},
+  {label:'CRM & المبيعات', items:['clients','leads','establishment','company_names']},
+  {label:'المالية', items:['collections','monthly_fees','tax','obligations']},
   {label:'التشغيل', items:['tasks','documents']},
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
@@ -1978,13 +1978,13 @@ function navigate(page) {
   $$('.sidebar-link[data-nav-id]').forEach(el=>el.classList.toggle('active',el.dataset.navId===page));
   // Update bottom nav active state
   $$('#bottomNav .bottom-nav-item[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
-  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات',daily_revenues:'الإيرادات اليومية'};
+  const titles={dashboard:'الرئيسية',clients:'عملاء المكتب',leads:'العملاء المحتملين (CRM)',invoices:'أتعاب الحسابات',collections:'التحصيلات',tasks:'المهام',mail:'البريد الإلكتروني',obligations:'الالتزامات الضريبية',formation_obligations:'التزامات التأسيس',quotations:'عروض أسعار التأسيس',establishment:'تأسيس الشركات',documents:'الأرشيف',tax:'الإقرارات الضريبية',settings:'الإعدادات',settlements:'تسويات الموظفين',appointments:'المواعيد',accounting:'المحاسبة',payroll:'الرواتب والموظفين',fin_reports:'التقارير المالية',statements:'الميزانيات',office_services:'خدمات المكتب',client_portal:'بوابة العملاء',permissions:'إدارة الصلاحيات',owner:'👑 إدارة المكتب المالية',finance_center:'المالية',monthly_fees:'المدفوعات الشهرية — الحسابات',daily_revenues:'الإيرادات اليومية',company_names:'🏢 مولّد أسماء الشركات'};
   const t=document.getElementById('pageTitle');
   if(t) t.textContent=titles[page]||page;
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames};
   if(pages[page]) pages[page]();
 }
 
@@ -21336,6 +21336,297 @@ window.downloadBaselineReport = async function() {
     };
   });
 })();
+
+// ══════════════════════════════════════════════════════════════════════════
+// COMPANY NAME GENERATOR & APPROVAL PREDICTOR
+// ══════════════════════════════════════════════════════════════════════════
+
+let _cnResults = [];
+let _cnRejected = [];
+let _cnLoading = false;
+
+async function loadCompanyNames() {
+  const main = document.getElementById('main');
+  main.className = 'page';
+  _cnResults = [];
+  try {
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+  } catch(e) { _cnRejected = []; }
+  _renderCompanyNamesPage();
+}
+
+function _renderCompanyNamesPage() {
+  const main = document.getElementById('main');
+  if (!main) return;
+
+  const ACTIVITIES = ['تجارة','توريدات','مقاولات','خدمات','محاسبة','استشارات','صناعة','تقنية','عقارات','سياحة'];
+
+  main.innerHTML =
+    '<div style="max-width:900px;margin:0 auto">' +
+
+    // Header
+    '<div style="background:linear-gradient(135deg,#1a2472,#2563eb);border-radius:18px;padding:28px 32px;margin-bottom:24px;color:white">' +
+      '<div style="font-size:28px;margin-bottom:8px">🏢</div>' +
+      '<h1 style="margin:0 0 6px;font-size:22px;font-weight:800">مولّد أسماء الشركات</h1>' +
+      '<p style="margin:0;opacity:.8;font-size:14px">توليد أسماء مناسبة للسجل التجاري المصري مع تقييم احتمال القبول</p>' +
+    '</div>' +
+
+    // Form card
+    '<div style="background:white;border-radius:16px;border:1.5px solid #e2e8f0;padding:24px;margin-bottom:20px">' +
+      '<h2 style="margin:0 0 20px;font-size:16px;font-weight:700;color:#1e293b">📝 بيانات الشركة</h2>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">اسم العميل أو الاسم الأساسي *</label>' +
+          '<input id="cnClientName" class="input" placeholder="مثال: أحمد، النور، الفجر..." style="font-size:14px"/>' +
+        '</div>' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">النشاط التجاري *</label>' +
+          '<select id="cnActivity" class="input" style="font-size:14px">' +
+            '<option value="">— اختر النشاط —</option>' +
+            ACTIVITIES.map(function(a){ return '<option value="' + a + '">' + a + '</option>'; }).join('') +
+            '<option value="أخرى">أخرى (اكتب في الكلمات المفتاحية)</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-bottom:16px">' +
+        '<label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">كلمات مفتاحية مفضلة (اختياري)</label>' +
+        '<input id="cnKeywords" class="input" placeholder="مثال: الدولية، المتحدة، النيل — افصل بفاصلة" style="font-size:14px"/>' +
+        '<div style="font-size:11px;color:#94a3b8;margin-top:4px">ادخل كلمات تحب ظهورها في الاسم — مفصولة بفاصلة</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:12px">' +
+        '<button onclick="runCompanyNameGenerator()" id="cnGenerateBtn" class="btn btn-primary" style="font-size:14px;padding:10px 28px">✨ توليد الأسماء</button>' +
+        '<span style="font-size:12px;color:#64748b">سيتم توليد 25 اسم مع تقييم كل اسم</span>' +
+      '</div>' +
+    '</div>' +
+
+    // Results area
+    '<div id="cnResultsArea"></div>' +
+
+    // Rejected names panel
+    '<div style="background:white;border-radius:16px;border:1.5px solid #fee2e2;padding:20px;margin-top:20px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+        '<h3 style="margin:0;font-size:14px;font-weight:700;color:#dc2626">🚫 قاعدة الأسماء المرفوضة (' + _cnRejected.length + ')</h3>' +
+        '<button onclick="_cnShowAddRejected()" style="background:#fee2e2;border:none;border-radius:8px;padding:6px 14px;font-size:12px;color:#dc2626;cursor:pointer;font-weight:700;font-family:inherit">+ إضافة اسم مرفوض</button>' +
+      '</div>' +
+      (_cnRejected.length === 0
+        ? '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">لا توجد أسماء مرفوضة مسجّلة — سيتم تحديثها تلقائياً عند تسجيل أي رفض</div>'
+        : '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+            _cnRejected.map(function(r){
+              return '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:5px 10px;font-size:12px;display:flex;align-items:center;gap:6px">' +
+                '<span style="color:#374151;font-weight:600">' + escH(r.name) + '</span>' +
+                (r.activity ? '<span style="color:#94a3b8">· ' + escH(r.activity) + '</span>' : '') +
+                '<button onclick="_cnDeleteRejected(' + r.id + ')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:0;line-height:1">✕</button>' +
+              '</div>';
+            }).join('') +
+          '</div>'
+      ) +
+    '</div>' +
+
+    '</div>';
+}
+
+async function runCompanyNameGenerator() {
+  const clientName = document.getElementById('cnClientName')?.value?.trim();
+  const activity   = document.getElementById('cnActivity')?.value?.trim();
+  const keywordsRaw = document.getElementById('cnKeywords')?.value?.trim();
+
+  if (!clientName) { toast('أدخل اسم العميل', 'error'); return; }
+  if (!activity)   { toast('اختر النشاط التجاري', 'error'); return; }
+
+  const keywords = keywordsRaw ? keywordsRaw.split(/[,،]/).map(function(k){ return k.trim(); }).filter(Boolean) : [];
+
+  const btn = document.getElementById('cnGenerateBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block;margin-left:6px"></span> جاري التوليد...'; }
+
+  const area = document.getElementById('cnResultsArea');
+  if (area) area.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="margin-top:12px;font-size:13px;color:#64748b">جاري توليد الأسماء وتقييمها...</div></div>';
+
+  try {
+    const data = await api('POST', '/api/company-names/generate', {
+      client_name: clientName,
+      activity: activity,
+      keywords: keywords,
+      count: 25
+    });
+    _cnResults = data.names || [];
+    _renderCnResults(data);
+  } catch(e) {
+    if (area) area.innerHTML = '<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:20px;color:#dc2626;font-size:14px">❌ ' + escH(e.message) + '</div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✨ توليد الأسماء'; }
+  }
+}
+
+function _renderCnResults(data) {
+  const area = document.getElementById('cnResultsArea');
+  if (!area) return;
+  const names = data.names || [];
+  if (!names.length) {
+    area.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8">لم يتم توليد أسماء</div>';
+    return;
+  }
+
+  const highCount = names.filter(function(n){ return n.level === 'High'; }).length;
+  const medCount  = names.filter(function(n){ return n.level === 'Medium'; }).length;
+  const lowCount  = names.filter(function(n){ return n.level === 'Low'; }).length;
+
+  area.innerHTML =
+    '<div style="background:white;border-radius:16px;border:1.5px solid #e2e8f0;overflow:hidden">' +
+
+    // Summary bar
+    '<div style="background:#f8fafc;padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:20px;flex-wrap:wrap">' +
+      '<span style="font-size:14px;font-weight:700;color:#1e293b">✅ ' + names.length + ' اسم مقترح</span>' +
+      '<span style="background:#dcfce7;color:#15803d;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">🟢 عالي: ' + highCount + '</span>' +
+      '<span style="background:#fef9c3;color:#92400e;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">🟡 متوسط: ' + medCount + '</span>' +
+      '<span style="background:#fee2e2;color:#dc2626;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">🔴 منخفض: ' + lowCount + '</span>' +
+    '</div>' +
+
+    // Table
+    '<div style="overflow-x:auto">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+    '<thead><tr style="background:#f1f5f9">' +
+      '<th style="padding:10px 16px;text-align:right;color:#64748b;font-weight:700">#</th>' +
+      '<th style="padding:10px 16px;text-align:right;color:#64748b;font-weight:700">اسم الشركة</th>' +
+      '<th style="padding:10px 16px;text-align:center;color:#64748b;font-weight:700">الدرجة</th>' +
+      '<th style="padding:10px 16px;text-align:center;color:#64748b;font-weight:700">التقييم</th>' +
+      '<th style="padding:10px 16px;text-align:right;color:#64748b;font-weight:700">السبب</th>' +
+      '<th style="padding:10px 16px;text-align:center;color:#64748b;font-weight:700">إجراء</th>' +
+    '</tr></thead>' +
+    '<tbody>' +
+    names.map(function(n, i) {
+      var levelColor = n.level === 'High' ? '#15803d' : n.level === 'Medium' ? '#92400e' : '#dc2626';
+      var levelBg    = n.level === 'High' ? '#dcfce7'  : n.level === 'Medium' ? '#fef9c3'  : '#fee2e2';
+      var levelAr    = n.level === 'High' ? 'عالي' : n.level === 'Medium' ? 'متوسط' : 'منخفض';
+      var barWidth   = n.score + '%';
+      var barColor   = n.score >= 75 ? '#15803d' : n.score >= 50 ? '#d97706' : '#dc2626';
+      return '<tr style="border-top:1px solid #f1f5f9' + (n.is_rejected ? ';background:#fef2f2;opacity:.7' : '') + '">' +
+        '<td style="padding:10px 16px;color:#94a3b8;font-size:12px">' + (i+1) + '</td>' +
+        '<td style="padding:10px 16px">' +
+          '<div style="font-size:15px;font-weight:700;color:' + (n.is_rejected ? '#dc2626' : '#1e293b') + '">' +
+            (n.is_rejected ? '🚫 ' : '') + escH(n.name) +
+          '</div>' +
+        '</td>' +
+        '<td style="padding:10px 16px;text-align:center">' +
+          '<div style="font-size:16px;font-weight:800;color:' + barColor + '">' + n.score + '</div>' +
+          '<div style="background:#e2e8f0;border-radius:4px;height:4px;margin-top:4px;width:60px;margin:4px auto 0">' +
+            '<div style="background:' + barColor + ';height:4px;border-radius:4px;width:' + barWidth + '"></div>' +
+          '</div>' +
+        '</td>' +
+        '<td style="padding:10px 16px;text-align:center">' +
+          '<span style="background:' + levelBg + ';color:' + levelColor + ';border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700">' + levelAr + '</span>' +
+        '</td>' +
+        '<td style="padding:10px 16px;color:#475569;font-size:12px;max-width:250px">' + escH(n.reason || '') + '</td>' +
+        '<td style="padding:10px 16px;text-align:center">' +
+          (n.is_rejected
+            ? '<span style="font-size:11px;color:#dc2626">مرفوض</span>'
+            : '<button onclick="_cnMarkRejected(\'' + escH(n.name).replace(/'/g, "\\'") + '\')" ' +
+              'style="background:#fee2e2;border:none;border-radius:7px;padding:5px 10px;font-size:11px;color:#dc2626;cursor:pointer;font-weight:700;font-family:inherit;white-space:nowrap">🚫 سجّل رفض</button>'
+          ) +
+        '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table></div></div>';
+}
+
+function _cnMarkRejected(name) {
+  const activity = document.getElementById('cnActivity')?.value || '';
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML =
+    '<div class="modal" style="max-width:420px">' +
+      '<h3 style="margin:0 0 16px;font-size:15px;font-weight:800;color:#dc2626">🚫 تسجيل رفض الاسم</h3>' +
+      '<div style="background:#fef2f2;border-radius:10px;padding:12px;margin-bottom:16px">' +
+        '<div style="font-size:16px;font-weight:700;color:#1e293b">' + escH(name) + '</div>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:12px">' +
+        '<label class="label">سبب الرفض</label>' +
+        '<input id="cnRejectReason" class="input" placeholder="مثال: اسم مشابه موجود / غير مناسب للنشاط..."/>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:16px">' +
+        '<label class="label">ملاحظات إضافية</label>' +
+        '<input id="cnRejectNotes" class="input" placeholder="اختياري..."/>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button onclick="this.closest(\'.modal-overlay\').remove()" style="padding:8px 16px;background:#f1f5f9;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600">إلغاء</button>' +
+        '<button onclick="_cnConfirmReject(\'' + escH(name).replace(/'/g, "\\'") + '\',\'' + activity + '\')" class="btn" style="background:#dc2626;color:white;padding:8px 16px">تأكيد التسجيل</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+}
+
+async function _cnConfirmReject(name, activity) {
+  const reason = document.getElementById('cnRejectReason')?.value?.trim();
+  const notes  = document.getElementById('cnRejectNotes')?.value?.trim();
+  try {
+    await api('POST', '/api/company-names/reject', {name: name, activity: activity, rejection_reason: reason, notes: notes});
+    toast('✅ تم تسجيل الرفض — سيُستبعد من الاقتراحات مستقبلاً');
+    document.querySelector('.modal-overlay')?.remove();
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+    // Mark in current results
+    _cnResults = _cnResults.map(function(r){ return r.name === name ? Object.assign({}, r, {is_rejected:true, score:0, level:'Low', reason:'مرفوض مسبقاً في مصر الرقمية'}) : r; });
+    if (_cnResults.length) _renderCnResults({names: _cnResults});
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function _cnShowAddRejected() {
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML =
+    '<div class="modal" style="max-width:420px">' +
+      '<h3 style="margin:0 0 16px;font-size:15px;font-weight:800;color:#dc2626">➕ إضافة اسم مرفوض يدوياً</h3>' +
+      '<div class="form-group" style="margin-bottom:12px">' +
+        '<label class="label">اسم الشركة المرفوض *</label>' +
+        '<input id="cnManualName" class="input" placeholder="اسم الشركة الذي رُفض في مصر الرقمية"/>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:12px">' +
+        '<label class="label">النشاط</label>' +
+        '<input id="cnManualActivity" class="input" placeholder="تجارة / خدمات / مقاولات..."/>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:16px">' +
+        '<label class="label">سبب الرفض</label>' +
+        '<input id="cnManualReason" class="input" placeholder="اختياري..."/>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button onclick="this.closest(\'.modal-overlay\').remove()" style="padding:8px 16px;background:#f1f5f9;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600">إلغاء</button>' +
+        '<button onclick="_cnSaveManualReject()" class="btn" style="background:#dc2626;color:white;padding:8px 16px">حفظ</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+}
+
+async function _cnSaveManualReject() {
+  const name     = document.getElementById('cnManualName')?.value?.trim();
+  const activity = document.getElementById('cnManualActivity')?.value?.trim();
+  const reason   = document.getElementById('cnManualReason')?.value?.trim();
+  if (!name) { toast('أدخل اسم الشركة', 'error'); return; }
+  try {
+    await api('POST', '/api/company-names/reject', {name: name, activity: activity, rejection_reason: reason});
+    toast('✅ تم الحفظ');
+    document.querySelector('.modal-overlay')?.remove();
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+    _renderCompanyNamesPage();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function _cnDeleteRejected(id) {
+  if (!await confirmDlg('حذف هذا الاسم من قائمة المرفوضات؟')) return;
+  try {
+    await api('DELETE', '/api/company-names/rejected/' + id);
+    toast('تم الحذف');
+    _cnRejected = await api('GET', '/api/company-names/rejected');
+    _renderCompanyNamesPage();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+window.loadCompanyNames = loadCompanyNames;
+window.runCompanyNameGenerator = runCompanyNameGenerator;
+window._cnMarkRejected = _cnMarkRejected;
+window._cnConfirmReject = _cnConfirmReject;
+window._cnShowAddRejected = _cnShowAddRejected;
+window._cnSaveManualReject = _cnSaveManualReject;
+window._cnDeleteRejected = _cnDeleteRejected;
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {

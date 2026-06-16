@@ -46,6 +46,7 @@ from app.routers.finance_center import router as finance_center_router
 from app.routers.monthly_fees import router as monthly_fees_router
 from app.routers.backup import router as backup_router
 from app.routers.admin_metrics import router as admin_metrics_router
+from app.routers.company_names import router as company_names_router
 from app.core.security import get_password_hash
 from app.database import SessionLocal
 from app.models.user import User, UserRole
@@ -67,6 +68,7 @@ import app.models.service_template    # noqa: F401
 import app.models.portal_credentials  # noqa: F401
 import app.models.monthly_fees        # noqa: F401
 import app.models.settlement          # noqa: F401  — registers CustodyTopupLog table
+import app.models.company_names       # noqa: F401  — registers rejected_company_names table
 
 logger = logging.getLogger(__name__)
 
@@ -680,6 +682,7 @@ app.include_router(finance_center_router)
 app.include_router(monthly_fees_router)
 app.include_router(backup_router)
 app.include_router(admin_metrics_router)
+app.include_router(company_names_router)
 
 if os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
