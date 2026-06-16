@@ -522,6 +522,113 @@ def bulk_import(
     return {"clients_imported": len(name_to_id), "records_saved": records_saved}
 
 
+@router.delete("/clients/{client_id}")
+def archive_client(
+    client_id: int,
+    from_year: int = Query(...),
+    from_month: int = Query(...),
+    db: Session = Depends(get_db),
+    cu: User = Depends(_auth),
+):
+    """أرشفة عميل وحذف سجلاته المستقبلية غير المدفوعة فقط (التاريخية تبقى)."""
+    c = db.query(MonthlyFeeClient).filter(MonthlyFeeClient.id == client_id).first()
+    if not c:
+        raise HTTPException(404, "عميل غير موجود")
+
+    c.status = MFClientStatus.ARCHIVED
+
+    future_records = db.query(MonthlyFeeRecord).filter(
+        MonthlyFeeRecord.client_id == client_id
+    ).all()
+
+    deleted = 0
+    for r in future_records:
+        is_current_or_future = (r.year > from_year) or (r.year == from_year and r.month >= from_month)
+        if is_current_or_future and not r.paid:
+            db.delete(r)
+            deleted += 1
+
+    db.commit()
+    return {"message": f"تم أرشفة الشركة وحذف {deleted} سجل مستقبلي غير مدفوع", "deleted_records": deleted, "client_name": c.name}
+
+
+class PrepayIn(BaseModel):
+    months: int
+    start_year: int
+    start_month: int
+    paid_date: Optional[date] = None
+    bayan: Optional[str] = "دفع مقدم"
+
+
+@router.post("/clients/{client_id}/prepay")
+def prepay_months(
+    client_id: int,
+    data: PrepayIn,
+    db: Session = Depends(get_db),
+    cu: User = Depends(_auth),
+):
+    """تسجيل دفع مقدم لعدد من الشهور القادمة."""
+    c = db.query(MonthlyFeeClient).filter(MonthlyFeeClient.id == client_id).first()
+    if not c:
+        raise HTTPException(404, "عميل غير موجود")
+    if data.months < 1 or data.months > 24:
+        raise HTTPException(400, "عدد الشهور يجب أن يكون بين 1 و 24")
+
+    today = date.today()
+    yr, mo = data.start_year, data.start_month
+    created_months = []
+
+    for i in range(data.months):
+        target_yr, target_mo = yr, mo + i
+        while target_mo > 12:
+            target_mo -= 12
+            target_yr += 1
+
+        existing = db.query(MonthlyFeeRecord).filter(
+            MonthlyFeeRecord.client_id == client_id,
+            MonthlyFeeRecord.year == target_yr,
+            MonthlyFeeRecord.month == target_mo,
+        ).first()
+
+        fee = c.monthly_fee
+        paid_date = data.paid_date or today
+
+        if existing:
+            existing.paid_amount = existing.fee_amount or fee
+            if not existing.fee_amount:
+                existing.fee_amount = fee
+            existing.total_due = existing.fee_amount + (existing.balance_carried or 0)
+            existing.remaining = 0
+            existing.paid = True
+            existing.paid_date = paid_date
+            existing.bayan = data.bayan
+        else:
+            obj = MonthlyFeeRecord(
+                client_id=client_id,
+                year=target_yr,
+                month=target_mo,
+                fee_amount=fee,
+                balance_carried=0,
+                total_due=fee,
+                paid_amount=fee,
+                remaining=0,
+                paid=True,
+                paid_date=paid_date,
+                bayan=data.bayan or "دفع مقدم",
+            )
+            db.add(obj)
+
+        label = MONTH_AR[target_mo] if 1 <= target_mo <= 12 else str(target_mo)
+        created_months.append(f"{label} {target_yr}")
+
+    db.commit()
+    return {
+        "message": f"✅ تم تسجيل {data.months} شهر مقدم للشركة {c.name}",
+        "months": created_months,
+        "total_amount": c.monthly_fee * data.months,
+    }
+
+
 def _recalc_carry_forward(db: Session, name_to_id: dict):
     MONTHS_ORDER = [
         (2025, 10), (2025, 11), (2025, 12),
