@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.2 — fix under_establishment loading: better error handling -->
+<!-- v3.3 — fix under_establishment: replace undefined showPageLoading/setPageContent with main.innerHTML -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -12512,19 +12512,20 @@ window.markLeadUnderEstablishment = markLeadUnderEstablishment;
 
 // ── صفحة عملاء تحت التأسيس ────────────────────────────────────────────────────
 async function loadUnderEstablishmentClients(silent) {
-  if(!silent) showPageLoading();
+  const _main = document.getElementById('main');
+  if(!silent && _main) _main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   var data;
   try {
     data = await api('GET', '/api/leads?status=under_establishment&limit=500');
   } catch(err) {
-    setPageContent('<div style="padding:40px;text-align:center;color:#ef4444">فشل تحميل البيانات: ' + (err.message||err) + '</div>');
+    if(_main) _main.innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">فشل تحميل البيانات: ' + (err.message||err) + '</div>';
     return;
   }
   var leads = Array.isArray(data) ? data : (data.items || data.leads || []);
   try {
     renderUnderEstablishmentClients(leads);
   } catch(err2) {
-    setPageContent('<div style="padding:40px;text-align:center;color:#ef4444">خطأ في عرض البيانات: ' + (err2.message||err2) + '</div>');
+    if(_main) _main.innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">خطأ في عرض البيانات: ' + (err2.message||err2) + '</div>';
   }
 }
 
@@ -12579,7 +12580,8 @@ function renderUnderEstablishmentClients(leads) {
     + '</tr></thead><tbody>'
     + leads.map(_ueRow).join('')
     + '</tbody></table></div>';
-  setPageContent('<div style="padding:20px">'
+  const _m = document.getElementById('main');
+  if(_m) _m.innerHTML = '<div style="padding:20px">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">'
     + '<div><h2 style="margin:0;font-size:22px;font-weight:800;color:#0891b2">⭐ عملاء تحت التأسيس</h2>'
     + '<p style="margin:4px 0 0;font-size:13px;color:#64748b">العملاء الذين بدأت معهم إجراءات التأسيس الفعلية</p></div>'
@@ -12595,7 +12597,7 @@ function renderUnderEstablishmentClients(leads) {
     + '<div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">' + withName + '</div><div style="font-size:11px;color:#64748b;margin-top:2px">اسم مقترح 🏷️</div></div>'
     + '</div>'
     + (count === 0 ? emptyHtml : tableHtml)
-    + '</div>');
+    + '</div>';
 }
 
 async function ueEditNotes(id, currentNotes) {
