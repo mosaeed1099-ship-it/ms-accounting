@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.3 — fix under_establishment: replace undefined showPageLoading/setPageContent with main.innerHTML -->
+<!-- v3.4 — fix international WhatsApp numbers (UAE/SA/etc) + fix tax page 500 error -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -6627,15 +6627,22 @@ async function loadReports() {
  * يتعامل مع: 01x... / 1x... / 201x... / +201x...
  */
 function toWAPhone(raw) {
-  let d = (raw || '').replace(/\D/g, ''); // احذف كل حرف غير رقمي
+  const s = (raw || '').trim();
+  // Strip leading + or 00 to get pure digits
+  let d = s.startsWith('+') ? s.slice(1).replace(/\D/g, '') : s.replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
   if (!d) return null;
-  // إذا كان الرقم يبدأ بـ 20 وطوله 12 → صحيح مباشرة
+  // International number: starts with + or 00 in original, use digits as-is
+  if (s.startsWith('+') || (raw||'').trim().startsWith('00')) return d;
+  // Egyptian: 20 + 10 digits (12 total) → use as-is
   if (d.startsWith('20') && d.length === 12) return d;
-  // إذا بدأ بـ 0 وطوله 11 → 01XXXXXXXXX → نحذف الصفر ونضيف 20
+  // Egyptian local: 01XXXXXXXXX (11 digits) → add country code
   if (d.startsWith('0') && d.length === 11) return '20' + d.slice(1);
-  // إذا بدأ بـ 1 وطوله 10 → 1XXXXXXXXX → نضيف 20 مباشرة
+  // Egyptian short: 1XXXXXXXXX (10 digits) → add country code
   if (d.startsWith('1') && d.length === 10) return '20' + d;
-  // أي حالة أخرى → احذف الأصفار الأولى وأضف 20
+  // Already looks like an international number (≥11 digits starting with non-0/1)
+  if (d.length >= 10 && !d.startsWith('0') && !d.startsWith('1')) return d;
+  // Fallback: assume Egyptian
   return '20' + d.replace(/^0+/, '');
 }
 const LEAD_STATUS_COLORS={new:'#6b7280',interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
@@ -12642,8 +12649,8 @@ async function revertLeadToLead(id) {
 }
 
 function sendUEWhatsApp(id, phone) {
-  if(!phone) { toast('لا يوجد رقم هاتف', 'warning'); return; }
-  const p = phone.startsWith('0') ? '2' + phone : (phone.startsWith('20') ? phone : '20'+phone);
+  const p = toWAPhone(phone);
+  if(!p) { toast('لا يوجد رقم هاتف', 'warning'); return; }
   window.open(`https://wa.me/${p}`, '_blank');
 }
 
