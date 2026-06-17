@@ -246,6 +246,16 @@ def _run_migrations_pg():
         "CREATE INDEX IF NOT EXISTS idx_invoices_status                 ON invoices(status)",
         "CREATE INDEX IF NOT EXISTS idx_mf_records_year_month           ON monthly_fee_records(year, month)",
         "CREATE INDEX IF NOT EXISTS idx_leads_status_updated            ON leads(status, updated_at DESC)",
+        # tax_vat_returns — columns added after initial table creation
+        "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS submitted_by INTEGER",
+        "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS is_amendment BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS amends_return_id INTEGER",
+        "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS amendment_reason TEXT",
+        "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS payment_amount NUMERIC(14,2)",
+        # audit_logs — method column added later
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS method VARCHAR(10)",
+        # leads — suggested_name column for under_establishment
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS suggested_name VARCHAR(200)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

@@ -97,10 +97,18 @@ def dashboard(
     mo = month or today.month
 
     active = db.query(MonthlyFeeClient).filter(MonthlyFeeClient.status == MFClientStatus.ACTIVE).all()
+    active_ids = {c.id for c in active}
     all_clients = db.query(MonthlyFeeClient).all()
-    records_month = db.query(MonthlyFeeRecord).filter(
-        MonthlyFeeRecord.year == yr, MonthlyFeeRecord.month == mo
-    ).all()
+    records_month = (
+        db.query(MonthlyFeeRecord)
+        .join(MonthlyFeeClient)
+        .filter(
+            MonthlyFeeRecord.year == yr,
+            MonthlyFeeRecord.month == mo,
+            MonthlyFeeClient.status == MFClientStatus.ACTIVE,
+        )
+        .all()
+    )
 
     total_due = sum(r.total_due for r in records_month)
     total_paid = sum(r.paid_amount for r in records_month)
@@ -109,7 +117,7 @@ def dashboard(
     unpaid_count = sum(1 for r in records_month if not r.paid)
     collection_pct = round(total_paid / total_due * 100, 1) if total_due else 0
 
-    client_map = {c.id: c.name for c in all_clients}
+    client_map = {c.id: c.name for c in all_clients if c.id in active_ids}
     top_debtors = sorted(
         [r for r in records_month if r.remaining > 0],
         key=lambda r: r.remaining, reverse=True
@@ -264,6 +272,7 @@ def list_records(
         .options(joinedload(MonthlyFeeRecord.client))
         .filter(MonthlyFeeRecord.year == year, MonthlyFeeRecord.month == month)
         .join(MonthlyFeeClient)
+        .filter(MonthlyFeeClient.status == MFClientStatus.ACTIVE)
         .order_by(MonthlyFeeClient.name)
         .all()
     )
@@ -300,6 +309,51 @@ def list_records(
         d["payment_count"]   = stats.get("payment_count", 0)
         result.append(d)
     return result
+
+
+class SingleRecordIn(BaseModel):
+    client_id: int
+    year: int
+    month: int
+
+
+@router.post("/records/single", status_code=201)
+def create_single_record(
+    data: SingleRecordIn,
+    db: Session = Depends(get_db),
+    cu: User = Depends(_auth),
+):
+    """Create a single zero-fee record for a specific active client/month — only if none exists."""
+    c = db.query(MonthlyFeeClient).filter(
+        MonthlyFeeClient.id == data.client_id,
+        MonthlyFeeClient.status == MFClientStatus.ACTIVE,
+    ).first()
+    if not c:
+        raise HTTPException(404, "عميل غير موجود أو مؤرشف")
+
+    exists = db.query(MonthlyFeeRecord).filter(
+        MonthlyFeeRecord.client_id == data.client_id,
+        MonthlyFeeRecord.year == data.year,
+        MonthlyFeeRecord.month == data.month,
+    ).first()
+    if exists:
+        return {"skipped": True, "record_id": exists.id, "message": "السجل موجود مسبقاً"}
+
+    obj = MonthlyFeeRecord(
+        client_id=data.client_id,
+        year=data.year,
+        month=data.month,
+        fee_amount=0,
+        balance_carried=0,
+        total_due=0,
+        paid_amount=0,
+        remaining=0,
+        paid=False,
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return {"skipped": False, "record_id": obj.id, "message": f"✅ تم إنشاء سجل {data.year}/{data.month}"}
 
 
 class PaymentIn(BaseModel):

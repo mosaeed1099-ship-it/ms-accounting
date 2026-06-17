@@ -392,6 +392,50 @@ def update_lead(
     return lead_to_dict(lead)
 
 
+@router.patch("/{lead_id}")
+def patch_lead(
+    lead_id: int, body: dict,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """Partial update — accepts any subset of lead fields."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(404, "Lead غير موجود")
+
+    old_status = lead.status
+    for k, v in body.items():
+        if hasattr(lead, k):
+            if k in ("meeting_date", "follow_up_date") and v:
+                try:
+                    setattr(lead, k, datetime.fromisoformat(v))
+                except Exception:
+                    pass
+            else:
+                setattr(lead, k, v)
+    lead.updated_at = datetime.utcnow()
+
+    new_status = body.get("status")
+    if new_status and new_status != old_status:
+        status_labels = {
+            "new": "جديد", "interested": "مهتم", "not_answered": "لم يرد",
+            "call_later": "اتصل لاحقاً", "quotation_sent": "عرض مرسل",
+            "under_establishment": "تحت التأسيس", "lost": "خسارة",
+        }
+        db.add(LeadActivity(
+            lead_id=lead_id, user_id=current_user.id,
+            action="status_change",
+            description=f"تغيير الحالة من '{status_labels.get(old_status, old_status)}' إلى '{status_labels.get(new_status, new_status)}'",
+            old_value=old_status, new_value=new_status,
+        ))
+        CONVERT_STATUSES = {"under_establishment"}
+        if new_status in CONVERT_STATUSES and old_status not in CONVERT_STATUSES:
+            _ensure_client_archive(lead, db, current_user.id)
+
+    db.commit()
+    db.refresh(lead)
+    return lead_to_dict(lead)
+
+
 def _ensure_client_archive(lead: Lead, db, user_id: int):
     """Create archive folder structure for a newly converted client"""
     try:
