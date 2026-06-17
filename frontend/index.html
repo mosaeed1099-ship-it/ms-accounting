@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.5 — obligations: add companies tab (renderOblCompanies) + deactivate removed obligations on save -->
+<!-- v3.6 — monthly fees WhatsApp reminder system: preview modal, message templates, phone lookup -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -20199,15 +20199,21 @@ async function loadMonthlyFees() {
 let mfTableFilter = 'all'; // 'all' | 'paid' | 'unpaid' | 'partial' | 'overdue'
 let mfSearchQuery = '';
 let _mfAllRecords = [];
+let _mfClientsMap = {}; // client_id → {phone, name}
 
 async function renderMFPage() {
   const main = document.getElementById('main');
-  const [dash, records] = await Promise.all([
+  const [dash, records, clientsRaw] = await Promise.all([
     api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
     api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
+    api('GET', '/api/clients?page_size=500&status=active').catch(()=>({items:[]})),
   ]);
   _mfAllRecords = records;
   window._mfLastDash = dash;
+  // Build phone map from main clients table
+  const clientsList = Array.isArray(clientsRaw) ? clientsRaw : (clientsRaw?.items || []);
+  _mfClientsMap = {};
+  clientsList.forEach(c => { _mfClientsMap[c.id] = {phone: c.phone, name: c.name}; });
   mfRenderPage(dash, records);
 }
 
@@ -20438,6 +20444,7 @@ function mfRenderPage(dash, records) {
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626;margin-left:4px">↩️</button>`:''}
               ${currentUser?.role==='admin'?`<button onclick="mfDeleteClientModal(${r.client_id},'${safeName}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fef2f2;color:#dc2626;margin-left:4px;font-family:inherit" title="حذف من المدفوعات الشهرية">🗑️</button>`:''}
+              ${(()=>{ const ph = _mfClientsMap[r.client_id]?.phone; return ph ? `<button onclick="mfOpenWA(${r.id},${r.client_id})" style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#dcfce7;color:#16a34a;margin-left:4px" title="إرسال تذكير واتساب">📱</button>` : ''; })()}
             </td>
           </tr>`;}).join('')
           : `<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
@@ -20466,6 +20473,141 @@ window.mfFilterChange = function() {
   mfSearchQuery  = '';
   renderMFPage();
 };
+
+// ── WhatsApp Reminder System ──────────────────────────────────────────────────
+
+function _mfGetOverdueInfo(r) {
+  // Estimate overdue months from carried balance
+  const fee = r.fee_amount || 0;
+  const carried = r.balance_carried || 0;
+  const carriedMonths = fee > 0 ? Math.round(carried / fee) : 0;
+  const thisMonthUnpaid = _mfStatus(r) !== 'paid' ? 1 : 0;
+  const totalOverdueMonths = carriedMonths + thisMonthUnpaid;
+
+  // Build months text
+  const months = [];
+  if (thisMonthUnpaid) months.push(MF_MONTHS[mfCurrentMonth] + ' ' + mfCurrentYear);
+  for (let i = 1; i <= carriedMonths; i++) {
+    let m = mfCurrentMonth - i;
+    let y = mfCurrentYear;
+    if (m <= 0) { m += 12; y--; }
+    months.unshift(MF_MONTHS[m] + ' ' + y);
+  }
+  const monthsText = months.length > 0 ? months.join(' + ') : MF_MONTHS[mfCurrentMonth] + ' ' + mfCurrentYear;
+  return { totalOverdueMonths, monthsText, months };
+}
+
+function _mfGenerateWAMessage(r, type) {
+  const clientName = r.client_name || '';
+  const remaining  = (r.remaining || 0).toLocaleString('ar-EG');
+  const fee        = (r.fee_amount || 0).toLocaleString('ar-EG');
+  const { totalOverdueMonths, monthsText } = _mfGetOverdueInfo(r);
+  const monthLabel = MF_MONTHS[mfCurrentMonth] + ' ' + mfCurrentYear;
+
+  if (type === 1) {
+    // Early reminder (day 1–15)
+    return `السلام عليكم ورحمة الله وبركاته،\n${clientName}\n\nنود تذكيركم بموعد سداد أتعاب المحاسبة الشهرية 📋\n📅 الشهر: ${monthLabel}\n💰 المبلغ المستحق: ${remaining} ج.م.\n\nنرجو التكرم بالسداد في أقرب وقت ممكن.\nشاكرين تعاملكم مع مكتب MS للمحاسبة 🙏`;
+  } else {
+    // Late reminder (day 16–31)
+    const overdueNote = totalOverdueMonths > 1
+      ? `\n📌 الشهور المتأخرة (${totalOverdueMonths}): ${monthsText}`
+      : '';
+    return `السلام عليكم ورحمة الله وبركاته،\n${clientName}\n\n⚠️ تنبيه: لم يتم تسديد أتعاب المحاسبة حتى الآن\n📅 الشهر: ${monthLabel}\n💰 إجمالي المتأخرات: ${remaining} ج.م.${overdueNote}\n\nبرجاء سرعة التواصل لتسوية الحساب.\nمكتب MS للمحاسبة 📊`;
+  }
+}
+
+window.mfOpenWA = function(recordId, clientId) {
+  const r = _mfAllRecords.find(x => x.id === recordId);
+  if (!r) return;
+  const phone = _mfClientsMap[clientId]?.phone;
+  if (!phone) { toast('لا يوجد رقم هاتف لهذه الشركة', 'warning'); return; }
+  const p = toWAPhone(phone);
+  if (!p) { toast('رقم الهاتف غير صالح', 'warning'); return; }
+
+  const st = _mfStatus(r);
+  if (st === 'paid') { toast('هذا العميل دفع بالفعل ✅', 'info'); return; }
+
+  const today = new Date().getDate();
+  const type  = today <= 15 ? 1 : 2;
+  const msg   = _mfGenerateWAMessage(r, type);
+  const { monthsText } = _mfGetOverdueInfo(r);
+  const remaining = (r.remaining || 0).toLocaleString('ar-EG');
+  const safeName  = (r.client_name || '').replace(/'/g, "\\'");
+
+  // Show preview modal before opening WA
+  document.getElementById('mfWAModal')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfWAModal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:500px">
+      <div class="modal-header" style="background:linear-gradient(135deg,#25d366,#128c7e);color:white;border-radius:12px 12px 0 0">
+        <h3 style="font-size:15px;color:white;margin:0">📱 تذكير واتساب — ${escH(r.client_name||'')}</h3>
+        <button onclick="document.getElementById('mfWAModal').remove()" style="background:transparent;border:none;color:white;font-size:18px;cursor:pointer">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+          <div style="background:#fef2f2;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b">المتأخرات</div>
+            <div style="font-size:16px;font-weight:700;color:#ef4444">${remaining} ج.م</div>
+          </div>
+          <div style="background:#fffbeb;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b">الشهور</div>
+            <div style="font-size:14px;font-weight:700;color:#d97706">${monthsText}</div>
+          </div>
+          <div style="background:#f0fdf4;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b">الهاتف</div>
+            <div style="font-size:13px;font-weight:700;color:#16a34a" dir="ltr">+${p}</div>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الرسالة</label>
+          <div style="display:flex;gap:8px">
+            <button onclick="mfWAPreview(${recordId},${clientId},1)" id="mfWATypeBtn1"
+              style="flex:1;padding:7px;border-radius:8px;border:2px solid ${today<=15?'#25d366':'#e2e8f0'};background:${today<=15?'#f0fdf4':'#f8fafc'};cursor:pointer;font-size:12px;font-weight:600;color:${today<=15?'#16a34a':'#64748b'};font-family:inherit">
+              🌅 تذكير مبكر (١–١٥)</button>
+            <button onclick="mfWAPreview(${recordId},${clientId},2)" id="mfWATypeBtn2"
+              style="flex:1;padding:7px;border-radius:8px;border:2px solid ${today>15?'#ef4444':'#e2e8f0'};background:${today>15?'#fef2f2':'#f8fafc'};cursor:pointer;font-size:12px;font-weight:600;color:${today>15?'#dc2626':'#64748b'};font-family:inherit">
+              ⚠️ تذكير متأخر (١٦–٣١)</button>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نص الرسالة (قابل للتعديل)</label>
+          <textarea id="mfWAMsgText" class="input" style="height:160px;font-size:13px;line-height:1.6;direction:rtl;resize:vertical">${escH(msg)}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSendWA('${p}')" style="padding:9px 20px;background:#25d366;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📱 فتح واتساب</button>
+        <button onclick="document.getElementById('mfWAModal').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfWAPreview = function(recordId, clientId, type) {
+  const r = _mfAllRecords.find(x => x.id === recordId);
+  if (!r) return;
+  const msg = _mfGenerateWAMessage(r, type);
+  const ta  = document.getElementById('mfWAMsgText');
+  if (ta) ta.value = msg;
+  // Update button styles
+  [1, 2].forEach(t => {
+    const btn = document.getElementById(`mfWATypeBtn${t}`);
+    if (!btn) return;
+    const active = t === type;
+    btn.style.borderColor = active ? (t===1?'#25d366':'#ef4444') : '#e2e8f0';
+    btn.style.background  = active ? (t===1?'#f0fdf4':'#fef2f2') : '#f8fafc';
+    btn.style.color       = active ? (t===1?'#16a34a':'#dc2626') : '#64748b';
+  });
+};
+
+window.mfSendWA = function(phone) {
+  const msg = document.getElementById('mfWAMsgText')?.value || '';
+  if (!msg.trim()) { toast('الرسالة فارغة', 'warning'); return; }
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  document.getElementById('mfWAModal')?.remove();
+};
+
+window.mfOpenWA = window.mfOpenWA;
 
 window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
   document.getElementById('mfPayModalEl')?.remove();
