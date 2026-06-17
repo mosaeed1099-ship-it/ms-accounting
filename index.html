@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.1 — fix under_establishment page backtick nesting -->
+<!-- v3.2 — fix under_establishment loading: better error handling -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -12511,16 +12511,21 @@ async function markLeadUnderEstablishment(id, e) {
 window.markLeadUnderEstablishment = markLeadUnderEstablishment;
 
 // ── صفحة عملاء تحت التأسيس ────────────────────────────────────────────────────
-async function loadUnderEstablishmentClients(silent=false) {
+async function loadUnderEstablishmentClients(silent) {
   if(!silent) showPageLoading();
+  var data;
   try {
-    const [data, stats] = await Promise.all([
-      api('GET', '/api/leads?status=under_establishment&limit=500'),
-      api('GET', '/api/leads/stats')
-    ]);
-    const leads = Array.isArray(data) ? data : (data.items || data.leads || []);
-    renderUnderEstablishmentClients(leads, stats);
-  } catch(err) { showError('فشل تحميل البيانات'); }
+    data = await api('GET', '/api/leads?status=under_establishment&limit=500');
+  } catch(err) {
+    setPageContent('<div style="padding:40px;text-align:center;color:#ef4444">فشل تحميل البيانات: ' + (err.message||err) + '</div>');
+    return;
+  }
+  var leads = Array.isArray(data) ? data : (data.items || data.leads || []);
+  try {
+    renderUnderEstablishmentClients(leads);
+  } catch(err2) {
+    setPageContent('<div style="padding:40px;text-align:center;color:#ef4444">خطأ في عرض البيانات: ' + (err2.message||err2) + '</div>');
+  }
 }
 
 function _ueRow(l, i) {
@@ -12550,7 +12555,7 @@ function _ueRow(l, i) {
     + '</div></td></tr>';
 }
 
-function renderUnderEstablishmentClients(leads, stats) {
+function renderUnderEstablishmentClients(leads) {
   const count = leads.length;
   const withDeposit = leads.filter(function(l){return l.quote_total_fees>0;}).length;
   const withName    = leads.filter(function(l){return l.suggested_name;}).length;
