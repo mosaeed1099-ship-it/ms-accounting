@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.4 — fix international WhatsApp numbers (UAE/SA/etc) + fix tax page 500 error -->
+<!-- v3.5 — obligations: add companies tab (renderOblCompanies) + deactivate removed obligations on save -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -3173,6 +3173,12 @@ function showClientModal(id=null) {
               notes:'أُنشئ تلقائياً عند إضافة العميل',
             })
           ));
+        }
+        // Deactivate obligations that were removed
+        const selectedSet = new Set(selectedObls);
+        const toDeactivate = (Array.isArray(existingObls)?existingObls:(existingObls?.items||[])).filter(o=>o.is_active && !selectedSet.has(o.obligation_type));
+        if(toDeactivate.length){
+          await Promise.allSettled(toDeactivate.map(o=>api('DELETE',`/api/obligations/${o.id}`)));
         }
       }
 
@@ -8659,25 +8665,58 @@ const FREQ_AR = {monthly:'شهري', quarterly:'ربعي', annual:'سنوي'};
 
 var oblStats={}, oblInstances=[], oblTab='upcoming', oblDays=30, oblClientFilter='', oblTypeFilter='', oblStatusFilter='', oblSearchQ='';
 let oblClientsCache=[];
+var oblPageTab = 'deadlines'; // 'deadlines' | 'companies'
+var oblCompSubTab = 'vat';    // 'vat' | 'payroll' | 'income' | 'insurance' | 'other'
+var oblAllClients = [];
 
 async function loadObligations(silent=false) {
   try {
-    const [stats, inst] = await Promise.all([
+    const [stats, inst, clientsRaw] = await Promise.all([
       api('GET', '/api/obligations/stats'),
       api('GET', `/api/obligations/instances?days_ahead=${oblDays}&page_size=200`),
+      api('GET', '/api/clients?page_size=500').catch(()=>({items:[]})),
     ]);
     if (!stats) return;
     oblStats = stats;
     oblInstances = inst?.items || [];
+    oblAllClients = Array.isArray(clientsRaw) ? clientsRaw : (clientsRaw?.items || []);
     // Also refresh notifications badge
     loadNotifCount();
     renderObligations();
   } catch(e){ toast(e.message,'error'); }
 }
 
+function switchOblPageTab(tab) {
+  oblPageTab = tab;
+  renderObligations();
+}
+window.switchOblPageTab = switchOblPageTab;
+
+function switchOblCompSubTab(tab) {
+  oblCompSubTab = tab;
+  renderObligations();
+}
+window.switchOblCompSubTab = switchOblCompSubTab;
+
 function renderObligations() {
   const main = document.getElementById('main');
   main.className = 'page';
+
+  // Page-level tab switcher
+  const pageTabs = '<div style="display:flex;gap:4px;margin-bottom:18px;background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:5px">'
+    + ['deadlines:📅 المواعيد والإنذارات', 'companies:🏢 الشركات المسجلة'].map(t=>{
+        const [id, label] = t.split(':');
+        const active = oblPageTab === id;
+        return '<button onclick="switchOblPageTab(\'' + id + '\')" style="flex:1;padding:8px 16px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s;'
+          + (active ? 'background:#1a2472;color:white;' : 'background:transparent;color:#64748b;') + '">' + label + '</button>';
+      }).join('')
+    + '</div>';
+
+  if (oblPageTab === 'companies') {
+    main.innerHTML = pageTabs + renderOblCompanies();
+    return;
+  }
+
   // Save focus state before re-render (search input loses focus on innerHTML replace)
   const _prevActive = document.activeElement;
   const _searchHadFocus = _prevActive && _prevActive.id === 'oblSearchInput';
@@ -8857,12 +8896,90 @@ function renderObligations() {
     groupedSections = `<div class="card" style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:48px;margin-bottom:12px">✅</div><div style="font-size:15px">لا توجد التزامات بالفلاتر المختارة</div></div>`;
   }
 
-  main.innerHTML = kpiRow + toolbar + groupedSections;
+  main.innerHTML = pageTabs + kpiRow + toolbar + groupedSections;
   // Restore search focus after re-render
   if (_searchHadFocus) {
     const si = document.getElementById('oblSearchInput');
     if (si) { si.focus(); if (_searchCursor != null) try { si.setSelectionRange(_searchCursor, _searchCursor); } catch(_){} }
   }
+}
+
+function renderOblCompanies() {
+  const OBL_COMP_GROUPS = [
+    { id:'vat',       label:'🧾 ضريبة القيمة المضافة',       color:'#0369a1', bg:'#e0f2fe', border:'#7dd3fc', types:['vat_monthly','vat_quarterly'] },
+    { id:'payroll',   label:'💼 أسس توحيد المرتبات',         color:'#7c3aed', bg:'#f5f3ff', border:'#c4b5fd', types:['payroll_monthly','withholding_monthly'] },
+    { id:'income',    label:'📊 ضريبة الدخل',               color:'#b45309', bg:'#fffbeb', border:'#fcd34d', types:['income_annual','corporate_tax'] },
+    { id:'insurance', label:'🛡️ التأمينات الاجتماعية',      color:'#15803d', bg:'#f0fdf4', border:'#86efac', types:['insurance_monthly'] },
+    { id:'other',     label:'📋 التزامات أخرى',              color:'#475569', bg:'#f8fafc', border:'#cbd5e1', types:['stamp_quarterly','commercial_register_renewal','form_41'] },
+  ];
+
+  const activeClients = oblAllClients.filter(c => c.status === 'active');
+
+  // Sub-tabs
+  const subTabsHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">'
+    + OBL_COMP_GROUPS.map(g => {
+        const cnt = activeClients.filter(c => (c.tax_obligations||[]).some(t => g.types.includes(t))).length;
+        const active = oblCompSubTab === g.id;
+        return '<button onclick="switchOblCompSubTab(\'' + g.id + '\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px solid '
+          + (active ? g.color : '#e2e8f0') + ';border-radius:10px;background:' + (active ? g.bg : 'white') + ';color:'
+          + (active ? g.color : '#64748b') + ';font-size:12px;font-weight:' + (active ? '800' : '600') + ';cursor:pointer;font-family:inherit">'
+          + g.label + ' <span style="background:' + (active ? g.color : '#e2e8f0') + ';color:' + (active ? 'white' : '#64748b')
+          + ';border-radius:99px;padding:1px 7px;font-size:11px">' + cnt + '</span></button>';
+      }).join('')
+    + '</div>';
+
+  const grp = OBL_COMP_GROUPS.find(g => g.id === oblCompSubTab) || OBL_COMP_GROUPS[0];
+  const clients = activeClients.filter(c => (c.tax_obligations||[]).some(t => grp.types.includes(t)));
+
+  let rows = '';
+  if (clients.length === 0) {
+    rows = '<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:12px">🏢</div>'
+      + '<div style="font-size:15px;font-weight:600">لا توجد شركات مسجلة لهذا الالتزام</div>'
+      + '<div style="font-size:12px;margin-top:8px">افتح ملف الشركة وفعّل الالتزام المطلوب</div></div>';
+  } else {
+    rows = '<table style="width:100%;border-collapse:collapse">'
+      + '<thead><tr style="background:' + grp.bg + ';border-bottom:2px solid ' + grp.border + '">'
+      + '<th style="padding:10px 14px;text-align:right;font-size:12px;font-weight:700;color:' + grp.color + '">الشركة</th>'
+      + '<th style="padding:10px 14px;text-align:center;font-size:12px;font-weight:700;color:' + grp.color + '">الالتزامات الفعّالة</th>'
+      + '<th style="padding:10px 14px;text-align:center;font-size:12px;font-weight:700;color:' + grp.color + '">نوع الكيان</th>'
+      + '<th style="padding:10px 14px;text-align:center;font-size:12px;font-weight:700;color:' + grp.color + '">إجراءات</th>'
+      + '</tr></thead><tbody>'
+      + clients.map((c,i) => {
+          const bg = i % 2 === 0 ? 'white' : '#fafbff';
+          const myObls = (c.tax_obligations||[]).filter(t => grp.types.includes(t));
+          const allObls = (c.tax_obligations||[]);
+          const oblBadges = allObls.map(t => '<span style="background:#eef1fb;color:#1a2472;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;display:inline-block;margin:1px">' + (OBL_NAME_AR[t]||t) + '</span>').join('');
+          const entityMap = {llc:'ذ.م.م',one_person:'شخص واحد',sole:'فردية',limited_partnership:'توصية بسيطة',joint_stock:'مساهمة',partnership:'تضامن',individual:'فرد'};
+          return '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9">'
+            + '<td style="padding:10px 14px"><div style="font-weight:700;color:#1e293b;font-size:13px">' + escH(c.name||'—') + '</div>'
+            + (c.activity ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">' + escH(c.activity) + '</div>' : '') + '</td>'
+            + '<td style="padding:8px 14px;text-align:center">' + oblBadges + '</td>'
+            + '<td style="padding:8px 14px;text-align:center;font-size:12px;color:#64748b">' + escH(entityMap[c.client_type]||c.client_type||'—') + '</td>'
+            + '<td style="padding:8px 14px;text-align:center"><button onclick="showClientModal(' + c.id + ')" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">✏️ تعديل الالتزامات</button></td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table>';
+  }
+
+  // Summary stats
+  const totalReg = activeClients.filter(c => (c.tax_obligations||[]).length > 0).length;
+  const totalActive = activeClients.length;
+  const statsRow = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">'
+    + OBL_COMP_GROUPS.map(g => {
+        const cnt = activeClients.filter(c => (c.tax_obligations||[]).some(t => g.types.includes(t))).length;
+        return '<div class="stat-card" style="padding:14px;cursor:pointer;border:2px solid ' + (oblCompSubTab===g.id ? g.color : 'transparent') + '" onclick="switchOblCompSubTab(\'' + g.id + '\')">'
+          + '<div style="font-size:22px;font-weight:800;color:' + g.color + '">' + cnt + '</div>'
+          + '<div style="font-size:11px;color:#64748b;margin-top:3px">' + g.label + '</div></div>';
+      }).join('')
+    + '</div>';
+
+  return statsRow + subTabsHtml
+    + '<div class="card" style="overflow:hidden">'
+    + '<div style="padding:14px 18px;background:' + grp.bg + ';border-bottom:2px solid ' + grp.border + ';display:flex;align-items:center;justify-content:space-between">'
+    + '<div style="font-size:14px;font-weight:800;color:' + grp.color + '">' + grp.label + '</div>'
+    + '<div style="font-size:12px;color:' + grp.color + '99">' + clients.length + ' شركة مسجلة</div>'
+    + '</div>'
+    + '<div style="overflow-x:auto">' + rows + '</div></div>';
 }
 
 async function runBulkGenerate() {
