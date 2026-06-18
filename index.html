@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.9 — mf_clients phone column + correct phone lookup for WhatsApp -->
+<!-- v3.10 — establishment: delete case button -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -8484,6 +8484,7 @@ function _fmCaseCard(c) {
         <div style="display:flex;gap:6px">
           ${!c.is_completed?`<button onclick="showMoveStageModal(${c.id},'${c.current_stage}')" style="padding:5px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;font-size:11px;cursor:pointer;color:#1a2472;font-family:inherit">➜ التالية</button>`:''}
           <button onclick="showFormationDetail(${c.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;font-size:11px;cursor:pointer;color:#374151;font-family:inherit">📋 التفاصيل</button>
+          <button onclick="deleteFormationCase(${c.id},'${c.company_name.replace(/'/g,"\\'")}')" style="padding:5px 8px;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;font-size:11px;cursor:pointer;color:#dc2626;font-family:inherit" title="حذف الملف">🗑️</button>
         </div>
       </div>
     </div>
@@ -8499,6 +8500,22 @@ function _fmSearchChange(val) {
   _fmSearch = val;
   renderEstablishment();
 }
+
+window.deleteFormationCase = async function(caseId, companyName) {
+  const confirmed = await _SL.confirmDestructive({
+    title: 'حذف ملف التأسيس',
+    message: `سيتم حذف ملف "${companyName}" نهائياً. هل أنت متأكد؟`,
+    confirmText: '🗑️ نعم، احذف الملف',
+    backupNote: false,
+  });
+  if (!confirmed) return;
+  try {
+    await api('DELETE', `/api/formation/${caseId}`);
+    _fmData = _fmData.filter(c => c.id !== caseId);
+    toast('✅ تم حذف الملف');
+    renderEstablishment();
+  } catch(e) { toast(e.message, 'error'); }
+};
 
 // ── Move Stage Modal ──────────────────────────────
 function showMoveStageModal(caseId, currentStage) {
