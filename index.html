@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.8 — clients table: copy phone button on hover -->
+<!-- v3.9 — mf_clients phone column + correct phone lookup for WhatsApp -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -20493,17 +20493,18 @@ let _mfClientsMap = {}; // client_id → {phone, name}
 
 async function renderMFPage() {
   const main = document.getElementById('main');
-  const [dash, records, clientsRaw] = await Promise.all([
+  const [dash, records, mfClients] = await Promise.all([
     api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
     api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
-    api('GET', '/api/clients?page_size=500&status=active').catch(()=>({items:[]})),
+    api('GET', '/api/monthly-fees/clients?page_size=200').catch(()=>[]),
   ]);
   _mfAllRecords = records;
   window._mfLastDash = dash;
-  // Build phone map from main clients table
-  const clientsList = Array.isArray(clientsRaw) ? clientsRaw : (clientsRaw?.items || []);
+  // Build phone map from mf_clients (has correct phones per Excel)
   _mfClientsMap = {};
-  clientsList.forEach(c => { _mfClientsMap[c.id] = {phone: c.phone, name: c.name}; });
+  (Array.isArray(mfClients) ? mfClients : []).forEach(c => {
+    _mfClientsMap[c.id] = {phone: c.phone, name: c.name};
+  });
   mfRenderPage(dash, records);
 }
 
