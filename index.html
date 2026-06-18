@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.7 — safety layer: operation log, undo/rollback, destructive confirm gates, bulk guard -->
+<!-- v3.8 — clients table: copy phone button on hover -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -2920,12 +2920,26 @@ function _clientsTableRows() {
     return `
   <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
     <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
-    <td>
-      <div style="font-weight:600;color:#1e293b">${escH(c.name)}</div>
+    <td onclick="event.stopPropagation()">
+      <div style="display:inline-flex;align-items:center;gap:5px">
+        <span style="font-weight:600;color:#1e293b;cursor:pointer" onclick="showClientDetail(${c.id})">${escH(c.name)}</span>
+        <button onclick="navigator.clipboard.writeText('${c.name.replace(/'/g,"\\'")}').then(()=>toast('✅ تم نسخ الاسم'))" title="نسخ الاسم"
+          style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:5px;color:#94a3b8;font-size:12px;line-height:1;opacity:.5;transition:opacity .15s"
+          onmouseover="this.style.opacity='1';this.style.background='#f1f5f9'"
+          onmouseout="this.style.opacity='.5';this.style.background='none'">📋</button>
+      </div>
       ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${escH(c.name_en)}</div>`:''}
     </td>
     <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
-    <td class="col-mob-hide" style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
+    <td class="col-mob-hide" onclick="event.stopPropagation()" style="direction:ltr;text-align:right;color:#374151;white-space:nowrap">
+      ${c.phone ? `<span style="display:inline-flex;align-items:center;gap:5px">
+        <span>${escH(c.phone)}</span>
+        <button onclick="navigator.clipboard.writeText('${c.phone.replace(/'/g,"\\'")}').then(()=>toast('✅ تم نسخ الرقم'))" title="نسخ الرقم"
+          style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:5px;color:#94a3b8;font-size:13px;line-height:1;opacity:.6;transition:opacity .15s"
+          onmouseover="this.style.opacity='1';this.style.background='#f1f5f9'"
+          onmouseout="this.style.opacity='.6';this.style.background='none'">📋</button>
+      </span>` : '—'}
+    </td>
     <td class="col-mob-hide" style="color:#374151;font-size:12px">${c.activity||'—'}</td>
     <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
     <td onclick="event.stopPropagation()">
