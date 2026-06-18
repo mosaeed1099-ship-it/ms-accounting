@@ -60,6 +60,7 @@ def _client_dict(c: MonthlyFeeClient) -> dict:
     return {
         "id": c.id, "name": c.name,
         "monthly_fee": c.monthly_fee,
+        "phone": c.phone,
         "status": c.status.value if hasattr(c.status, 'value') else c.status,
         "notes": c.notes,
         "created_at": str(c.created_at) if c.created_at else None,
@@ -195,6 +196,7 @@ class ClientUpdateIn(BaseModel):
     monthly_fee: Optional[float] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    phone: Optional[str] = None
 
 
 @router.put("/clients/{client_id}")
@@ -224,6 +226,8 @@ def update_client(
             pass
     if data.notes is not None:
         c.notes = data.notes
+    if data.phone is not None:
+        c.phone = data.phone
     db.commit()
     return _client_dict(c)
 

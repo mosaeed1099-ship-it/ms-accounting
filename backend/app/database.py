@@ -256,6 +256,8 @@ def _run_migrations_pg():
         "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS method VARCHAR(10)",
         # leads — suggested_name column for under_establishment
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS suggested_name VARCHAR(200)",
+        # mf_clients — phone column for WhatsApp reminders
+        "ALTER TABLE mf_clients ADD COLUMN IF NOT EXISTS phone VARCHAR(30)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

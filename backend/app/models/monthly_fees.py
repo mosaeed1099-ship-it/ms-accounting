@@ -16,6 +16,7 @@ class MonthlyFeeClient(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False, index=True)
     monthly_fee = Column(Float, default=0)
+    phone = Column(String(30))
     status = Column(Enum(MFClientStatus), default=MFClientStatus.ACTIVE)
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
