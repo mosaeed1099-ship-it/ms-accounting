@@ -5453,7 +5453,7 @@ async function _tcRenderVat(el) {
   <div style="background:#fff7ed;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;border:1px solid #fed7aa;margin-bottom:12px">
     💡 <strong>كيف تعمل الإقرارات:</strong>
     اضغط <strong>إدخال يدوي</strong> لإدخال أرقام المبيعات والمشتريات يدوياً وبناء الإقرار، أو <strong>⚡ بناء إقرار</strong> إذا كان مربوط بـ ETA.
-    رفع ملف Excel هو للأرشفة فقط ولا يؤثر على أرقام الإقرار.
+    أو اضغط <strong>📊 رفع Excel فواتير</strong> لاستيراد ملف بوابة الفواتير الإلكترونية مباشرةً وبناء الإقرار تلقائياً في ثانية.
   </div>
   <div id="tcVatArea"><div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div></div>`;
 
@@ -5622,6 +5622,194 @@ window.tcVatBuildManual = async function() {
     await _tcVatLoadList();
   } catch(e) { toast(e.message, 'error'); }
 };
+
+// ── ETA Excel Import ─────────────────────────────────────────────────────────
+window.tcVatExcelModal = function() {
+  const mo = document.createElement('div');
+  mo.className = 'modal-overlay'; mo.id = 'etaImportModal';
+  mo.innerHTML = `
+  <div class="modal" style="max-width:560px;width:100%">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:17px;font-weight:800;color:#1e293b">📊 استيراد من بوابة الفواتير الإلكترونية</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px">حمّل ملف الـ Excel من موقع ETA واستيراد الإقرار تلقائياً</div>
+      </div>
+      <button onclick="document.getElementById('etaImportModal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">×</button>
+    </div>
+
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 14px;font-size:12px;color:#0369a1;margin-bottom:16px;line-height:1.7">
+      <strong>كيفية الحصول على الملف:</strong><br>
+      ١. سجّل دخول في بوابة الفواتير الإلكترونية → الفواتير → تصدير<br>
+      ٢. اختر الفترة (الشهر المطلوب) وحمّل بصيغة <strong>Excel (.xlsx)</strong><br>
+      ٣. ارفع الملف هنا وسيُبنى الإقرار تلقائياً
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:13px;font-weight:700;color:#374151;display:block;margin-bottom:6px">الملف (.xlsx)</label>
+      <input type="file" id="etaFile" accept=".xlsx,.xls"
+        style="width:100%;padding:10px;border:2px dashed #cbd5e1;border-radius:10px;font-size:13px;cursor:pointer;background:#f8fafc">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">السنة (اختياري — تُستنتج من الملف)</label>
+        <input type="number" id="etaYear" value="${_tcYear}" min="2020" max="2035"
+          style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">الشهر (اختياري)</label>
+        <select id="etaMonth" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
+          ${Array.from({length:12},(_,i)=>`<option value="${i+1}"${i+1===_tcMonth?' selected':''}>${TC_MONTH_AR[i+1]}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;margin-bottom:20px;cursor:pointer">
+      <input type="checkbox" id="etaForce" checked style="width:15px;height:15px">
+      إعادة بناء الإقرار لو كان موجود مسبقاً
+    </label>
+
+    <div id="etaProgress" style="display:none;text-align:center;padding:20px;color:#64748b">
+      <div class="spinner" style="margin:0 auto 10px"></div>جاري المعالجة...
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="document.getElementById('etaImportModal').remove()" class="btn btn-secondary">إلغاء</button>
+      <button onclick="tcVatImportEta()" class="btn btn-primary" id="etaImportBtn">⚡ استيراد وبناء الإقرار</button>
+    </div>
+  </div>`;
+  document.body.appendChild(mo);
+};
+
+window.tcVatImportEta = async function() {
+  const fileInput = document.getElementById('etaFile');
+  if (!fileInput?.files?.length) { toast('اختر ملف Excel أولاً', 'error'); return; }
+  const year  = parseInt(document.getElementById('etaYear')?.value) || _tcYear;
+  const month = parseInt(document.getElementById('etaMonth')?.value) || _tcMonth;
+  const force = document.getElementById('etaForce')?.checked ?? true;
+
+  document.getElementById('etaProgress').style.display = 'block';
+  document.getElementById('etaImportBtn').disabled = true;
+
+  try {
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('client_id', String(_tcClientId));
+    fd.append('year', String(year));
+    fd.append('month', String(month));
+    fd.append('force_rebuild', force ? 'true' : 'false');
+
+    const resp = await fetch(getApiBase() + '/api/tax-center/vat/import-eta', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('ms_token') },
+      body: fd,
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(()=>({}));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    document.getElementById('etaImportModal').remove();
+    _showEtaResult(data);
+    await _tcVatLoadList();
+  } catch(e) {
+    document.getElementById('etaProgress').style.display = 'none';
+    document.getElementById('etaImportBtn').disabled = false;
+    toast('❌ ' + e.message, 'error');
+  }
+};
+
+function _showEtaResult(data) {
+  const s = data.eta_summary || {};
+  const ret = data.vat_return || {};
+  const mo = document.createElement('div');
+  mo.className = 'modal-overlay'; mo.id = 'etaResultModal';
+
+  const clientRows = (data.top_clients || []).map(c =>
+    `<tr><td>${escH(c.name)}</td><td>${money(c.net)}</td><td style="color:#15803d">${money(c.vat)}</td><td>${c.count}</td></tr>`
+  ).join('') || `<tr><td colspan="4" style="text-align:center;color:#94a3b8">لا توجد مبيعات</td></tr>`;
+
+  const supplierRows = (data.top_suppliers || []).map(c =>
+    `<tr><td>${escH(c.name)}</td><td>${money(c.net)}</td><td style="color:#1a2472">${money(c.vat)}</td><td>${c.count}</td></tr>`
+  ).join('') || `<tr><td colspan="4" style="text-align:center;color:#94a3b8">لا توجد مشتريات</td></tr>`;
+
+  const netColor = (ret.net_vat_due||0) > 0 ? '#dc2626' : '#15803d';
+
+  mo.innerHTML = `
+  <div class="modal" style="max-width:780px;width:100%;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:17px;font-weight:800;color:#1e293b">✅ تم الاستيراد بنجاح — ${TC_MONTH_AR[data.period?.month]} ${data.period?.year}</div>
+        <div style="font-size:12px;color:#64748b">${s.total_invoices} فاتورة (${s.outgoing_count} صادرة · ${s.incoming_count} واردة)</div>
+      </div>
+      <button onclick="document.getElementById('etaResultModal').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b">×</button>
+    </div>
+
+    <!-- VAT Summary -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:11px;color:#15803d;font-weight:700;margin-bottom:4px">ضريبة المخرجات</div>
+        <div style="font-size:20px;font-weight:800;color:#15803d">${money(s.output_vat)}</div>
+        <div style="font-size:11px;color:#64748b">وعاء: ${money(s.output_taxable)}</div>
+      </div>
+      <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:11px;color:#1a2472;font-weight:700;margin-bottom:4px">ضريبة المدخلات</div>
+        <div style="font-size:20px;font-weight:800;color:#1a2472">${money(s.input_vat)}</div>
+        <div style="font-size:11px;color:#64748b">وعاء: ${money(s.input_taxable)}</div>
+      </div>
+      <div style="background:${(ret.net_vat_due||0)>0?'#fef2f2':'#f0fdf4'};border:1px solid ${(ret.net_vat_due||0)>0?'#fca5a5':'#86efac'};border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:11px;color:${netColor};font-weight:700;margin-bottom:4px">صافي الضريبة المستحقة</div>
+        <div style="font-size:22px;font-weight:900;color:${netColor}">${money(ret.net_vat_due||0)}</div>
+        <div style="font-size:11px;color:#64748b">استحقاق: ${dateAr(ret.due_date)}</div>
+      </div>
+    </div>
+
+    <!-- Top Clients -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px">🏆 أهم العملاء (المبيعات)</div>
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#f8fafc">
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">العميل</th>
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">صافي المبيعات</th>
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">ض.ق.م.</th>
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">فواتير</th>
+          </tr></thead>
+          <tbody>${clientRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Top Suppliers -->
+    ${supplierRows.includes('لا توجد') ? '' : `
+    <div style="margin-bottom:16px">
+      <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px">🏭 أهم الموردين (المشتريات)</div>
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#f8fafc">
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">المورد</th>
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">صافي المشتريات</th>
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">ض.ق.م.</th>
+            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">فواتير</th>
+          </tr></thead>
+          <tbody>${supplierRows}</tbody>
+        </table>
+      </div>
+    </div>`}
+
+    <div style="text-align:center;margin-top:16px">
+      <button onclick="document.getElementById('etaResultModal').remove();tcVatWorkflow(${ret.id})" class="btn btn-primary">
+        📋 فتح الإقرار ومتابعة سير العمل
+      </button>
+      <button onclick="document.getElementById('etaResultModal').remove()" class="btn btn-secondary" style="margin-right:8px">
+        إغلاق
+      </button>
+    </div>
+  </div>`;
+  document.body.appendChild(mo);
+}
+window.tcVatExcelModal = window.tcVatExcelModal;
+window.tcVatImportEta = window.tcVatImportEta;
 
 window.tcVatBuild = async function() {
   const btn = event?.target;
