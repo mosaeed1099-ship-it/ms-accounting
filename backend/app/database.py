@@ -252,8 +252,13 @@ def _run_migrations_pg():
         "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS amends_return_id INTEGER",
         "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS amendment_reason TEXT",
         "ALTER TABLE tax_vat_returns ADD COLUMN IF NOT EXISTS payment_amount NUMERIC(14,2)",
-        # audit_logs — method column added later
+        # audit_logs — method + path columns added later
         "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS method VARCHAR(10)",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS path VARCHAR(500)",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS entity_type VARCHAR(100)",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS entity_id INTEGER",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS status_code INTEGER",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_agent VARCHAR(300)",
         # leads — suggested_name column for under_establishment
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS suggested_name VARCHAR(200)",
         # mf_clients — phone column for WhatsApp reminders

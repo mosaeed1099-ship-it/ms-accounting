@@ -467,6 +467,22 @@ def create_wht_entry(
     gross = Decimal(str(req.gross_amount))
     treaty = Decimal(str(req.treaty_rate)) if req.treaty_applies and req.treaty_rate else None
     rate, wht_amount, net = compute_withholding(gross, req.transaction_type, req.payee_type, treaty)
+    # If hardcoded _RATES doesn't have this code, use rate from DB record
+    if rate == Decimal(0) and wht_amount == Decimal(0):
+        payee = req.payee_type or "company"
+        if payee == "company":
+            db_rate = Decimal(str(wht_type.rate_company or 0))
+        elif payee == "individual":
+            db_rate = Decimal(str(wht_type.rate_individual or 0))
+        else:
+            db_rate = Decimal(str(wht_type.rate_foreign or 20))
+        if treaty is not None:
+            db_rate = min(db_rate, treaty)
+        threshold = Decimal(str(wht_type.threshold_amount or 300))
+        if gross >= threshold and db_rate > 0:
+            wht_amount = (gross * db_rate / 100).quantize(Decimal("0.01"))
+            net = gross - wht_amount
+            rate = db_rate
 
     entry = WithholdingEntry(
         client_id=req.client_id,
