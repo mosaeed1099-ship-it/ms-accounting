@@ -460,7 +460,9 @@ async def import_eta_excel(
         raise HTTPException(400, f"خطأ في قراءة الملف: {e}")
 
     # ── Parse "جميع الفواتير" sheet ──────────────────────────────────────
-    sheet = xl.get("جميع الفواتير") or xl.get(list(xl.keys())[0])
+    sheet = xl.get("جميع الفواتير")
+    if sheet is None:
+        sheet = xl.get(list(xl.keys())[0])
     if sheet is None or sheet.empty:
         raise HTTPException(400, "الملف لا يحتوي على بيانات فواتير")
 
