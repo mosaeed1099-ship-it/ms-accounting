@@ -7,7 +7,7 @@ from datetime import datetime, date
 from typing import Optional, List
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -421,6 +421,205 @@ def pay_vat_return(
     _log(db, ret.client_id, cu.id, "vat_return", ret.id, "paid")
     db.commit()
     return {"status": "paid"}
+
+
+# ════════════════════════════════════════════════════════════
+#  ETA EXCEL IMPORT — بوابة الفواتير الإلكترونية
+# ════════════════════════════════════════════════════════════
+
+@router.post("/vat/import-eta")
+async def import_eta_excel(
+    client_id: int = Form(...),
+    year:  Optional[int] = Form(None),
+    month: Optional[int] = Form(None),
+    force_rebuild: bool = Form(False),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    cu: User = Depends(get_current_user),
+):
+    """
+    Parse an ETA e-invoicing Excel export and auto-build a VAT return.
+    Accepts the standard xlsx downloaded from the Egyptian Tax Authority portal.
+    Returns the VAT return + a rich analysis of sales/purchases.
+    """
+    import io, re
+    try:
+        import pandas as pd
+    except ImportError:
+        raise HTTPException(500, "pandas غير مثبّت على الخادم")
+
+    content = await file.read()
+    try:
+        xl = pd.read_excel(io.BytesIO(content), sheet_name=None, header=None, dtype=str)
+    except Exception as e:
+        raise HTTPException(400, f"خطأ في قراءة الملف: {e}")
+
+    # ── Parse "جميع الفواتير" sheet ──────────────────────────────────────
+    sheet = xl.get("جميع الفواتير") or xl.get(list(xl.keys())[0])
+    if sheet is None or sheet.empty:
+        raise HTTPException(400, "الملف لا يحتوي على بيانات فواتير")
+
+    # Row 0 = headers, skip totals rows (column 1 contains "الإجمالي")
+    headers = sheet.iloc[0].tolist()
+    data = sheet.iloc[1:].copy()
+    data = data[~data.iloc[:, 1].astype(str).str.contains("الإجمالي|NaN", na=True)]
+    data = data.dropna(subset=[data.columns[1]])  # must have invoice number
+
+    def _col(name_fragment):
+        """Find column index by partial Arabic name match."""
+        for i, h in enumerate(headers):
+            if isinstance(h, str) and name_fragment in h:
+                return i
+        return None
+
+    col_date      = _col("تاريخ الإصدار")
+    col_net       = _col("المبلغ الصافي")
+    col_vat       = _col("إجمالي ضريبة القيمة المضافة")
+    col_total     = _col("الإجمالي النهائي")
+    col_dir       = _col("اتجاه الفاتورة")
+    col_client    = _col("اسم العميل")
+    col_client_tax = _col("الرقم الضريبي للعميل")
+    col_doc_type  = _col("نوع المستند")
+    col_status    = _col("حالة الفاتورة")
+    col_inv_num   = _col("رقم الفاتورة الداخلي")
+
+    def _num(val):
+        try:
+            return float(str(val).replace(",", "").strip())
+        except Exception:
+            return 0.0
+
+    def _parse_date(val):
+        s = str(val).strip()
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except Exception:
+                pass
+        return None
+
+    rows = []
+    for _, row in data.iterrows():
+        d = _parse_date(row.iloc[col_date]) if col_date is not None else None
+        rows.append({
+            "date":       d,
+            "direction":  str(row.iloc[col_dir]).strip() if col_dir is not None else "",
+            "net":        _num(row.iloc[col_net]) if col_net is not None else 0.0,
+            "vat":        _num(row.iloc[col_vat]) if col_vat is not None else 0.0,
+            "total":      _num(row.iloc[col_total]) if col_total is not None else 0.0,
+            "client":     str(row.iloc[col_client]).strip() if col_client is not None else "",
+            "client_tax": str(row.iloc[col_client_tax]).strip() if col_client_tax is not None else "",
+            "doc_type":   str(row.iloc[col_doc_type]).strip() if col_doc_type is not None else "",
+            "status":     str(row.iloc[col_status]).strip() if col_status is not None else "",
+            "inv_num":    str(row.iloc[col_inv_num]).strip() if col_inv_num is not None else "",
+        })
+
+    # ── Auto-detect year/month if not provided ────────────────────────────
+    valid_dates = [r["date"] for r in rows if r["date"]]
+    if not year and valid_dates:
+        from collections import Counter
+        most_common = Counter((d.year, d.month) for d in valid_dates).most_common(1)
+        if most_common:
+            year, month = most_common[0][0]
+    if not year:
+        raise HTTPException(400, "لم يتم تحديد السنة ولا يمكن استنتاجها من التواريخ")
+    if not month:
+        month = valid_dates[0].month if valid_dates else 1
+
+    # ── Filter by period ──────────────────────────────────────────────────
+    period_rows = [r for r in rows if r["date"] and r["date"].year == year and r["date"].month == month]
+    if not period_rows:
+        # Fall back to all rows if filter returns nothing (some files have no date column)
+        period_rows = rows
+
+    # ── Calculate VAT figures ─────────────────────────────────────────────
+    valid_statuses = {"صالحة", "معتمدة", "مقبولة", ""}
+    def is_valid(r):
+        return r["status"] in valid_statuses or not r["status"] or r["status"] == "nan"
+
+    outgoing = [r for r in period_rows if "صادرة" in r["direction"] and is_valid(r)]
+    incoming = [r for r in period_rows if "واردة" in r["direction"] and is_valid(r)]
+
+    output_taxable = sum(r["net"] for r in outgoing)
+    output_vat     = sum(r["vat"] for r in outgoing)
+    input_taxable  = sum(r["net"] for r in incoming)
+    input_vat      = sum(r["vat"] for r in incoming)
+    doc_count_out  = len(outgoing)
+    doc_count_in   = len(incoming)
+
+    # ── Build/update VAT return ───────────────────────────────────────────
+    from app.services.vat_calculator import build_vat_return
+    notes = f"مستورد من بوابة الفواتير الإلكترونية | {doc_count_out} فاتورة صادرة · {doc_count_in} فاتورة واردة"
+    ret = build_vat_return(
+        db, client_id, year, month,
+        previous_credit=0.0,
+        manual_output_vat=output_vat,
+        manual_input_vat=input_vat,
+        manual_notes=notes,
+        force_rebuild=force_rebuild,
+        built_by=cu.id,
+    )
+    # Store ETA doc counts
+    ret.eta_outgoing_doc_count = doc_count_out
+    ret.eta_incoming_doc_count = doc_count_in
+    ret.out_std_taxable = Decimal(str(output_taxable))
+    ret.in_std_taxable  = Decimal(str(input_taxable))
+    _log(db, client_id, cu.id, "vat_return", ret.id, "imported_eta", notes=notes)
+    db.commit()
+
+    # ── Build analysis ────────────────────────────────────────────────────
+    from collections import defaultdict
+
+    # Top clients by sales
+    client_sales: dict = defaultdict(lambda: {"net": 0.0, "vat": 0.0, "count": 0})
+    for r in outgoing:
+        k = r["client"] or "غير محدد"
+        client_sales[k]["net"]   += r["net"]
+        client_sales[k]["vat"]   += r["vat"]
+        client_sales[k]["count"] += 1
+    top_clients = sorted(client_sales.items(), key=lambda x: x[1]["net"], reverse=True)[:10]
+
+    # Top suppliers by purchases
+    supplier_purchases: dict = defaultdict(lambda: {"net": 0.0, "vat": 0.0, "count": 0})
+    for r in incoming:
+        k = r["client"] or "غير محدد"
+        supplier_purchases[k]["net"]   += r["net"]
+        supplier_purchases[k]["vat"]   += r["vat"]
+        supplier_purchases[k]["count"] += 1
+    top_suppliers = sorted(supplier_purchases.items(), key=lambda x: x[1]["net"], reverse=True)[:10]
+
+    # All invoices list (for display)
+    invoices_list = sorted(period_rows, key=lambda r: (r["date"] or date.today(), r["total"]), reverse=True)
+
+    return {
+        "vat_return":    _vat_dict(ret),
+        "period":        {"year": year, "month": month},
+        "eta_summary": {
+            "total_invoices":      doc_count_out + doc_count_in,
+            "outgoing_count":      doc_count_out,
+            "incoming_count":      doc_count_in,
+            "output_taxable":      round(output_taxable, 2),
+            "output_vat":          round(output_vat, 2),
+            "input_taxable":       round(input_taxable, 2),
+            "input_vat":           round(input_vat, 2),
+            "net_vat_due":         round(output_vat - input_vat, 2),
+        },
+        "top_clients":  [{"name": k, **v} for k, v in top_clients],
+        "top_suppliers":[{"name": k, **v} for k, v in top_suppliers],
+        "invoices":     [
+            {
+                "date":      str(r["date"]) if r["date"] else "",
+                "direction": r["direction"],
+                "client":    r["client"],
+                "net":       round(r["net"], 2),
+                "vat":       round(r["vat"], 2),
+                "total":     round(r["total"], 2),
+                "status":    r["status"],
+                "inv_num":   r["inv_num"],
+            }
+            for r in invoices_list[:200]
+        ],
+    }
 
 
 # ════════════════════════════════════════════════════════════
