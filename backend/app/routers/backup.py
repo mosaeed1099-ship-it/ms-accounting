@@ -179,48 +179,74 @@ def run_backup(
     db.commit()
     db.refresh(record)
 
-    try:
-        # 1. DB stats
-        stats = _collect_db_stats(db)
-        record.db_stats = json.dumps(stats, ensure_ascii=False)
+    rid = record.id
 
-        # 2. pg_dump
+    def _save_final(status, db_size=0, uploads_size=0, db_stats_json="{}",
+                    error_msg="", completed_at=None):
+        """Use raw SQL to update the record — avoids any ORM transaction state issues."""
+        if completed_at is None:
+            completed_at = datetime.utcnow()
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            db.execute(_text("""
+                UPDATE backup_records SET
+                  status=:st, db_size_kb=:dsz, uploads_size_kb=:usz,
+                  total_size_kb=:tsz, db_stats=:dstats,
+                  error_message=:err, completed_at=:cat
+                WHERE id=:rid
+            """), {
+                "st": status, "dsz": db_size, "usz": uploads_size,
+                "tsz": db_size + uploads_size, "dstats": db_stats_json,
+                "err": error_msg[:500] if error_msg else "",
+                "cat": completed_at, "rid": rid,
+            })
+            db.commit()
+        except Exception as e2:
+            import logging
+            logging.getLogger(__name__).error(f"[backup] _save_final failed: {e2}")
+
+    try:
+        # 1. DB stats (queries may leave transaction in aborted state)
+        stats = _collect_db_stats(db)
+        stats_json = json.dumps(stats, ensure_ascii=False)
+
+        # 2. pg_dump / psycopg2 fallback (uses independent connection)
         sql_bytes = _pg_dump_bytes()
         gz_bytes  = gzip.compress(sql_bytes, compresslevel=6)
-        record.db_size_kb = len(gz_bytes) // 1024
+        db_size_kb = len(gz_bytes) // 1024
 
         # 3. Uploads zip (optional)
         uploads_gz = b""
+        uploads_size_kb = 0
         if include_uploads:
             raw_zip = _uploads_zip_bytes(settings.UPLOAD_DIR)
             uploads_gz = gzip.compress(raw_zip, compresslevel=6)
-            record.uploads_size_kb = len(uploads_gz) // 1024
-
-        record.total_size_kb = record.db_size_kb + record.uploads_size_kb
+            uploads_size_kb = len(uploads_gz) // 1024
 
         # 4. Email (if configured)
         if send_email:
+            record.db_size_kb      = db_size_kb
+            record.uploads_size_kb = uploads_size_kb
+            record.total_size_kb   = db_size_kb + uploads_size_kb
             _email_backup(backup_type, gz_bytes, uploads_gz, stats, record, settings)
 
-        record.status       = "completed"
-        record.completed_at = datetime.utcnow()
-        db.commit()
+        _save_final("completed", db_size_kb, uploads_size_kb, stats_json)
 
-        # 5. Prune old records of this type
+        # 5. Prune old records
         _prune_old_records(backup_type, db)
 
+        db.refresh(record)
         return record
 
     except Exception as exc:
         import logging
         logging.getLogger(__name__).error(f"[backup] {backup_type} failed: {exc}", exc_info=True)
+        _save_final("failed", error_msg=str(exc))
         try:
-            db.rollback()  # clear any broken transaction state
-            record.status        = "failed"
-            record.error_message = str(exc)[:500]
-            record.completed_at  = datetime.utcnow()
-            db.add(record)
-            db.commit()
+            db.refresh(record)
         except Exception:
             pass
         return record
