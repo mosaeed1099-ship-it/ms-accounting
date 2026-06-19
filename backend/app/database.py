@@ -258,6 +258,24 @@ def _run_migrations_pg():
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS suggested_name VARCHAR(200)",
         # mf_clients — phone column for WhatsApp reminders
         "ALTER TABLE mf_clients ADD COLUMN IF NOT EXISTS phone VARCHAR(30)",
+        # ── WHT Types seed (Egyptian Law 91/2005) ─────────────────────────────
+        """INSERT INTO tax_withholding_types
+           (code, name_ar, name_en, category, rate_company, rate_individual, rate_foreign, threshold_amount, legal_reference, is_active)
+           VALUES
+           ('services',        'خدمات عامة',                  'General Services',        'services',    0.5,  5.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('contracting',     'مقاولات وتوريدات',            'Contracting & Supply',    'contracting', 0.5,  3.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('rent',            'إيجار عقارات',                'Real Estate Rent',        'rent',        5.0,  5.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('commission',      'عمولات وسمسرة',               'Commission & Brokerage',  'services',    0.5,  3.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('consulting',      'استشارات ومهن حرة',           'Consulting & Freelance',  'services',    0.5,  10.0, 20.0, 300, 'م.59 ق.91/2005', true),
+           ('advertising',     'إعلانات وتسويق',              'Advertising & Marketing', 'services',    0.5,  5.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('insurance',       'تأمين',                        'Insurance',               'services',    0.5,  5.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('transport',       'نقل وشحن',                    'Transport & Freight',     'services',    0.5,  2.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('hotel',           'فندقة وسياحة',                'Hotel & Tourism',         'services',    0.5,  5.0,  20.0, 300, 'م.59 ق.91/2005', true),
+           ('dividends',       'أرباح موزعة',                 'Dividends',               'capital',     10.0, 10.0, 10.0, 0,   'م.73 ق.91/2005', true),
+           ('interest',        'فوائد بنكية',                 'Bank Interest',           'capital',     15.0, 15.0, 20.0, 0,   'م.73 ق.91/2005', true),
+           ('royalties',       'حقوق ملكية فكرية',            'Royalties & IP',          'capital',     20.0, 20.0, 20.0, 0,   'م.73 ق.91/2005', true),
+           ('other',           'أخرى',                        'Other',                   'other',       0.5,  5.0,  20.0, 300, 'م.59 ق.91/2005', true)
+           ON CONFLICT (code) DO NOTHING""",
     ]
     with engine.connect() as conn:
         for sql in migrations:

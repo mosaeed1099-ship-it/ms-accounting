@@ -121,7 +121,9 @@ def create_employee(
     db.add(emp)
     db.commit()
     db.refresh(emp)
-    return emp
+    d = {c.name: getattr(emp, c.name) for c in emp.__table__.columns}
+    d.update(_calc_employee_tax(emp))
+    return d
 
 
 @router.put("/employees/{emp_id}")
@@ -139,7 +141,9 @@ def update_employee(
     emp.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(emp)
-    return emp
+    d = {c.name: getattr(emp, c.name) for c in emp.__table__.columns}
+    d.update(_calc_employee_tax(emp))
+    return d
 
 
 @router.delete("/employees/{emp_id}")

@@ -126,6 +126,7 @@ class VATUpdateRequest(BaseModel):
     refund_requested:       Optional[bool] = None
     in_std_taxable:         Optional[float] = None   # إجمالي المشتريات الخاضعة
     out_std_taxable:        Optional[float] = None   # إجمالي المبيعات الخاضعة
+    status:                 Optional[str] = None     # للإعادة للمسودة فقط (reviewed→draft)
 
 
 class VATSubmitRequest(BaseModel):
@@ -296,6 +297,15 @@ def update_vat_return(
     ret = db.get(VATReturn, vat_id)
     if not ret:
         raise HTTPException(404, "الإقرار غير موجود")
+
+    # Allow reverting reviewed→draft
+    if req.status == "draft" and ret.status == "reviewed":
+        ret.status = "draft"
+        _log(db, ret.client_id, cu.id, "vat_return", ret.id, "status_changed",
+             {"status": "reviewed"}, {"status": "draft"})
+        db.commit()
+        return _vat_dict(ret)
+
     if ret.status not in ("draft", "reviewed"):
         raise HTTPException(400, "لا يمكن تعديل إقرار في حالة " + ret.status)
 
