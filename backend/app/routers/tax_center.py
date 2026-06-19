@@ -432,7 +432,7 @@ async def import_eta_excel(
     client_id: int = Form(...),
     year:  Optional[int] = Form(None),
     month: Optional[int] = Form(None),
-    force_rebuild: bool = Form(False),
+    force_rebuild: str = Form("false"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     cu: User = Depends(get_current_user),
@@ -442,13 +442,15 @@ async def import_eta_excel(
     Accepts the standard xlsx downloaded from the Egyptian Tax Authority portal.
     Returns the VAT return + a rich analysis of sales/purchases.
     """
-    import io, re
+    import io
+    _force = str(force_rebuild).lower() in ("true", "1", "yes")
     try:
         import pandas as pd
     except ImportError:
         raise HTTPException(500, "pandas غير مثبّت على الخادم")
 
     content = await file.read()
+    _log_eta = logging.getLogger("eta_import")
     try:
         xl = pd.read_excel(io.BytesIO(content), sheet_name=None, header=None, dtype=str)
     except Exception as e:
@@ -548,24 +550,31 @@ async def import_eta_excel(
     doc_count_in   = len(incoming)
 
     # ── Build/update VAT return ───────────────────────────────────────────
-    from app.services.vat_calculator import build_vat_return
     notes = f"مستورد من بوابة الفواتير الإلكترونية | {doc_count_out} فاتورة صادرة · {doc_count_in} فاتورة واردة"
-    ret = build_vat_return(
-        db, client_id, year, month,
-        previous_credit=0.0,
-        manual_output_vat=output_vat,
-        manual_input_vat=input_vat,
-        manual_notes=notes,
-        force_rebuild=force_rebuild,
-        built_by=cu.id,
-    )
-    # Store ETA doc counts
-    ret.eta_outgoing_doc_count = doc_count_out
-    ret.eta_incoming_doc_count = doc_count_in
-    ret.out_std_taxable = Decimal(str(output_taxable))
-    ret.in_std_taxable  = Decimal(str(input_taxable))
-    _log(db, client_id, cu.id, "vat_return", ret.id, "imported_eta", notes=notes)
-    db.commit()
+    try:
+        ret = build_vat_return(
+            db, client_id, year, month,
+            previous_credit=0.0,
+            manual_output_vat=round(output_vat, 2),
+            manual_input_vat=round(input_vat, 2),
+            manual_notes=notes,
+            force_rebuild=_force,
+            built_by=cu.id,
+        )
+    except Exception as e:
+        _log_eta.error(f"[eta_import] build_vat_return failed: {e}", exc_info=True)
+        raise HTTPException(500, f"خطأ في بناء الإقرار: {e}")
+    try:
+        ret.eta_outgoing_doc_count = doc_count_out
+        ret.eta_incoming_doc_count = doc_count_in
+        ret.out_std_taxable = Decimal(str(round(output_taxable, 2)))
+        ret.in_std_taxable  = Decimal(str(round(input_taxable, 2)))
+        _log(db, client_id, cu.id, "vat_return", ret.id, "imported_eta", notes=notes)
+        db.commit()
+    except Exception as e:
+        _log_eta.error(f"[eta_import] commit failed: {e}", exc_info=True)
+        try: db.rollback()
+        except Exception: pass
 
     # ── Build analysis ────────────────────────────────────────────────────
     from collections import defaultdict
