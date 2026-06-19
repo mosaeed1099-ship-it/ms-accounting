@@ -429,9 +429,9 @@ def pay_vat_return(
 
 @router.post("/vat/import-eta")
 async def import_eta_excel(
-    client_id: int = Form(...),
-    year:  Optional[int] = Form(None),
-    month: Optional[int] = Form(None),
+    client_id:     str = Form(...),
+    year:          str = Form(""),
+    month:         str = Form(""),
     force_rebuild: str = Form("false"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -443,6 +443,9 @@ async def import_eta_excel(
     Returns the VAT return + a rich analysis of sales/purchases.
     """
     import io
+    _client_id   = int(client_id)
+    _year:  Optional[int] = int(year)  if year  and year.strip().isdigit() else None
+    _month: Optional[int] = int(month) if month and month.strip().isdigit() else None
     _force = str(force_rebuild).lower() in ("true", "1", "yes")
     try:
         import pandas as pd
@@ -518,18 +521,18 @@ async def import_eta_excel(
 
     # ── Auto-detect year/month if not provided ────────────────────────────
     valid_dates = [r["date"] for r in rows if r["date"]]
-    if not year and valid_dates:
+    if not _year and valid_dates:
         from collections import Counter
         most_common = Counter((d.year, d.month) for d in valid_dates).most_common(1)
         if most_common:
-            year, month = most_common[0][0]
-    if not year:
+            _year, _month = most_common[0][0]
+    if not _year:
         raise HTTPException(400, "لم يتم تحديد السنة ولا يمكن استنتاجها من التواريخ")
-    if not month:
-        month = valid_dates[0].month if valid_dates else 1
+    if not _month:
+        _month = valid_dates[0].month if valid_dates else 1
 
     # ── Filter by period ──────────────────────────────────────────────────
-    period_rows = [r for r in rows if r["date"] and r["date"].year == year and r["date"].month == month]
+    period_rows = [r for r in rows if r["date"] and r["date"].year == _year and r["date"].month == _month]
     if not period_rows:
         # Fall back to all rows if filter returns nothing (some files have no date column)
         period_rows = rows
@@ -553,7 +556,7 @@ async def import_eta_excel(
     notes = f"مستورد من بوابة الفواتير الإلكترونية | {doc_count_out} فاتورة صادرة · {doc_count_in} فاتورة واردة"
     try:
         ret = build_vat_return(
-            db, client_id, year, month,
+            db, _client_id, _year, _month,
             previous_credit=0.0,
             manual_output_vat=round(output_vat, 2),
             manual_input_vat=round(input_vat, 2),
@@ -569,7 +572,7 @@ async def import_eta_excel(
         ret.eta_incoming_doc_count = doc_count_in
         ret.out_std_taxable = Decimal(str(round(output_taxable, 2)))
         ret.in_std_taxable  = Decimal(str(round(input_taxable, 2)))
-        _log(db, client_id, cu.id, "vat_return", ret.id, "imported_eta", notes=notes)
+        _log(db, _client_id, cu.id, "vat_return", ret.id, "imported_eta", notes=notes)
         db.commit()
     except Exception as e:
         _log_eta.error(f"[eta_import] commit failed: {e}", exc_info=True)
@@ -602,7 +605,7 @@ async def import_eta_excel(
 
     return {
         "vat_return":    _vat_dict(ret),
-        "period":        {"year": year, "month": month},
+        "period":        {"year": _year, "month": _month},
         "eta_summary": {
             "total_invoices":      doc_count_out + doc_count_in,
             "outgoing_count":      doc_count_out,
