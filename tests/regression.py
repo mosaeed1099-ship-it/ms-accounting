@@ -170,7 +170,7 @@ def test_tax_center(T):
 def test_vat_workflow(T):
     """Tests full VAT workflow: Build → Review → Back-to-Draft → Review → Approve."""
     section("6 — VAT Full Workflow")
-    CID, YEAR, MONTH = 62, 2024, 11  # stable test month
+    CID, YEAR, MONTH = 62, 2023, 3  # stable test month (year unlikely to have data)
 
     s, r = _req("POST", "/api/tax-center/vat/build", {
         "client_id": CID, "year": YEAR, "month": MONTH, "force_rebuild": True,
