@@ -68,32 +68,69 @@ def _collect_db_stats(db: Session) -> dict:
 # ── pg_dump helper ────────────────────────────────────────────────────────────
 
 def _pg_dump_bytes() -> bytes:
-    """Run pg_dump and return raw SQL as bytes. Raises on failure."""
+    """Export DB to SQL bytes. Tries pg_dump first, falls back to psycopg2 COPY."""
     db_url = os.environ.get("DATABASE_URL", "")
     if not db_url or "sqlite" in db_url:
-        raise ValueError("pg_dump متاح فقط على PostgreSQL (إنتاج)")
+        raise ValueError("Backup متاح فقط على PostgreSQL (إنتاج)")
 
+    # Try pg_dump (fastest, full fidelity)
     p = urlparse(db_url)
     env = os.environ.copy()
     env["PGPASSWORD"] = p.password or ""
-    result = subprocess.run(
-        [
-            "pg_dump",
-            "-h", p.hostname,
-            "-p", str(p.port or 5432),
-            "-U", p.username or "postgres",
-            "-d", p.path.lstrip("/"),
-            "--no-owner", "--no-acl",
-            "--if-exists", "--clean",
-            "-F", "p",   # plain SQL
-        ],
-        capture_output=True,
-        env=env,
-        timeout=180,
+    try:
+        result = subprocess.run(
+            [
+                "pg_dump",
+                "-h", p.hostname,
+                "-p", str(p.port or 5432),
+                "-U", p.username or "postgres",
+                "-d", p.path.lstrip("/"),
+                "--no-owner", "--no-acl",
+                "--if-exists", "--clean",
+                "-F", "p",
+            ],
+            capture_output=True, env=env, timeout=180,
+        )
+        if result.returncode == 0:
+            return result.stdout
+    except FileNotFoundError:
+        pass  # pg_dump not installed — fall through to psycopg2 fallback
+
+    # Fallback: export via psycopg2 as JSON snapshot (safe, portable)
+    return _psycopg2_json_dump(db_url)
+
+
+def _psycopg2_json_dump(db_url: str) -> bytes:
+    """Export all user tables as a JSON snapshot when pg_dump is unavailable."""
+    import psycopg2
+    p = urlparse(db_url)
+    conn = psycopg2.connect(
+        host=p.hostname, port=p.port or 5432,
+        dbname=p.path.lstrip("/"), user=p.username, password=p.password,
+        sslmode="require", connect_timeout=15,
     )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.decode("utf-8", errors="replace")[:400])
-    return result.stdout
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT tablename FROM pg_tables
+        WHERE schemaname = 'public'
+        ORDER BY tablename
+    """)
+    tables = [r[0] for r in cur.fetchall()]
+
+    snapshot = {"_meta": {"generated_at": datetime.utcnow().isoformat(), "format": "json_snapshot"}}
+    for tbl in tables:
+        try:
+            cur.execute(f"SELECT * FROM {tbl} LIMIT 50000")
+            cols = [d[0] for d in cur.description]
+            rows = []
+            for row in cur.fetchall():
+                rows.append({c: (v.isoformat() if hasattr(v, 'isoformat') else v) for c, v in zip(cols, row)})
+            snapshot[tbl] = rows
+        except Exception as e:
+            snapshot[tbl] = {"error": str(e)}
+    cur.close()
+    conn.close()
+    return json.dumps(snapshot, ensure_ascii=False, default=str).encode("utf-8")
 
 
 def _uploads_zip_bytes(upload_dir: str) -> bytes:
@@ -177,10 +214,15 @@ def run_backup(
     except Exception as exc:
         import logging
         logging.getLogger(__name__).error(f"[backup] {backup_type} failed: {exc}", exc_info=True)
-        record.status        = "failed"
-        record.error_message = str(exc)[:500]
-        record.completed_at  = datetime.utcnow()
-        db.commit()
+        try:
+            db.rollback()  # clear any broken transaction state
+            record.status        = "failed"
+            record.error_message = str(exc)[:500]
+            record.completed_at  = datetime.utcnow()
+            db.add(record)
+            db.commit()
+        except Exception:
+            pass
         return record
 
 

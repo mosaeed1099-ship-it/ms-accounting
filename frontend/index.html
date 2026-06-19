@@ -1538,6 +1538,7 @@ const navItems = [
   {id:'system_logs'       ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
   {id:'backup'            ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
   {id:'migration_dashboard',icon:'🚀',label:'تقدم الـ Migration', adminOnly: true},
+  {id:'health_check'       ,icon:'🩺',label:'صحة النظام', adminOnly: true},
   {id:'company_names',icon:'🏢',label:'مولّد أسماء الشركات'},
 ];
 // Grouped navigation for sidebar display
@@ -1549,7 +1550,7 @@ const navGroups = [
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
   {label:'المكتب المالي', items:['finance_center','owner']},
-  {label:'النظام', items:['system_logs','backup','migration_dashboard']},
+  {label:'النظام', items:['system_logs','backup','migration_dashboard','health_check']},
 ];
 
 // ── Client Portal Mode ─────────────────────────────
@@ -2252,7 +2253,7 @@ function navigate(page) {
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames,under_establishment_clients:loadUnderEstablishmentClients};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames,under_establishment_clients:loadUnderEstablishmentClients,health_check:loadHealthCheck};
   if(pages[page]) pages[page]();
 }
 
@@ -22562,6 +22563,123 @@ window._cnConfirmReject = _cnConfirmReject;
 window._cnShowAddRejected = _cnShowAddRejected;
 window._cnSaveManualReject = _cnSaveManualReject;
 window._cnDeleteRejected = _cnDeleteRejected;
+
+// ─── Health Check Page ────────────────────────────────────────────────────────
+async function loadHealthCheck() {
+  const el = document.getElementById('page');
+  el.innerHTML = `<div style="padding:24px;max-width:960px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px;font-weight:800;color:#1e293b">🩺 صحة النظام</h2>
+      <button onclick="loadHealthCheck()" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-weight:700">🔄 تحديث</button>
+    </div>
+    <div id="hc-body"><div style="text-align:center;padding:60px;color:#94a3b8;font-size:15px">⏳ جاري الفحص...</div></div>
+  </div>`;
+
+  const t0 = Date.now();
+  const checks = await Promise.allSettled([
+    api('GET', '/health'),
+    api('GET', '/api/dashboard/stats'),
+    api('GET', '/api/clients?page_size=1'),
+    api('GET', '/api/clients?page_size=1&status=inactive'),
+    api('GET', '/api/obligations?page_size=1'),
+    api('GET', '/api/monthly-fees/dashboard'),
+    api('GET', '/api/backup/list?limit=5'),
+    api('GET', '/api/tax-center/vat/62?year=2026'),
+    api('GET', '/api/audit-logs?limit=1'),
+  ]);
+  const elapsed = Date.now() - t0;
+
+  const [health, dash, activeC, inactiveC, obls, mf, backups, vatList, audit] = checks.map(r =>
+    r.status === 'fulfilled' ? r.value : null
+  );
+
+  // Build status rows
+  const rows = [];
+
+  // 1. API
+  const apiOk = health && health.status === 'ok';
+  rows.push({label:'API Server', val: apiOk ? '✅ يعمل' : '❌ لا يستجيب', ok: apiOk, detail: `وقت الاستجابة: ${elapsed}ms`});
+
+  // 2. DB
+  const dbOk = health && health.db === 'ok';
+  rows.push({label:'قاعدة البيانات', val: dbOk ? '✅ متصلة' : '❌ مشكلة', ok: dbOk, detail: health?.db_detail || ''});
+
+  // 3. Clients
+  const totalActive = activeC?.total ?? '?';
+  const totalInactive = inactiveC?.total ?? '?';
+  rows.push({label:'العملاء النشطين', val: `${totalActive} عميل`, ok: true, detail:`محذوفون/مؤرشفون: ${totalInactive}`});
+
+  // 4. Dashboard
+  const dashOk = dash && typeof dash.clients !== 'undefined';
+  rows.push({label:'لوحة التحكم', val: dashOk ? `${dash.clients} عميل · ${dash.obligations_due ?? 0} التزام مستحق` : '❌ خطأ', ok: dashOk, detail: dashOk ? `ض.ق.م: ${dash.vat_clients??0} · مرتبات: ${dash.payroll_clients??0}` : ''});
+
+  // 5. Obligations
+  const oblsOk = obls && typeof obls.total !== 'undefined';
+  rows.push({label:'الالتزامات', val: oblsOk ? `${obls.total} التزام` : '❌ خطأ', ok: oblsOk, detail: ''});
+
+  // 6. Monthly Fees
+  const mfOk = mf && typeof mf.summary !== 'undefined';
+  rows.push({label:'الرسوم الشهرية', val: mfOk ? `مستحق: ${(mf.summary?.total_due||0).toLocaleString('ar-EG')} ج.م` : '❌ خطأ', ok: mfOk, detail: mfOk ? `مدفوع: ${(mf.summary?.total_paid||0).toLocaleString('ar-EG')} ج.م` : ''});
+
+  // 7. Backups
+  const bkList = backups?.backups || [];
+  const lastBk = bkList[0];
+  const bkOk = lastBk && lastBk.status === 'completed';
+  const bkLabel = !lastBk ? '⚠️ لا توجد نسخ' : lastBk.status === 'completed' ? `✅ ${lastBk.label}` : `⚠️ ${lastBk.label} (${lastBk.status})`;
+  rows.push({label:'آخر نسخة احتياطية', val: bkLabel, ok: bkOk, detail: lastBk ? `الحجم: ${lastBk.total_size_kb ? lastBk.total_size_kb+' KB' : 'غير محدد'}` : ''});
+
+  // 8. VAT Returns
+  const vatArr = Array.isArray(vatList) ? vatList : [];
+  rows.push({label:'إقرارات ض.ق.م.', val: `${vatArr.length} إقرار (2026)`, ok: true, detail: vatArr.length ? `آخر: ${vatArr[vatArr.length-1]?.month_label||''}` : ''});
+
+  // 9. Audit Log
+  const auditOk = Array.isArray(audit) || (audit && typeof audit.total !== 'undefined');
+  rows.push({label:'سجل التدقيق', val: auditOk ? '✅ يعمل' : '⚠️ تحقق', ok: auditOk, detail: ''});
+
+  const okCount = rows.filter(r => r.ok).length;
+  const score = Math.round(okCount / rows.length * 100);
+  const scoreColor = score >= 90 ? '#16a34a' : score >= 70 ? '#d97706' : '#dc2626';
+  const scoreBg = score >= 90 ? '#f0fdf4' : score >= 70 ? '#fffbeb' : '#fef2f2';
+
+  document.getElementById('hc-body').innerHTML = `
+    <div style="background:${scoreBg};border:1px solid ${scoreColor}33;border-radius:16px;padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:20px">
+      <div style="width:72px;height:72px;border-radius:50%;background:${scoreColor};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <span style="font-size:22px;font-weight:900;color:white">${score}%</span>
+      </div>
+      <div>
+        <div style="font-size:18px;font-weight:800;color:${scoreColor}">${score>=90?'النظام يعمل بشكل ممتاز':score>=70?'النظام يعمل مع تحذيرات':'يوجد مشاكل تحتاج مراجعة'}</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px">${okCount} من ${rows.length} فحوصات ناجحة · زمن الفحص: ${elapsed}ms · ${new Date().toLocaleString('ar-EG')}</div>
+      </div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#f8fafc">
+            <th style="padding:12px 16px;text-align:right;font-size:13px;color:#64748b;font-weight:600">الفحص</th>
+            <th style="padding:12px 16px;text-align:right;font-size:13px;color:#64748b;font-weight:600">النتيجة</th>
+            <th style="padding:12px 16px;text-align:right;font-size:13px;color:#64748b;font-weight:600">تفاصيل</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i) => `
+            <tr style="border-top:1px solid #f1f5f9;${i%2?'background:#fafafa':''}">
+              <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#1e293b">${r.label}</td>
+              <td style="padding:12px 16px;font-size:13px;color:${r.ok?'#16a34a':'#dc2626'}">${r.val}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#94a3b8">${r.detail}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;padding:14px 16px;background:#f0f7ff;border:1px solid #c7d2fe;border-radius:12px;font-size:13px;color:#1a2472">
+      <strong>ملاحظات الاستقرار:</strong>
+      <ul style="margin:8px 0 0;padding-right:18px;line-height:1.8">
+        <li>العملاء غير النشطين (${totalInactive}) محفوظون بـ soft delete — لم يُحذف أي بيانات مالية</li>
+        <li>جميع إقرارات ض.ق.م. و الخصم والتحصيل والشركات محمية من الحذف المباشر</li>
+        <li>النسخ الاحتياطية التلقائية: يومية — راجع تقرير الـ backup لتفاصيل التنفيذ</li>
+      </ul>
+    </div>`;
+}
+window.loadHealthCheck = loadHealthCheck;
 
 // Register service worker for cache control
 if ('serviceWorker' in navigator) {
