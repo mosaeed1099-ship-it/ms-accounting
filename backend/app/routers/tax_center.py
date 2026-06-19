@@ -521,15 +521,17 @@ async def import_eta_excel(
 
     # ── Auto-detect year/month if not provided ────────────────────────────
     valid_dates = [r["date"] for r in rows if r["date"]]
-    if not _year and valid_dates:
+    if _year is None and valid_dates:
         from collections import Counter
         most_common = Counter((d.year, d.month) for d in valid_dates).most_common(1)
         if most_common:
             _year, _month = most_common[0][0]
-    if not _year:
+    if _year is None:
         raise HTTPException(400, "لم يتم تحديد السنة ولا يمكن استنتاجها من التواريخ")
-    if not _month:
+    if _month is None:
         _month = valid_dates[0].month if valid_dates else 1
+    _year  = int(_year)
+    _month = int(_month)
 
     # ── Filter by period ──────────────────────────────────────────────────
     period_rows = [r for r in rows if r["date"] and r["date"].year == _year and r["date"].month == _month]
