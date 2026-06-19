@@ -47,7 +47,7 @@ RETENTION = {
 # ── DB stats helper ───────────────────────────────────────────────────────────
 
 def _collect_db_stats(db: Session) -> dict:
-    """Count rows in key tables for backup metadata."""
+    """Count rows in key tables via a fresh psycopg2 connection to avoid contaminating the ORM session."""
     tables = [
         "clients", "tasks", "invoices", "leads", "documents",
         "tax_returns", "obligations", "obligation_instances",
@@ -56,10 +56,25 @@ def _collect_db_stats(db: Session) -> dict:
         "users", "quotations", "company_establishments",
     ]
     stats = {}
-    for tbl in tables:
+    db_url = os.environ.get("DATABASE_URL", "")
+    if db_url and "sqlite" not in db_url:
         try:
-            row = db.execute(_text(f"SELECT COUNT(*) FROM {tbl}")).scalar()
-            stats[tbl] = int(row or 0)
+            import psycopg2
+            p = urlparse(db_url)
+            conn = psycopg2.connect(
+                host=p.hostname, port=p.port or 5432,
+                dbname=p.path.lstrip("/"), user=p.username, password=p.password,
+                sslmode="require", connect_timeout=10,
+            )
+            cur = conn.cursor()
+            for tbl in tables:
+                try:
+                    cur.execute(f"SELECT COUNT(*) FROM {tbl}")
+                    stats[tbl] = int(cur.fetchone()[0])
+                except Exception:
+                    conn.rollback()
+            cur.close()
+            conn.close()
         except Exception:
             pass
     return stats
@@ -179,74 +194,48 @@ def run_backup(
     db.commit()
     db.refresh(record)
 
-    rid = record.id
-
-    def _save_final(status, db_size=0, uploads_size=0, db_stats_json="{}",
-                    error_msg="", completed_at=None):
-        """Use raw SQL to update the record — avoids any ORM transaction state issues."""
-        if completed_at is None:
-            completed_at = datetime.utcnow()
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        try:
-            db.execute(_text("""
-                UPDATE backup_records SET
-                  status=:st, db_size_kb=:dsz, uploads_size_kb=:usz,
-                  total_size_kb=:tsz, db_stats=:dstats,
-                  error_message=:err, completed_at=:cat
-                WHERE id=:rid
-            """), {
-                "st": status, "dsz": db_size, "usz": uploads_size,
-                "tsz": db_size + uploads_size, "dstats": db_stats_json,
-                "err": error_msg[:500] if error_msg else "",
-                "cat": completed_at, "rid": rid,
-            })
-            db.commit()
-        except Exception as e2:
-            import logging
-            logging.getLogger(__name__).error(f"[backup] _save_final failed: {e2}")
-
     try:
-        # 1. DB stats (queries may leave transaction in aborted state)
+        # 1. DB stats — uses independent psycopg2 connection (never touches ORM session)
         stats = _collect_db_stats(db)
-        stats_json = json.dumps(stats, ensure_ascii=False)
+        record.db_stats = json.dumps(stats, ensure_ascii=False)
 
-        # 2. pg_dump / psycopg2 fallback (uses independent connection)
+        # 2. pg_dump / psycopg2 fallback — independent connection
         sql_bytes = _pg_dump_bytes()
         gz_bytes  = gzip.compress(sql_bytes, compresslevel=6)
-        db_size_kb = len(gz_bytes) // 1024
+        record.db_size_kb = len(gz_bytes) // 1024
 
         # 3. Uploads zip (optional)
         uploads_gz = b""
-        uploads_size_kb = 0
         if include_uploads:
             raw_zip = _uploads_zip_bytes(settings.UPLOAD_DIR)
             uploads_gz = gzip.compress(raw_zip, compresslevel=6)
-            uploads_size_kb = len(uploads_gz) // 1024
+            record.uploads_size_kb = len(uploads_gz) // 1024
+
+        record.total_size_kb = record.db_size_kb + record.uploads_size_kb
 
         # 4. Email (if configured)
         if send_email:
-            record.db_size_kb      = db_size_kb
-            record.uploads_size_kb = uploads_size_kb
-            record.total_size_kb   = db_size_kb + uploads_size_kb
             _email_backup(backup_type, gz_bytes, uploads_gz, stats, record, settings)
 
-        _save_final("completed", db_size_kb, uploads_size_kb, stats_json)
+        record.status       = "completed"
+        record.completed_at = datetime.utcnow()
+        db.commit()
 
-        # 5. Prune old records
+        # 5. Prune old records of this type
         _prune_old_records(backup_type, db)
 
-        db.refresh(record)
         return record
 
     except Exception as exc:
         import logging
         logging.getLogger(__name__).error(f"[backup] {backup_type} failed: {exc}", exc_info=True)
-        _save_final("failed", error_msg=str(exc))
         try:
-            db.refresh(record)
+            db.rollback()
+            record.status        = "failed"
+            record.error_message = str(exc)[:500]
+            record.completed_at  = datetime.utcnow()
+            db.add(record)
+            db.commit()
         except Exception:
             pass
         return record
