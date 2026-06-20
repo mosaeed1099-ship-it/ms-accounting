@@ -70,10 +70,10 @@ EGYPTIAN_RULES = {
     "income_annual": {
         "name_ar": "إقرار ضريبة الدخل السنوي",
         "frequency": "annual",
-        "due_month": 4,   # أبريل
-        "due_day": 30,
+        "due_month": 3,   # مارس (أفراد)
+        "due_day": 31,
         "priority": "urgent",
-        "description": "تقديم الإقرار السنوي لضريبة الدخل — 30 أبريل من كل عام",
+        "description": "تقديم الإقرار السنوي لضريبة الدخل — 31 مارس (أفراد) / 30 أبريل (شركات)",
     },
     "form_41": {
         "name_ar": "نموذج 41 — إقرار المرتبات السنوي",
