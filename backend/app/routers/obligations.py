@@ -321,7 +321,7 @@ def list_instances(
     days_ahead: Optional[int] = None,
     overdue_only: bool = False,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
