@@ -9161,7 +9161,7 @@ async function loadObligations(silent=false) {
   try {
     const [stats, inst, clientsRaw] = await Promise.all([
       api('GET', '/api/obligations/stats'),
-      api('GET', `/api/obligations/instances?days_ahead=${oblDays}&page_size=1000`),
+      api('GET', `/api/obligations/instances?days_ahead=${oblDays}&page_size=200`),
       api('GET', '/api/clients?page_size=500').catch(()=>({items:[]})),
     ]);
     if (!stats) return;
