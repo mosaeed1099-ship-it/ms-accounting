@@ -610,6 +610,57 @@ def bulk_generate_obligations(
 # ─────────────────────────────────────────────────────────────────────────────
 # Smart Notification Generator — مولّد الإشعارات الذكي
 # ─────────────────────────────────────────────────────────────────────────────
+@router.post("/reset-to-current-month")
+def reset_obligations_to_current_month(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    يحذف كل instances قبل يونيو 2026 (غير المُسلّمة)
+    ويولد من جديد لكل العملاء النشطين من الشهر الحالي فصاعد.
+    """
+    from calendar import monthrange as _mr
+    from app.models.client import ClientStatus
+
+    # 1) احذف الـ instances القديمة (قبل يونيو 2026) غير المُسلّمة
+    from sqlalchemy import or_, and_
+    deleted_count = db.query(ObligationInstance).filter(
+        ObligationInstance.status.notin_(["submitted", "completed"]),
+        or_(
+            ObligationInstance.period_year < 2026,
+            and_(
+                ObligationInstance.period_year == 2026,
+                ObligationInstance.period_month != None,
+                ObligationInstance.period_month < 6,
+            )
+        )
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    # 2) ولّد من جديد لكل العملاء النشطين
+    clients = db.query(Client).filter(
+        Client.status == ClientStatus.ACTIVE,
+        Client.tax_obligations.isnot(None),
+    ).all()
+
+    total_created = 0
+    for client in clients:
+        if not client.tax_obligations:
+            continue
+        try:
+            created = _auto_generate_for_client(db, client, months_ahead=12)
+            total_created += len(created)
+        except Exception:
+            pass
+
+    return {
+        "deleted_old_instances": deleted_count,
+        "clients_processed": len(clients),
+        "new_obligations_created": total_created,
+        "message": f"تم حذف {deleted_count} التزام قديم وتوليد {total_created} التزام جديد من يونيو 2026",
+    }
+
+
 @router.post("/refresh-notifications")
 def refresh_notifications(
     db: Session = Depends(get_db),
