@@ -316,13 +316,16 @@ def list_instances(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(ObligationInstance)
+    query = (
+        db.query(ObligationInstance)
+        .join(Client, ObligationInstance.client_id == Client.id)
+        .filter(Client.status == "ACTIVE")
+    )
     if client_id:
         query = query.filter(ObligationInstance.client_id == client_id)
     if status:
         query = query.filter(ObligationInstance.status == status)
     if obligation_type:
-        # join to filter by obligation type
         query = query.join(TaxObligation).filter(TaxObligation.obligation_type == obligation_type)
     if days_ahead is not None:
         until = datetime.utcnow() + timedelta(days=days_ahead)
