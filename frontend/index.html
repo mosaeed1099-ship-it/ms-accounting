@@ -5700,13 +5700,13 @@ window.tcVatDoSubmit = async function(id) {
     const fd = new FormData();
     fd.append('file', window._vatPdfFile);
     if (_tcClientId) fd.append('client_id', _tcClientId);
-    fd.append('category', 'TAX');
+    fd.append('category', 'tax_return');
     fd.append('description', window._vatPdfFile.name);
     const token = localStorage.getItem('ms_token');
     const uploadRes = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
-    if (!uploadRes.ok) { const err=await uploadRes.json(); throw new Error(err.detail||'فشل رفع الملف'); }
+    if (!uploadRes.ok) { const err=await uploadRes.json(); const msg=Array.isArray(err.detail)?err.detail[0]?.msg:err.detail; throw new Error(msg||'فشل رفع الملف'); }
     // Submit VAT return
     await api('POST', `/api/tax-center/vat/${id}/submit`, {submission_ref: ref});
     document.getElementById('vatSubmitModal')?.remove();
@@ -5879,7 +5879,7 @@ window.tcVatExcelUpload = async function() {
     const fd = new FormData();
     fd.append('file', window._vatExcelFile);
     if (_tcClientId) fd.append('client_id', _tcClientId);
-    fd.append('category', 'TAX');
+    fd.append('category', 'tax_return');
     fd.append('description', `فواتير ${typeLabel} — ${TC_MONTH_AR[month]} ${year} — ${escH(_tcClientName||'')}`);
     fd.append('tags', `vat_invoices,${type},${year},${month}`);
     fd.append('year', year);
@@ -5888,7 +5888,7 @@ window.tcVatExcelUpload = async function() {
     const res = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
-    if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'فشل الرفع'); }
+    if (!res.ok) { const err=await res.json(); const msg=Array.isArray(err.detail)?err.detail[0]?.msg:err.detail; throw new Error(msg||'فشل الرفع'); }
     toast(`✅ تم رفع ملف فواتير ${TC_MONTH_AR[month]} ${year} بنجاح`);
     document.getElementById('vatExcelModal')?.remove();
   } catch(e) {
