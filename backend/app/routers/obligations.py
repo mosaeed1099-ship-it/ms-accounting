@@ -4,7 +4,7 @@ Smart Automation Engine — Tax Obligations Rules Engine
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import Optional, List
 from datetime import datetime, date, timedelta
 from calendar import monthrange
@@ -325,11 +325,26 @@ def list_instances(
         query = query.filter(ObligationInstance.client_id == client_id)
     if status:
         query = query.filter(ObligationInstance.status == status)
+    _tob_joined = False
     if obligation_type:
-        query = query.join(TaxObligation).filter(TaxObligation.obligation_type == obligation_type)
+        query = query.join(TaxObligation, ObligationInstance.obligation_id == TaxObligation.id)
+        query = query.filter(TaxObligation.obligation_type == obligation_type)
+        _tob_joined = True
     if days_ahead is not None:
         until = datetime.utcnow() + timedelta(days=days_ahead)
-        query = query.filter(ObligationInstance.due_date <= until)
+        # Annual obligations: fixed 90-day look-ahead from today regardless of days_ahead
+        # e.g. income_annual due 2027-03-31 starts appearing on 2026-12-31 (90 days before)
+        annual_window = datetime.utcnow() + timedelta(days=90)
+        annual_types = ["income_annual", "corporate_tax", "form_41", "commercial_register_renewal"]
+        if not _tob_joined:
+            query = query.join(TaxObligation, ObligationInstance.obligation_id == TaxObligation.id)
+            _tob_joined = True
+        query = query.filter(
+            or_(
+                (TaxObligation.obligation_type.in_(annual_types)) & (ObligationInstance.due_date <= annual_window),
+                (~TaxObligation.obligation_type.in_(annual_types)) & (ObligationInstance.due_date <= until),
+            )
+        )
     if overdue_only:
         query = query.filter(
             ObligationInstance.due_date < datetime.utcnow(),
