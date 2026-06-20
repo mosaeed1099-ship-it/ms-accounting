@@ -290,6 +290,14 @@ async def update_client(
     db.add(log)
     db.commit()
 
+    # ── Smart Automation: sync obligations when tax_obligations updated ──
+    if data.tax_obligations is not None and client.tax_obligations:
+        try:
+            from app.routers.obligations import _auto_generate_for_client
+            _auto_generate_for_client(db, client, months_ahead=12)
+        except Exception:
+            pass
+
     return client_to_dict(client)
 
 
