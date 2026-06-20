@@ -197,6 +197,11 @@ def build_vat_return(
 
     if existing and force_rebuild:
         db.query(VATReturnLine).filter_by(vat_return_id=existing.id).delete()
+        existing.status = "draft"
+        existing.reviewed_at = None
+        existing.reviewed_by = None
+        existing.approved_at = None
+        existing.approved_by = None
         ret = existing
     elif existing:
         ret = existing
