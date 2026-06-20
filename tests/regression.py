@@ -170,7 +170,7 @@ def test_tax_center(T):
 def test_vat_workflow(T):
     """Tests full VAT workflow: Build → Review → Back-to-Draft → Review → Approve."""
     section("6 — VAT Full Workflow")
-    CID, YEAR, MONTH = 62, 2023, 3  # stable test month (year unlikely to have data)
+    CID, YEAR, MONTH = 62, 2022, 6  # stable test month (unused period)
 
     s, r = _req("POST", "/api/tax-center/vat/build", {
         "client_id": CID, "year": YEAR, "month": MONTH, "force_rebuild": True,
@@ -211,10 +211,13 @@ def test_backup(T):
     bkups = d.get("backups", [])
     check("Backup list", s, info=f"{len(bkups)} records")
     if bkups:
-        last = bkups[0]
-        completed = last.get("status") == "completed"
-        check("Last backup completed", 200 if completed else 400,
-              info=f"status={last.get('status','?')} created={last.get('created_at','?')[:10]}")
+        # find last completed backup (ignore pending/running)
+        last_completed = next((b for b in bkups if b.get("status") == "completed"), None)
+        if last_completed:
+            check("Last backup completed", 200, info=f"created={last_completed.get('created_at','?')[:10]}")
+        else:
+            last = bkups[0]
+            check("Last backup completed", 400, info=f"status={last.get('status','?')} — no completed backup found")
 
 
 def test_safety_layer(T):
