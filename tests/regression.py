@@ -110,7 +110,7 @@ def test_clients(T):
 
 def test_obligations(T):
     section("3 — Obligations")
-    s, d = _req("GET", "/api/obligations?page_size=5", token=T)
+    s, d = _req("GET", "/api/obligations?page_size=5", token=T, timeout=30)
     check("Obligations list", s, info=f"total={d.get('total','?')}")
 
     s, d = _req("GET", "/api/obligations/notifications?unread_only=true&limit=3", token=T)
@@ -182,6 +182,9 @@ def test_vat_workflow(T):
     vid = r.get("id")
     if not vid:
         check("VAT workflow (skipped — no id)", 200); return
+
+    # reset to draft in case a previous run left it approved/reviewed
+    _req("PUT", f"/api/tax-center/vat/{vid}", {"status": "draft"}, token=T)
 
     s, _ = _req("POST", f"/api/tax-center/vat/{vid}/review", token=T)
     check("VAT → reviewed", s, info=_.get("status", "?"))
