@@ -9330,6 +9330,7 @@ function renderObligations() {
     const overdueG = grpItems.filter(i=>i.days_remaining<0).length;
     const soonG = grpItems.filter(i=>i.days_remaining>=0&&i.days_remaining<=7).length;
     const sorted = [...grpItems].sort((a,b)=>a.days_remaining-b.days_remaining);
+    const uniqueClientsG = new Set(grpItems.map(i=>i.client_id)).size;
 
     groupedSections += `
     <div class="card" style="overflow:hidden;margin-bottom:18px">
@@ -9339,7 +9340,7 @@ function renderObligations() {
           <div>
             <div style="font-size:14px;font-weight:800;color:${grp.color}">${grp.label}</div>
             <div style="font-size:11px;color:${grp.color}99;margin-top:1px">
-              ${grpItems.length} عميل
+              ${uniqueClientsG} عميل
               ${overdueG?`<span style="color:#dc2626;font-weight:700;margin-right:8px">• ${overdueG} متأخر</span>`:''}
               ${soonG?`<span style="color:#d97706;font-weight:700;margin-right:8px">• ${soonG} هذا الأسبوع</span>`:''}
             </div>
