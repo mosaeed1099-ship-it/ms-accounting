@@ -5702,7 +5702,7 @@ window.tcVatDoSubmit = async function(id) {
     if (_tcClientId) fd.append('client_id', _tcClientId);
     fd.append('category', 'TAX');
     fd.append('description', window._vatPdfFile.name);
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('ms_token');
     const uploadRes = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
@@ -5884,7 +5884,7 @@ window.tcVatExcelUpload = async function() {
     fd.append('tags', `vat_invoices,${type},${year},${month}`);
     fd.append('year', year);
     fd.append('month', month);
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('ms_token');
     const res = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
