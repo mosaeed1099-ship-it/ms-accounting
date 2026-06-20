@@ -70,10 +70,10 @@ EGYPTIAN_RULES = {
     "income_annual": {
         "name_ar": "إقرار ضريبة الدخل السنوي",
         "frequency": "annual",
-        "due_month": 4,   # أبريل
-        "due_day": 30,
+        "due_month": 3,   # مارس (أفراد) — الشركات تستخدم corporate_tax
+        "due_day": 31,
         "priority": "urgent",
-        "description": "تقديم الإقرار السنوي لضريبة الدخل — 30 أبريل من كل عام",
+        "description": "تقديم الإقرار السنوي لضريبة الدخل — 31 مارس (أفراد) / 30 أبريل (شركات)",
     },
     "form_41": {
         "name_ar": "نموذج 41 — إقرار المرتبات السنوي",
@@ -182,10 +182,18 @@ def generate_instances_smart(obligation: TaxObligation, months_ahead: int = 12) 
     elif obligation.frequency == "annual":
         due_month = rule.get("due_month") or 12
         due_day_val = obligation.due_day or rule.get("due_day") or 31
-        # Generate current year + next year
+        # يولد للسنة الحالية إذا لم يفت موعدها بعد،
+        # وإلا يولد للسنة القادمة فقط — ويظهر قبل الموعد بشهر
         for y in [today.year, today.year + 1]:
             last_day = monthrange(y, due_month)[1]
             due = date(y, due_month, min(due_day_val, last_day))
+            # لا تولد إذا الموعد فات بالفعل
+            if due < today:
+                continue
+            # يظهر قبل الموعد بشهر (visible_from = due - 30 day)
+            visible_from = date(due.year, due.month - 1 if due.month > 1 else 12,
+                                1 if due.month > 1 else 1)
+            # لا تولد أكثر من instance واحدة (أول سنة مستقبلية كافية)
             instances.append(ObligationInstance(
                 obligation_id=obligation.id,
                 client_id=obligation.client_id,
@@ -195,6 +203,7 @@ def generate_instances_smart(obligation: TaxObligation, months_ahead: int = 12) 
                 status=ObligationStatus.UPCOMING,
                 assigned_to=obligation.assigned_to,
             ))
+            break  # اكتفِ بأول سنة مستقبلية
 
     return instances
 
@@ -653,11 +662,42 @@ def reset_obligations_to_current_month(
         except Exception:
             pass
 
+    # 3) احذف income_annual/corporate_tax القديمة المتأخرة واولد 2027
+    from sqlalchemy import or_, and_
+    annual_deleted = db.query(ObligationInstance).filter(
+        ObligationInstance.status.notin_(["submitted", "completed"]),
+        ObligationInstance.obligation_id.in_(
+            db.query(TaxObligation.id).filter(
+                TaxObligation.obligation_type.in_(["income_annual", "corporate_tax"]),
+                TaxObligation.is_active == True,
+            )
+        ),
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    # ولّد من جديد (سيستخدم المنطق الجديد — يبدأ من السنة القادمة)
+    annual_obligations = db.query(TaxObligation).filter(
+        TaxObligation.obligation_type.in_(["income_annual", "corporate_tax"]),
+        TaxObligation.is_active == True,
+    ).all()
+    annual_created = 0
+    for obl in annual_obligations:
+        existing = _existing_periods(db, obl.id)
+        rule = EGYPTIAN_RULES.get(obl.obligation_type, {})
+        new_instances = generate_instances_smart(obl, months_ahead=14)
+        for inst in new_instances:
+            key = (inst.period_year, inst.period_month, inst.period_quarter)
+            if key not in existing:
+                db.add(inst)
+                existing.add(key)
+                annual_created += 1
+    db.commit()
+
     return {
-        "deleted_old_instances": deleted_count,
+        "deleted_old_instances": deleted_count + annual_deleted,
         "clients_processed": len(clients),
-        "new_obligations_created": total_created,
-        "message": f"تم حذف {deleted_count} التزام قديم وتوليد {total_created} التزام جديد من يونيو 2026",
+        "new_obligations_created": total_created + annual_created,
+        "message": f"تم حذف {deleted_count + annual_deleted} التزام قديم وتوليد {total_created + annual_created} التزام جديد",
     }
 
 
