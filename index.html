@@ -5293,8 +5293,7 @@ window._vatHandleFile = async function(file) {
   try {
     const fd = new FormData();
     fd.append('file', file);
-    const token = localStorage.getItem('ms_token');
-    const resp = await fetch('/api/vat-excel/analyze', {
+    const resp = await fetch(API + '/api/vat-excel/analyze', {
       method: 'POST',
       headers: {'Authorization': `Bearer ${token}`},
       body: fd,
@@ -5672,8 +5671,7 @@ window._vatDrillOpen = async function(key, label) {
 };
 
 window._vatDrillDownloadCsv = async function(id, key, label) {
-  const token = localStorage.getItem('ms_token');
-  const resp = await fetch(`/api/vat-excel/drill/${id}/${key}/csv`, {headers:{'Authorization':`Bearer ${token}`}});
+  const resp = await fetch(API + `/api/vat-excel/drill/${id}/${key}/csv`, {headers:{'Authorization':`Bearer ${token}`}});
   if (!resp.ok) return;
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
@@ -5782,12 +5780,11 @@ window._vatDownloadDeclaration = async function() {
   const v = window._vat;
   const id = v.analysis?.id;
   if (!id) return;
-  const token = localStorage.getItem('ms_token');
   let url = `/api/vat-excel/declaration/${id}`;
   if (Object.keys(v.overrides).length) {
     url += `?overrides=${encodeURIComponent(JSON.stringify(v.overrides))}`;
   }
-  const resp = await fetch(url, {headers:{'Authorization':`Bearer ${token}`}});
+  const resp = await fetch(API + url, {headers:{'Authorization':`Bearer ${token}`}});
   if (!resp.ok) { alert('❌ فشل التحميل'); return; }
   const blob = await resp.blob();
   const burl = URL.createObjectURL(blob);
@@ -5845,8 +5842,7 @@ window._vatOpenHistory = async function(id) {
 };
 
 window._vatHistDownload = async function(id, period) {
-  const token = localStorage.getItem('ms_token');
-  const resp = await fetch(`/api/vat-excel/declaration/${id}`, {headers:{'Authorization':`Bearer ${token}`}});
+  const resp = await fetch(API + `/api/vat-excel/declaration/${id}`, {headers:{'Authorization':`Bearer ${token}`}});
   if (!resp.ok) { alert('❌ فشل التحميل'); return; }
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
