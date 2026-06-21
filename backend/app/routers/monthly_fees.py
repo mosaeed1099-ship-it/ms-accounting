@@ -264,6 +264,7 @@ def list_records(
         .options(joinedload(MonthlyFeeRecord.client))
         .filter(MonthlyFeeRecord.year == year, MonthlyFeeRecord.month == month)
         .join(MonthlyFeeClient)
+        .filter(MonthlyFeeClient.status == MFClientStatus.ACTIVE)
         .order_by(MonthlyFeeClient.name)
         .all()
     )
