@@ -2908,10 +2908,10 @@ function _clientsTableRows() {
     return true;
   });
   if(!filtered.length) return emptyStateRow(9,'👥','لا يوجد عملاء','اضغط "+ إضافة عميل" لإنشاء أول عميل');
-  return filtered.map(c=>{
+  return filtered.map((c,idx)=>{
     return `
   <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
-    <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
+    <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:13px;color:#475569;font-weight:600">${idx+1}</span></td>
     <td>
       <div style="display:inline-flex;align-items:center;gap:5px">
         <span style="font-weight:600;color:#1e293b;cursor:pointer" onclick="showClientDetail(${c.id})">${escH(c.name)}</span>
@@ -2988,7 +2988,7 @@ function renderClients() {
   <div class="card" style="overflow:hidden">
     <table>
       <thead><tr>
-        <th>الكود</th><th>الاسم</th><th>النوع</th><th class="col-mob-hide">الهاتف</th><th class="col-mob-hide">النشاط</th><th>الحالة</th><th>إجراءات</th>
+        <th style="width:48px">#</th><th>الاسم</th><th>النوع</th><th class="col-mob-hide">الهاتف</th><th class="col-mob-hide">النشاط</th><th>الحالة</th><th>إجراءات</th>
       </tr></thead>
       <tbody id="clientsTbody">${_clientsTableRows()}</tbody>
     </table>
