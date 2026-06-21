@@ -7,7 +7,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
 from sqlalchemy import func, Integer as SAInteger
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, contains_eager
 
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -261,9 +261,9 @@ def list_records(
 ):
     records = (
         db.query(MonthlyFeeRecord)
-        .options(joinedload(MonthlyFeeRecord.client))
-        .filter(MonthlyFeeRecord.year == year, MonthlyFeeRecord.month == month)
         .join(MonthlyFeeClient)
+        .options(contains_eager(MonthlyFeeRecord.client))
+        .filter(MonthlyFeeRecord.year == year, MonthlyFeeRecord.month == month)
         .filter(MonthlyFeeClient.status == MFClientStatus.ACTIVE)
         .order_by(MonthlyFeeClient.name)
         .all()
