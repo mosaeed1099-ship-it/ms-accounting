@@ -3072,19 +3072,17 @@ function showClientModal(id=null) {
         </div>
         <div id="cOblGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
           ${[
-            {key:'vat_monthly',       label:'🧾 ق.م.م شهري'},
-            {key:'vat_quarterly',     label:'🧾 ق.م.م ربعي'},
-            {key:'payroll_monthly',   label:'💼 مرتبات شهري'},
-            {key:'withholding_monthly',label:'✂️ أسس توحيد المرتبات شهري'},
-            {key:'insurance_monthly', label:'🛡️ تأمينات شهرية'},
-            {key:'stamp_quarterly',   label:'🔏 دمغة ربعي'},
-            {key:'income_annual',     label:'📊 ضريبة الدخل سنوي'},
-            {key:'corporate_tax',     label:'🏛️ ضريبة الخصم والتحصيل'},
-            {key:'form_41',           label:'📋 نموذج 41 سنوي'},
-            {key:'commercial_register_renewal', label:'📜 تجديد السجل سنوي'},
-          ].map(o=>{const checked=(c?.tax_obligations||[]).includes(o.key);return`<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;padding:5px 8px;border-radius:7px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
+            {key:'vat_monthly',    label:'🧾 ضريبة القيمة المضافة'},
+            {key:'payroll_monthly',label:'💼 مرتبات / أسس توحيد المرتبات'},
+            {key:'income_annual',  label:'📊 دخل سنوي'},
+          ].map(o=>{
+            const taxObls=c?.tax_obligations||[];
+            const checked=o.key==='payroll_monthly'
+              ?taxObls.some(t=>t==='payroll_monthly'||t==='withholding_monthly')
+              :taxObls.includes(o.key);
+            return`<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;padding:5px 8px;border-radius:7px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
             <input type="checkbox" class="cOblCheck" data-key="${o.key}" ${checked?'checked':''} style="width:13px;height:13px;accent-color:#1a2472" onchange="toggleOblLabel(this)">${o.label}
-          </label>`}).join('')}
+          </label>`;}).join('')}
         </div>
       </div>
     </div>
@@ -3160,7 +3158,9 @@ function showClientModal(id=null) {
         try { existingObls = await api('GET',`/api/obligations?client_id=${clientId}&page_size=100`); }
         catch(_) {}
         const existingTypes = new Set(
-          (Array.isArray(existingObls)?existingObls:(existingObls?.items||[])).map(o=>o.obligation_type)
+          (Array.isArray(existingObls)?existingObls:(existingObls?.items||[])).map(o=>
+            o.obligation_type==='withholding_monthly'?'payroll_monthly':o.obligation_type
+          )
         );
         const creates = selectedObls.filter(t=>!existingTypes.has(t));
         if(creates.length){
@@ -3184,7 +3184,9 @@ function showClientModal(id=null) {
       toast(c?'تم تحديث بيانات العميل':'✅ تم إضافة العميل والتزاماته وفولدره');
       overlay.remove();
       invalidateClientsCache();
+      _AC.invalidate('/api/obligations');
       loadClients(true);
+      if(currentPage==='obligations')loadObligations(true);
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`}
   };
 }
