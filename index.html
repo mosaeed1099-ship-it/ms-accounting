@@ -21485,8 +21485,6 @@ window.mfSendWA = function(phone) {
 window.mfOpenWA = window.mfOpenWA;
 
 window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
-
-window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
   document.getElementById('mfPayModalEl')?.remove();
   const isEdit = (currentPaid||0) > 0;
   // remaining relative to totalDue (not to previous partial)
