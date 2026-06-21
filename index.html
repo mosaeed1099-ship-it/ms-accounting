@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v3.12 — tax center: add WHT tab, fix corporate tab label -->
+<!-- v3.2 — fix under_establishment loading: better error handling -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
@@ -725,9 +725,62 @@ async function api(method, path, body=null, {retries=2, retryDelay=2000, useCach
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SAFETY LAYER — طبقة حماية فوق النظام، لا تلمس الكود الحالي
-// ── يسجل كل عملية كتابة، يوفر undo، يمنع البلك بدون موافقة ──────────────────
+// ERROR LOGGING SYSTEM — يسجل كل خطأ في localStorage + يعرضه في شاشة الأخطاء
 // ═══════════════════════════════════════════════════════════════════════════════
+const _EL = {
+  MAX: 500,      // أقصى عدد سجلات
+  KEY: 'ms_error_log',
+
+  _read() {
+    try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch(e) { return []; }
+  },
+
+  log(type, message, detail = '', source = '') {
+    try {
+      const logs = this._read();
+      logs.unshift({
+        id: Date.now() + Math.random(),
+        type,        // 'js' | 'api' | 'network' | 'promise' | 'upload'
+        message: String(message).slice(0, 400),
+        detail:  String(detail  || '').slice(0, 800),
+        source:  String(source  || '').slice(0, 200),
+        page:    typeof currentPage !== 'undefined' ? currentPage : '',
+        user:    (typeof currentUser !== 'undefined' && currentUser) ? currentUser.email : '',
+        ts:      new Date().toISOString(),
+      });
+      // حذف القديم إذا تجاوز الحد
+      if (logs.length > this.MAX) logs.length = this.MAX;
+      localStorage.setItem(this.KEY, JSON.stringify(logs));
+      // لو الشاشة مفتوحة، حدّثها في الخلفية
+      if (typeof currentPage !== 'undefined' && currentPage === 'system_logs') {
+        clearTimeout(this._refreshTimer);
+        this._refreshTimer = setTimeout(() => loadSystemLogs(), 300);
+      }
+    } catch(e) {}
+  },
+
+  clear() {
+    localStorage.removeItem(this.KEY);
+  },
+
+  getAll() { return this._read(); },
+
+  count() { return this._read().length; },
+};
+
+// ── Global JS error capture ──────────────────────────────────────────────────
+window.onerror = function(msg, src, line, col, err) {
+  _EL.log('js', msg, err?.stack || `${src}:${line}:${col}`, src);
+  return false; // don't suppress default behavior
+};
+
+window.onunhandledrejection = function(e) {
+  const msg = e.reason?.message || String(e.reason || 'Unhandled Promise Rejection');
+  const stack = e.reason?.stack || '';
+  _EL.log('promise', msg, stack);
+};
+
+// ── Safety Layer ────────────────────────────────────────────────────────────
 const _SL = (function() {
   const HIST_KEY  = 'ms_sl_history';
   const MAX_HIST  = 50;
@@ -992,60 +1045,7 @@ const _SL = (function() {
 document.addEventListener('DOMContentLoaded', () => setTimeout(_SL.init, 500));
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ERROR LOGGING SYSTEM — يسجل كل خطأ في localStorage + يعرضه في شاشة الأخطاء
-// ═══════════════════════════════════════════════════════════════════════════════
-const _EL = {
-  MAX: 500,      // أقصى عدد سجلات
-  KEY: 'ms_error_log',
 
-  _read() {
-    try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch(e) { return []; }
-  },
-
-  log(type, message, detail = '', source = '') {
-    try {
-      const logs = this._read();
-      logs.unshift({
-        id: Date.now() + Math.random(),
-        type,        // 'js' | 'api' | 'network' | 'promise' | 'upload'
-        message: String(message).slice(0, 400),
-        detail:  String(detail  || '').slice(0, 800),
-        source:  String(source  || '').slice(0, 200),
-        page:    typeof currentPage !== 'undefined' ? currentPage : '',
-        user:    (typeof currentUser !== 'undefined' && currentUser) ? currentUser.email : '',
-        ts:      new Date().toISOString(),
-      });
-      // حذف القديم إذا تجاوز الحد
-      if (logs.length > this.MAX) logs.length = this.MAX;
-      localStorage.setItem(this.KEY, JSON.stringify(logs));
-      // لو الشاشة مفتوحة، حدّثها في الخلفية
-      if (typeof currentPage !== 'undefined' && currentPage === 'system_logs') {
-        clearTimeout(this._refreshTimer);
-        this._refreshTimer = setTimeout(() => loadSystemLogs(), 300);
-      }
-    } catch(e) {}
-  },
-
-  clear() {
-    localStorage.removeItem(this.KEY);
-  },
-
-  getAll() { return this._read(); },
-
-  count() { return this._read().length; },
-};
-
-// ── Global JS error capture ──────────────────────────────────────────────────
-window.onerror = function(msg, src, line, col, err) {
-  _EL.log('js', msg, err?.stack || `${src}:${line}:${col}`, src);
-  return false; // don't suppress default behavior
-};
-
-window.onunhandledrejection = function(e) {
-  const msg = e.reason?.message || String(e.reason || 'Unhandled Promise Rejection');
-  const stack = e.reason?.stack || '';
-  _EL.log('promise', msg, stack);
-};
 
 function toast(msg, type='success') {
   const colors={success:'#16a34a',error:'#dc2626',warning:'#d97706',info:'#1a2472'};
@@ -2912,10 +2912,10 @@ function _clientsTableRows() {
     return `
   <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
     <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
-    <td onclick="event.stopPropagation()">
+    <td>
       <div style="display:inline-flex;align-items:center;gap:5px">
         <span style="font-weight:600;color:#1e293b;cursor:pointer" onclick="showClientDetail(${c.id})">${escH(c.name)}</span>
-        <button onclick="navigator.clipboard.writeText('${c.name.replace(/'/g,"\\'")}').then(()=>toast('✅ تم نسخ الاسم'))" title="نسخ الاسم"
+        <button onclick="event.stopPropagation();navigator.clipboard.writeText('${c.name.replace(/'/g,"\\'")}').then(()=>toast('✅ تم نسخ الاسم'))" title="نسخ الاسم"
           style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:5px;color:#94a3b8;font-size:12px;line-height:1;opacity:.5;transition:opacity .15s"
           onmouseover="this.style.opacity='1';this.style.background='#f1f5f9'"
           onmouseout="this.style.opacity='.5';this.style.background='none'">📋</button>
@@ -3354,19 +3354,17 @@ function showClientModal(id=null) {
         </div>
         <div id="cOblGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
           ${[
-            {key:'vat_monthly',       label:'🧾 ق.م.م شهري'},
-            {key:'vat_quarterly',     label:'🧾 ق.م.م ربعي'},
-            {key:'payroll_monthly',   label:'💼 مرتبات شهري'},
-            {key:'withholding_monthly',label:'✂️ أسس توحيد المرتبات شهري'},
-            {key:'insurance_monthly', label:'🛡️ تأمينات شهرية'},
-            {key:'stamp_quarterly',   label:'🔏 دمغة ربعي'},
-            {key:'income_annual',     label:'📊 ضريبة الدخل سنوي'},
-            {key:'corporate_tax',     label:'🏛️ ضريبة الخصم والتحصيل'},
-            {key:'form_41',           label:'📋 نموذج 41 سنوي'},
-            {key:'commercial_register_renewal', label:'📜 تجديد السجل سنوي'},
-          ].map(o=>{const checked=(c?.tax_obligations||[]).includes(o.key);return`<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;padding:5px 8px;border-radius:7px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
+            {key:'vat_monthly',    label:'🧾 ضريبة القيمة المضافة'},
+            {key:'payroll_monthly',label:'💼 مرتبات / أسس توحيد المرتبات'},
+            {key:'income_annual',  label:'📊 دخل سنوي'},
+          ].map(o=>{
+            const taxObls=c?.tax_obligations||[];
+            const checked=o.key==='payroll_monthly'
+              ?taxObls.some(t=>t==='payroll_monthly'||t==='withholding_monthly')
+              :taxObls.includes(o.key);
+            return`<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;padding:5px 8px;border-radius:7px;border:1px solid ${checked?'#1a2472':'#e5e7eb'};background:${checked?'#eef1fb':'#fff'};transition:.15s" id="cObl_${o.key}_label">
             <input type="checkbox" class="cOblCheck" data-key="${o.key}" ${checked?'checked':''} style="width:13px;height:13px;accent-color:#1a2472" onchange="toggleOblLabel(this)">${o.label}
-          </label>`}).join('')}
+          </label>`;}).join('')}
         </div>
       </div>
     </div>
@@ -3442,7 +3440,9 @@ function showClientModal(id=null) {
         try { existingObls = await api('GET',`/api/obligations?client_id=${clientId}&page_size=100`); }
         catch(_) {}
         const existingTypes = new Set(
-          (Array.isArray(existingObls)?existingObls:(existingObls?.items||[])).map(o=>o.obligation_type)
+          (Array.isArray(existingObls)?existingObls:(existingObls?.items||[])).map(o=>
+            o.obligation_type==='withholding_monthly'?'payroll_monthly':o.obligation_type
+          )
         );
         const creates = selectedObls.filter(t=>!existingTypes.has(t));
         if(creates.length){
@@ -3456,12 +3456,6 @@ function showClientModal(id=null) {
             })
           ));
         }
-        // Deactivate obligations that were removed
-        const selectedSet = new Set(selectedObls);
-        const toDeactivate = (Array.isArray(existingObls)?existingObls:(existingObls?.items||[])).filter(o=>o.is_active && !selectedSet.has(o.obligation_type));
-        if(toDeactivate.length){
-          await Promise.allSettled(toDeactivate.map(o=>api('DELETE',`/api/obligations/${o.id}`)));
-        }
       }
 
       // ── Auto-create folder for new clients ──────────────────────────────
@@ -3472,7 +3466,9 @@ function showClientModal(id=null) {
       toast(c?'تم تحديث بيانات العميل':'✅ تم إضافة العميل والتزاماته وفولدره');
       overlay.remove();
       invalidateClientsCache();
+      _AC.invalidate('/api/obligations');
       loadClients(true);
+      if(currentPage==='obligations')loadObligations(true);
     } catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML=`💾 ${c?'حفظ التعديلات':'إضافة عميل'}`}
   };
 }
@@ -5256,7 +5252,7 @@ function _renderTaxShell() {
     {id:'dashboard', icon:'📊', label:'لوحة التحكم'},
     {id:'vat',       icon:'🧾', label:'ض.ق.م.'},
     {id:'wht',       icon:'✂️', label:'أسس توحيد المرتبات'},
-    {id:'corporate', icon:'🏢', label:'ضريبة الدخل'},
+    {id:'corporate', icon:'🏢', label:'ضريبة الخصم والتحصيل'},
     {id:'salary',    icon:'👤', label:'ضريبة المرتبات'},
     {id:'calendar',  icon:'📅', label:'التقويم الضريبي'},
     {id:'portals',   icon:'🌐', label:'البوابات'},
@@ -5437,28 +5433,725 @@ async function _tcRenderDashboard(el) {
   </div>`;
 }
 
-// ── VAT RETURNS ────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// VAT EXCEL ANALYSIS DASHBOARD — Phase 2
+// ══════════════════════════════════════════════════════════════════════════════
+// State (persists across sub-tab switches within the same session)
+window._vat = window._vat || {
+  analysis: null,   // loaded analysis {id, summary, invoices, company_name, ...}
+  tab: 'dashboard', // 'dashboard' | 'invoices' | 'preview' | 'history'
+  page: 1,
+  filter: {q:'', direction:'', status:'', sort:'date_desc'},
+  overrides: {},    // preview editor overrides: {sales_net, sales_vat, pur_net, pur_vat}
+  el: null,         // container element reference
+};
+
 async function _tcRenderVat(el) {
-  if (!_tcClientId) { el.innerHTML = _tcNeedClient(); return; }
+  window._vat.el = el;
+  _vatRender();
+}
+
+function _vatRender() {
+  const el = window._vat.el;
+  if (!el) return;
+  const v = window._vat;
+  const a = v.analysis;
+
+  const tabBtn = (id, icon, label) => `
+    <button onclick="_vatSetTab('${id}')" style="display:flex;align-items:center;gap:5px;padding:9px 14px;font-size:12.5px;font-weight:700;font-family:inherit;border:none;border-bottom:2.5px solid ${v.tab===id?'#0F6E56':'transparent'};background:transparent;cursor:pointer;color:${v.tab===id?'#0F6E56':'#64748b'};white-space:nowrap;transition:all .15s">
+      ${icon} ${label}</button>`;
+
+  const subTabs = a ? `
+    <div style="display:flex;gap:0;border-bottom:2px solid #e8edf3;margin-bottom:16px;overflow-x:auto">
+      ${tabBtn('dashboard','📊','لوحة التحكم')}
+      ${tabBtn('invoices','📋','الفواتير (${a.summary?.total_invoices??0})')}
+      ${tabBtn('preview','📄','Preview الإقرار')}
+      ${tabBtn('history','🕐','السجل')}
+    </div>` : '';
+
+  const clearBtn = a ? `<button onclick="_vatClear()" style="padding:5px 12px;font-size:11px;border:1.5px solid #fca5a5;border-radius:20px;background:#fff;color:#dc2626;cursor:pointer;font-family:inherit">✕ تحميل ملف جديد</button>` : '';
+
+  const infoBanner = a ? `
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:10px 14px;font-size:12px;color:#15803d;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span>✅ <strong>${escH(a.company_name||'')}</strong> · رقم ضريبي: ${escH(a.tax_number||'')} · فترة: ${escH(a.period_label||'')} · ${a.summary?.total_invoices??0} فاتورة</span>
+      <span style="margin-right:auto">${clearBtn}</span>
+    </div>` : '';
+
+  el.innerHTML = `${infoBanner}${subTabs}<div id="_vatContent"></div>`;
+
+  // Replace tab labels (need actual count)
+  if (a) {
+    el.querySelector('[id="_vatContent"]').previousElementSibling.innerHTML = `
+      ${tabBtn('dashboard','📊','لوحة التحكم')}
+      ${tabBtn('invoices','📋',`الفواتير (${a.summary?.total_invoices??0})`)}
+      ${tabBtn('preview','📄','Preview الإقرار')}
+      ${tabBtn('history','🕐','السجل')}`;
+  }
+
+  const content = document.getElementById('_vatContent');
+  if (!a) { _vatRenderUpload(content); return; }
+
+  if (v.tab === 'dashboard') _vatRenderDashboard(content);
+  else if (v.tab === 'invoices') _vatRenderInvoices(content);
+  else if (v.tab === 'preview') _vatRenderPreview(content);
+  else if (v.tab === 'history') _vatRenderHistory(content);
+}
+
+window._vatSetTab = function(t) { window._vat.tab = t; window._vat.page = 1; _vatRender(); };
+window._vatClear  = function()  { window._vat.analysis = null; window._vat.tab = 'dashboard'; _vatRender(); };
+
+// ── Upload Zone ───────────────────────────────────────────────────────────────
+function _vatRenderUpload(el) {
+  el.innerHTML = `
+  <div style="display:grid;gap:14px">
+
+    <!-- Drop zone -->
+    <div id="_vatDrop" ondragover="event.preventDefault();this.style.borderColor='#0F6E56';this.style.background='#f0fdf4'"
+         ondragleave="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc'"
+         ondrop="_vatHandleDrop(event)"
+         style="border:2px dashed #cbd5e1;border-radius:16px;background:#f8fafc;padding:48px 24px;text-align:center;cursor:pointer;transition:all .2s"
+         onclick="document.getElementById('_vatFileIn').click()">
+      <div style="font-size:40px;margin-bottom:10px">📊</div>
+      <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px">ارفع ملف Excel الفواتير الإلكترونية (ETA)</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:16px">اسحب الملف هنا أو اضغط للاختيار · .xlsx أو .xls فقط · حد أقصى 10 MB</div>
+      <div style="display:inline-block;padding:9px 22px;background:#0F6E56;color:white;border-radius:8px;font-size:13px;font-weight:700">اختر ملف Excel</div>
+    </div>
+    <input id="_vatFileIn" type="file" accept=".xlsx,.xls" style="display:none" onchange="_vatHandleFile(this.files[0])"/>
+
+    <!-- Progress -->
+    <div id="_vatProgress" style="display:none;background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:20px;text-align:center">
+      <div class="spinner" style="margin:0 auto 12px"></div>
+      <div style="font-size:13px;color:#374151">جارٍ تحليل الملف... قد يستغرق بضع ثوان للملفات الكبيرة</div>
+    </div>
+
+    <!-- Error -->
+    <div id="_vatUploadErr" style="display:none;background:#fff5f5;border:1.5px solid #fca5a5;border-radius:12px;padding:14px;color:#dc2626;font-size:13px"></div>
+
+    <!-- History preview (last 3) -->
+    <div id="_vatHistPreview"></div>
+  </div>`;
+  _vatLoadHistPreview();
+}
+
+async function _vatLoadHistPreview() {
+  const c = document.getElementById('_vatHistPreview');
+  if (!c) return;
+  try {
+    const hist = await api('GET', '/api/vat-excel/history');
+    if (!hist?.length) return;
+    c.innerHTML = `
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:16px">
+      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">🕐 آخر التحليلات — اضغط لإعادة الفتح</div>
+      ${hist.slice(0,5).map(h=>`
+        <div onclick="_vatOpenHistory(${h.id})" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+          <div style="width:38px;height:38px;background:#e0f2fe;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📊</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(h.company_name||'—')}</div>
+            <div style="font-size:11px;color:#64748b">${escH(h.period_label||'')} · ${(h.total_invoices??0)} فاتورة</div>
+          </div>
+          <div style="text-align:left;flex-shrink:0">
+            <div style="font-size:12px;font-weight:700;color:${(h.net_vat??0)<0?'#0F6E56':'#dc2626'}">${_vatFmtMoney(Math.abs(h.net_vat??0))}</div>
+            <div style="font-size:10px;color:#94a3b8">${(h.net_vat??0)<0?'رصيد دائن':'مستحق'}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  } catch(_){}
+}
+
+window._vatHandleDrop = function(e) {
+  e.preventDefault();
+  document.getElementById('_vatDrop').style.borderColor = '#cbd5e1';
+  document.getElementById('_vatDrop').style.background = '#f8fafc';
+  const f = e.dataTransfer?.files?.[0];
+  if (f) _vatHandleFile(f);
+};
+window._vatHandleFile = async function(file) {
+  if (!file) return;
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    _vatShowUploadErr('يُقبل ملف Excel فقط (.xlsx أو .xls)'); return;
+  }
+  if (file.size > 10*1024*1024) {
+    _vatShowUploadErr('حجم الملف يتجاوز الحد المسموح به (10 MB)'); return;
+  }
+  document.getElementById('_vatProgress').style.display = 'block';
+  document.getElementById('_vatUploadErr').style.display = 'none';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch(API + '/api/vat-excel/analyze', {
+      method: 'POST',
+      headers: {'Authorization': `Bearer ${token}`},
+      body: fd,
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    window._vat.analysis = data;
+    window._vat.tab = 'dashboard';
+    window._vat.overrides = {};
+    _vatRender();
+  } catch(e) {
+    document.getElementById('_vatProgress').style.display = 'none';
+    _vatShowUploadErr(`❌ ${e.message}`);
+  }
+};
+function _vatShowUploadErr(msg) {
+  const el = document.getElementById('_vatUploadErr');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function _vatRenderDashboard(el) {
+  const s = window._vat.analysis?.summary || {};
+  const isCredit = (s.net_vat??0) < 0;
+  const netAbs   = Math.abs(s.net_vat??0);
+
+  const kpi = (label, val, sub, key, color='#1e293b') => `
+    <div onclick="_vatDrillOpen('${key}','${label}')" style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:14px 16px;cursor:${key?'pointer':'default'};transition:box-shadow .15s" onmouseover="if('${key}')this.style.boxShadow='0 2px 8px #0F6E5625'" onmouseout="this.style.boxShadow='none'">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">${label}</div>
+      <div style="font-size:18px;font-weight:800;color:${color}">${_vatFmtMoney(val)}</div>
+      ${sub?`<div style="font-size:11px;color:#94a3b8;margin-top:3px">${sub}</div>`:''}
+      ${key?`<div style="font-size:10px;color:#0F6E56;margin-top:4px">← اضغط لعرض الفواتير</div>`:''}
+    </div>`;
+
+  const suppliers = (s.suppliers||[]).slice(0,5);
+  const maxNet = suppliers.length ? Math.max(...suppliers.map(x=>x.net)) : 1;
+  const barPct = v => Math.max(2, Math.round(v/maxNet*100));
 
   el.innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
-    <div style="font-size:15px;font-weight:700;color:#1e293b">🧾 إقرارات ض.ق.م. — ${escH(_tcClientName)}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-secondary" onclick="tcVatExcelModal()" style="font-size:12px;background:#f0fdf4;border-color:#86efac;color:#15803d">📊 رفع Excel فواتير</button>
-      <button class="btn btn-secondary" onclick="tcVatBuildManualModal()" style="font-size:12px">✏️ إدخال يدوي</button>
-      <button class="btn btn-primary" onclick="tcVatBuild()">⚡ بناء إقرار ${TC_MONTH_AR[_tcMonth]} ${_tcYear}</button>
+  <!-- KPI Row 1: Core figures -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;margin-bottom:10px">
+    ${kpi('إجمالي المشتريات (واردة)', s.pur_net??0, `${s.incoming_count??0} فاتورة واردة`, 'pur_net', '#185FA5')}
+    ${kpi('ضريبة المدخلات', s.pur_vat??0, 'مستحق الخصم', 'pur_vat', '#0F6E56')}
+    ${kpi('إجمالي المبيعات (صادرة)', s.sales_net??0, `${s.outgoing_count??0} فاتورة صادرة`, 'sales_net', '#374151')}
+    ${kpi('ضريبة المخرجات', s.sales_vat??0, 'على المبيعات', 'sales_vat', '#374151')}
+    <div style="background:${isCredit?'#f0fdf4':'#fff5f5'};border:1.5px solid ${isCredit?'#86efac':'#fca5a5'};border-radius:12px;padding:14px 16px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">${isCredit?'الرصيد الدائن':'ضريبة مستحقة'}</div>
+      <div style="font-size:18px;font-weight:800;color:${isCredit?'#0F6E56':'#dc2626'}">${_vatFmtMoney(netAbs)}</div>
+      <div style="font-size:11px;color:${isCredit?'#15803d':'#dc2626'};margin-top:3px">${isCredit?'يُرحَّل أو يُسترد':'للسداد للمصلحة'}</div>
     </div>
   </div>
-  <div style="background:#fff7ed;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;border:1px solid #fed7aa;margin-bottom:12px">
-    💡 <strong>كيف تعمل الإقرارات:</strong>
-    اضغط <strong>إدخال يدوي</strong> لإدخال أرقام المبيعات والمشتريات يدوياً وبناء الإقرار، أو <strong>⚡ بناء إقرار</strong> إذا كان مربوط بـ ETA.
-    أو اضغط <strong>📊 رفع Excel فواتير</strong> لاستيراد ملف بوابة الفواتير الإلكترونية مباشرةً وبناء الإقرار تلقائياً في ثانية.
-  </div>
-  <div id="tcVatArea"><div style="display:flex;justify-content:center;padding:40px"><div class="spinner"></div></div></div>`;
 
-  await _tcVatLoadList();
+  <!-- KPI Row 2: Counts -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+    ${kpi('إجمالي الفواتير', s.total_invoices??0, '', 'all', '#374151')}
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:14px 16px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">عدد الموردين</div>
+      <div style="font-size:18px;font-weight:800">${s.supplier_count??0}</div>
+    </div>
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:14px 16px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">أكبر فاتورة</div>
+      <div style="font-size:15px;font-weight:800">${_vatFmtMoney(s.max_invoice??0)}</div>
+    </div>
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:14px 16px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">متوسط الفاتورة</div>
+      <div style="font-size:15px;font-weight:800">${_vatFmtMoney(s.avg_invoice??0)}</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <!-- Calculation box -->
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:16px">
+      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">📐 ملخص حساب الإقرار</div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        ${_vatCalcRow('ضريبة مخرجات (مبيعات)', s.sales_vat??0, false)}
+        ${_vatCalcRow('تُطرح: ضريبة مدخلات (مشتريات)', s.pur_vat??0, false)}
+        <div style="height:1px;background:#e8edf3;margin:8px 0"></div>
+        ${_vatCalcRow('صافي الضريبة', s.net_vat??0, true, isCredit?'#0F6E56':'#dc2626')}
+      </div>
+      <div style="background:${isCredit?'#f0fdf4':'#fff5f5'};border-radius:8px;padding:10px 12px;margin-top:10px;font-size:11.5px;color:${isCredit?'#15803d':'#dc2626'}">
+        ${isCredit?'✅ رصيد دائن لصالح الممول — يُرحَّل للفترة القادمة أو يُطلب استرداده':'⚠️ ضريبة مستحقة للسداد للمصلحة الضريبية'}
+      </div>
+    </div>
+
+    <!-- Suppliers -->
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:16px">
+      <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">🏢 أكبر الموردين</div>
+      ${suppliers.length ? suppliers.map((sp,i)=>`
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px">
+            <span style="color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${escH(sp.name||'')}</span>
+            <span style="color:#64748b;flex-shrink:0">${_vatFmtMoney(sp.net)} · ${sp.count} ف.</span>
+          </div>
+          <div style="background:#f1f5f9;border-radius:3px;height:6px">
+            <div style="width:${barPct(sp.net)}%;height:100%;background:${['#0F6E56','#1D9E75','#5DCAA5','#9FE1CB','#D1F5EA'][i]||'#0F6E56'};border-radius:3px"></div>
+          </div>
+        </div>`).join('') : '<div style="color:#94a3b8;font-size:12px;padding:16px;text-align:center">لا موردين</div>'}
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <button onclick="_vatSetTab('invoices')" class="btn btn-secondary" style="font-size:12px">📋 عرض الفواتير التفصيلي</button>
+    <button onclick="_vatSetTab('preview')" style="padding:9px 20px;background:#0F6E56;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📄 إنشاء ملف الإقرار ←</button>
+  </div>
+
+  <!-- Drill modal (hidden) -->
+  ${_vatDrillModalHtml()}`;
 }
+
+function _vatCalcRow(label, val, bold, color='#374151') {
+  return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px">
+    <span style="color:#64748b">${label}</span>
+    <span style="font-weight:${bold?'800':'600'};color:${color}">${_vatFmtMoney(val)} ج.م</span>
+  </div>`;
+}
+
+// ── Invoice Table ─────────────────────────────────────────────────────────────
+function _vatRenderInvoices(el) {
+  const v = window._vat;
+  const all = v.analysis?.invoices || [];
+  const f = v.filter;
+
+  // Filter
+  let rows = all.filter(i => {
+    if (f.q) {
+      const q = f.q.toLowerCase();
+      if (!(i.uuid||'').toLowerCase().includes(q) &&
+          !(i.issuer||'').toLowerCase().includes(q) &&
+          !(i.receiver||'').toLowerCase().includes(q) &&
+          !(i.internal_id||'').toLowerCase().includes(q)) return false;
+    }
+    if (f.direction && i.direction !== f.direction) return false;
+    if (f.status && i.status !== f.status) return false;
+    return true;
+  });
+
+  // Sort
+  if (f.sort === 'date_desc') rows.sort((a,b) => (b.issue_date||'').localeCompare(a.issue_date||''));
+  else if (f.sort === 'date_asc') rows.sort((a,b) => (a.issue_date||'').localeCompare(b.issue_date||''));
+  else if (f.sort === 'amt_desc') rows.sort((a,b) => (b.total||0)-(a.total||0));
+  else if (f.sort === 'amt_asc')  rows.sort((a,b) => (a.total||0)-(b.total||0));
+
+  const PER = 10;
+  const total = rows.length;
+  const pages = Math.ceil(total/PER) || 1;
+  if (v.page > pages) v.page = 1;
+  const slice = rows.slice((v.page-1)*PER, v.page*PER);
+
+  // Grand totals from filtered rows (using Decimal-like sum)
+  const sumNet = rows.reduce((a,r)=>a+(r.net_after??r.net??0),0);
+  const sumVat = rows.reduce((a,r)=>a+(r.vat??0),0);
+  const sumTot = rows.reduce((a,r)=>a+(r.total??0),0);
+
+  const dirBadge = d => d==='صادرة'
+    ? `<span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700">صادرة</span>`
+    : `<span style="background:#f0fdf4;color:#15803d;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700">واردة</span>`;
+  const statusBadge = s => {
+    const c = s==='صالحة'?'#15803d':s==='ملغاة'?'#dc2626':'#d97706';
+    const bg = s==='صالحة'?'#f0fdf4':s==='ملغاة'?'#fff5f5':'#fefce8';
+    return `<span style="background:${bg};color:${c};padding:2px 7px;border-radius:12px;font-size:10px">${escH(s||'')}</span>`;
+  };
+
+  el.innerHTML = `
+  <!-- Filters -->
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <input value="${escH(f.q)}" oninput="_vatFilterQ(this.value)" placeholder="🔍 بحث بـ UUID أو اسم الطرف..." style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit"/>
+    <select onchange="_vatFilterDir(this.value)" style="padding:7px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit">
+      <option value="" ${!f.direction?'selected':''}>كل الاتجاهات</option>
+      <option value="واردة" ${f.direction==='واردة'?'selected':''}>واردة فقط</option>
+      <option value="صادرة" ${f.direction==='صادرة'?'selected':''}>صادرة فقط</option>
+    </select>
+    <select onchange="_vatFilterStatus(this.value)" style="padding:7px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit">
+      <option value="" ${!f.status?'selected':''}>كل الحالات</option>
+      <option value="صالحة" ${f.status==='صالحة'?'selected':''}>صالحة</option>
+      <option value="ملغاة" ${f.status==='ملغاة'?'selected':''}>ملغاة</option>
+    </select>
+    <select onchange="_vatFilterSort(this.value)" style="padding:7px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit">
+      <option value="date_desc" ${f.sort==='date_desc'?'selected':''}>التاريخ ↓</option>
+      <option value="date_asc"  ${f.sort==='date_asc'?'selected':''}>التاريخ ↑</option>
+      <option value="amt_desc"  ${f.sort==='amt_desc'?'selected':''}>المبلغ ↓</option>
+      <option value="amt_asc"   ${f.sort==='amt_asc'?'selected':''}>المبلغ ↑</option>
+    </select>
+    <button onclick="_vatExportFilteredCsv()" style="padding:7px 14px;background:#185FA5;color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">⬇ CSV</button>
+  </div>
+
+  <!-- Table -->
+  <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;overflow:hidden">
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#f8fafc">
+          <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">#</th>
+          <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">UUID</th>
+          <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">الطرف</th>
+          <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">الاتجاه</th>
+          <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">التاريخ</th>
+          <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">صافي</th>
+          <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">ضريبة</th>
+          <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">الإجمالي</th>
+          <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600;white-space:nowrap;border-bottom:1.5px solid #e8edf3">الحالة</th>
+          <th style="padding:10px 12px;border-bottom:1.5px solid #e8edf3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${slice.length ? slice.map((inv,idx)=>{
+          const n = (v.page-1)*PER + idx + 1;
+          const party = inv.direction==='واردة' ? (inv.issuer||'—') : (inv.receiver||'—');
+          return `<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <td style="padding:9px 12px;color:#94a3b8">${n}</td>
+            <td style="padding:9px 12px;font-size:10px;color:#64748b;font-family:monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(inv.uuid||'')}">${escH((inv.uuid||'').substring(0,12))}…</td>
+            <td style="padding:9px 12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600" title="${escH(party)}">${escH(party)}</td>
+            <td style="padding:9px 12px">${dirBadge(inv.direction)}</td>
+            <td style="padding:9px 12px;color:#374151;white-space:nowrap;font-size:11px">${escH(inv.issue_date||'')}</td>
+            <td style="padding:9px 12px;text-align:left;font-weight:600">${_vatFmtMoney(inv.net_after??inv.net??0)}</td>
+            <td style="padding:9px 12px;text-align:left;color:#0F6E56;font-weight:600">${_vatFmtMoney(inv.vat??0)}</td>
+            <td style="padding:9px 12px;text-align:left;font-weight:700">${_vatFmtMoney(inv.total??0)}</td>
+            <td style="padding:9px 12px">${statusBadge(inv.status)}</td>
+            <td style="padding:9px 12px"><button onclick="_vatInvDetail('${escH(inv.uuid||'')}',${n-1})" style="border:1.5px solid #e2e8f0;background:white;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">👁</button></td>
+          </tr>`;
+        }).join('') : `<tr><td colspan="10" style="padding:40px;text-align:center;color:#94a3b8">لا توجد فواتير مطابقة للفلتر</td></tr>`}
+      </tbody>
+      <tfoot>
+        <tr style="background:#f0fdf4;font-weight:700;border-top:1.5px solid #86efac">
+          <td colspan="5" style="padding:9px 12px;color:#15803d">الإجمالي (${total} فاتورة مفلترة)</td>
+          <td style="padding:9px 12px;text-align:left">${_vatFmtMoney(sumNet)}</td>
+          <td style="padding:9px 12px;text-align:left;color:#0F6E56">${_vatFmtMoney(sumVat)}</td>
+          <td style="padding:9px 12px;text-align:left">${_vatFmtMoney(sumTot)}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:12px;color:#64748b">
+    <span>عرض ${(v.page-1)*PER+1}–${Math.min(v.page*PER,total)} من ${total}</span>
+    <div style="display:flex;gap:4px">
+      <button onclick="_vatPage(${v.page-1})" ${v.page<=1?'disabled':''} style="padding:4px 10px;border:1.5px solid #e2e8f0;border-radius:6px;background:white;cursor:pointer;font-family:inherit">‹</button>
+      ${Array.from({length:Math.min(pages,7)},(_,i)=>{
+        const p=i+1;
+        return `<button onclick="_vatPage(${p})" style="padding:4px 10px;border:1.5px solid ${v.page===p?'#0F6E56':'#e2e8f0'};border-radius:6px;background:${v.page===p?'#0F6E56':'white'};color:${v.page===p?'white':'#374151'};cursor:pointer;font-family:inherit">${p}</button>`;
+      }).join('')}
+      <button onclick="_vatPage(${v.page+1})" ${v.page>=pages?'disabled':''} style="padding:4px 10px;border:1.5px solid #e2e8f0;border-radius:6px;background:white;cursor:pointer;font-family:inherit">›</button>
+    </div>
+  </div>
+
+  <!-- Invoice detail modal -->
+  <div id="_vatInvModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center">
+    <div style="background:white;border-radius:16px;padding:24px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto" id="_vatInvModalBody"></div>
+  </div>`;
+
+  // Drill modal
+  el.insertAdjacentHTML('beforeend', _vatDrillModalHtml());
+}
+
+window._vatFilterQ      = function(q) { window._vat.filter.q=q; window._vat.page=1; _vatRenderInvoices(document.getElementById('_vatContent')); };
+window._vatFilterDir    = function(d) { window._vat.filter.direction=d; window._vat.page=1; _vatRenderInvoices(document.getElementById('_vatContent')); };
+window._vatFilterStatus = function(s) { window._vat.filter.status=s; window._vat.page=1; _vatRenderInvoices(document.getElementById('_vatContent')); };
+window._vatFilterSort   = function(s) { window._vat.filter.sort=s; window._vat.page=1; _vatRenderInvoices(document.getElementById('_vatContent')); };
+window._vatPage         = function(p) { window._vat.page=p; _vatRenderInvoices(document.getElementById('_vatContent')); };
+
+window._vatInvDetail = function(uuid, idx) {
+  const inv = (window._vat.analysis?.invoices||[])[idx] || (window._vat.analysis?.invoices||[]).find(i=>i.uuid===uuid);
+  if (!inv) return;
+  const party = inv.direction==='واردة'?(inv.issuer||'—'):(inv.receiver||'—');
+  const partyTin = inv.direction==='واردة'?(inv.issuer_tin||'—'):(inv.receiver_tin||'—');
+  const modal = document.getElementById('_vatInvModal');
+  document.getElementById('_vatInvModalBody').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:15px;font-weight:800;color:#1e293b">تفاصيل الفاتورة</h3>
+      <button onclick="document.getElementById('_vatInvModal').style.display='none'" style="border:none;background:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>
+    </div>
+    ${[
+      ['UUID', inv.uuid],['رقم داخلي', inv.internal_id],['نوع المستند', inv.doc_type],
+      ['الاتجاه', inv.direction],['الحالة', inv.status],
+      ['تاريخ الإصدار', inv.issue_date],['تاريخ التقديم', inv.submit_date],
+      ['الطرف', party],['رقم ضريبي الطرف', partyTin],['العملة', inv.currency],
+      ['المبلغ الصافي', _vatFmtMoney(inv.net??0)+' ج.م'],
+      ['الخصم', _vatFmtMoney(inv.discount??0)+' ج.م'],
+      ['بعد الخصم', _vatFmtMoney(inv.net_after??0)+' ج.م'],
+      ['الضريبة', _vatFmtMoney(inv.vat??0)+' ج.م'],
+      ['الإجمالي', _vatFmtMoney(inv.total??0)+' ج.م'],
+    ].map(([l,vl])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px"><span style="color:#64748b">${l}</span><span style="font-weight:600;color:#1e293b">${escH(String(vl??''))}</span></div>`).join('')}`;
+  modal.style.display = 'flex';
+};
+
+window._vatExportFilteredCsv = function() {
+  const v = window._vat;
+  const a = v.analysis;
+  if (!a) return;
+  const f = v.filter;
+  const rows = (a.invoices||[]).filter(i => {
+    if (f.q) { const q=f.q.toLowerCase(); if(!(i.uuid||'').toLowerCase().includes(q)&&!(i.issuer||'').toLowerCase().includes(q)&&!(i.receiver||'').toLowerCase().includes(q)&&!(i.internal_id||'').toLowerCase().includes(q)) return false; }
+    if (f.direction && i.direction!==f.direction) return false;
+    if (f.status && i.status!==f.status) return false;
+    return true;
+  });
+  const cols = ['uuid','internal_id','doc_type','direction','status','issue_date','submit_date','issuer','issuer_tin','receiver','receiver_tin','net_after','vat','total','currency'];
+  const csv = [cols.join(','), ...rows.map(r=>cols.map(c=>JSON.stringify(r[c]??'')).join(','))].join('\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a2 = document.createElement('a'); a2.href=url; a2.download='invoices_filtered.csv'; a2.click();
+  URL.revokeObjectURL(url);
+};
+
+// ── Drill-down ────────────────────────────────────────────────────────────────
+function _vatDrillModalHtml() {
+  return `<div id="_vatDrillModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9998;align-items:center;justify-content:center">
+    <div style="background:white;border-radius:16px;padding:24px;width:min(660px,95vw);max-height:80vh;display:flex;flex-direction:column">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 id="_vatDrillTitle" style="font-size:14px;font-weight:800;color:#1e293b"></h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="_vatDrillCsvBtn" style="padding:5px 12px;background:#185FA5;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">⬇ CSV</button>
+          <button onclick="document.getElementById('_vatDrillModal').style.display='none'" style="border:none;background:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1">✕</button>
+        </div>
+      </div>
+      <div id="_vatDrillTotals" style="background:#f0fdf4;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;font-size:12px;flex-wrap:wrap"></div>
+      <div style="overflow-y:auto;flex:1" id="_vatDrillBody"></div>
+    </div>
+  </div>`;
+}
+
+window._vatDrillOpen = async function(key, label) {
+  if (!key || !window._vat.analysis?.id) return;
+  const modal = document.getElementById('_vatDrillModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.getElementById('_vatDrillTitle').textContent = `الفواتير المكوِّنة لـ: ${label}`;
+  document.getElementById('_vatDrillBody').innerHTML = '<div style="padding:30px;text-align:center"><div class="spinner" style="margin:auto"></div></div>';
+  document.getElementById('_vatDrillTotals').innerHTML = '';
+
+  try {
+    const id = window._vat.analysis.id;
+    const data = await api('GET', `/api/vat-excel/drill/${id}/${key}`);
+    document.getElementById('_vatDrillTotals').innerHTML = `
+      <span>عدد الفواتير: <strong>${data.count}</strong></span>
+      <span>إجمالي صافي: <strong>${_vatFmtMoney(data.total_net)}</strong> ج.م</span>
+      <span>إجمالي ضريبة: <strong>${_vatFmtMoney(data.total_vat)}</strong> ج.م</span>
+      <span>الإجمالي: <strong>${_vatFmtMoney(data.total_amt)}</strong> ج.م</span>`;
+
+    const invs = data.invoices || [];
+    document.getElementById('_vatDrillCsvBtn').onclick = () => _vatDrillDownloadCsv(id, key, label);
+    document.getElementById('_vatDrillBody').innerHTML = invs.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+        <thead><tr style="background:#f8fafc">
+          <th style="padding:8px;text-align:right;color:#64748b;border-bottom:1.5px solid #e8edf3">#</th>
+          <th style="padding:8px;text-align:right;color:#64748b;border-bottom:1.5px solid #e8edf3">الطرف</th>
+          <th style="padding:8px;text-align:right;color:#64748b;border-bottom:1.5px solid #e8edf3">التاريخ</th>
+          <th style="padding:8px;text-align:left;color:#64748b;border-bottom:1.5px solid #e8edf3">صافي</th>
+          <th style="padding:8px;text-align:left;color:#64748b;border-bottom:1.5px solid #e8edf3">ضريبة</th>
+          <th style="padding:8px;text-align:left;color:#64748b;border-bottom:1.5px solid #e8edf3">الإجمالي</th>
+          <th style="padding:8px;text-align:right;color:#64748b;border-bottom:1.5px solid #e8edf3">حالة</th>
+        </tr></thead>
+        <tbody>
+          ${invs.map((inv,i)=>{
+            const party = inv.direction==='واردة'?(inv.issuer||'—'):(inv.receiver||'—');
+            const sc = inv.status==='صالحة'?'#15803d':inv.status==='ملغاة'?'#dc2626':'#d97706';
+            return `<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+              <td style="padding:7px 8px;color:#94a3b8">${i+1}</td>
+              <td style="padding:7px 8px;font-weight:600;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(party)}">${escH(party)}</td>
+              <td style="padding:7px 8px;font-size:10.5px">${escH(inv.issue_date||'')}</td>
+              <td style="padding:7px 8px;text-align:left">${_vatFmtMoney(inv.net_after??inv.net??0)}</td>
+              <td style="padding:7px 8px;text-align:left;color:#0F6E56">${_vatFmtMoney(inv.vat??0)}</td>
+              <td style="padding:7px 8px;text-align:left;font-weight:700">${_vatFmtMoney(inv.total??0)}</td>
+              <td style="padding:7px 8px"><span style="color:${sc};font-size:10px;font-weight:700">${escH(inv.status||'')}</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : '<div style="padding:30px;text-align:center;color:#94a3b8">لا فواتير</div>';
+  } catch(e) {
+    document.getElementById('_vatDrillBody').innerHTML = `<div style="color:#dc2626;padding:16px">${escH(e.message)}</div>`;
+  }
+};
+
+window._vatDrillDownloadCsv = async function(id, key, label) {
+  const resp = await fetch(API + `/api/vat-excel/drill/${id}/${key}/csv`, {headers:{'Authorization':`Bearer ${token}`}});
+  if (!resp.ok) return;
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`فواتير_${label}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ── Preview Editor ────────────────────────────────────────────────────────────
+function _vatRenderPreview(el) {
+  const v = window._vat;
+  const a = v.analysis;
+  const s = a?.summary || {};
+  const ov = v.overrides;
+
+  const fval = (k, fallback) => ov[k] !== undefined ? ov[k] : (s[k] !== undefined ? s[k] : (fallback??0));
+
+  const sv = fval('sales_vat', 0);
+  const pv = fval('pur_vat', 0);
+  const sn = fval('sales_net', 0);
+  const pn = fval('pur_net', 0);
+  const netVat = +(sv - pv).toFixed(2);
+  const isCredit = netVat < 0;
+
+  const field = (id, label, val, editable=true) => `
+    <div style="background:${editable?'white':'#f8fafc'};border:1.5px solid ${editable?'#e2e8f0':'transparent'};border-radius:10px;padding:10px 14px">
+      <label style="font-size:10px;color:#64748b;display:block;margin-bottom:4px">${label}${editable?' <span style="color:#0F6E56;font-size:10px">(قابل للتعديل)</span>':''}</label>
+      <input id="${id}" type="number" value="${val}" ${!editable?'readonly':''}
+        oninput="_vatPreviewRecalc()"
+        style="width:100%;border:none;background:transparent;font-size:14px;font-weight:700;color:#1e293b;outline:none;font-family:inherit"/>
+    </div>`;
+
+  el.innerHTML = `
+  <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:10px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:16px">
+    ✏️ <strong>شاشة المراجعة والتعديل</strong> — يمكنك تعديل أي خانة خضراء قبل التنزيل. صافي الضريبة يُحسب تلقائياً.
+  </div>
+
+  <!-- Company info (read-only) -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    ${field('_pvCompany', 'اسم الشركة / الممول', escH(a?.company_name||''), false)}
+    ${field('_pvTax', 'الرقم الضريبي', escH(a?.tax_number||''), false)}
+    ${field('_pvPeriod', 'فترة الإقرار', escH(a?.period_label||''), false)}
+    ${field('_pvDate', 'تاريخ التقديم', new Date().toLocaleDateString('ar-EG'), true)}
+  </div>
+
+  <!-- Section A: Sales -->
+  <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:14px;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:800;color:#15803d;margin-bottom:10px">📤 القسم الأول: المبيعات (ضريبة المخرجات)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      ${field('_pvSalesNet', 'إجمالي المبيعات (بدون ضريبة)', sn, true)}
+      ${field('_pvSalesVat', 'ضريبة المخرجات', sv, true)}
+    </div>
+  </div>
+
+  <!-- Section B: Purchases -->
+  <div style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:12px;padding:14px;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:800;color:#1d4ed8;margin-bottom:10px">📥 القسم الثاني: المشتريات (ضريبة المدخلات)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      ${field('_pvPurNet', 'إجمالي المشتريات (بدون ضريبة)', pn, true)}
+      ${field('_pvPurVat', 'ضريبة المدخلات (مستحقة الخصم)', pv, true)}
+    </div>
+  </div>
+
+  <!-- Section C: Result -->
+  <div id="_pvResultBox" style="border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;background:${isCredit?'#f0fdf4':'#fff5f5'};border:1.5px solid ${isCredit?'#86efac':'#fca5a5'}">
+    <div>
+      <div style="font-size:12px;color:${isCredit?'#15803d':'#dc2626'};font-weight:700" id="_pvResultLabel">${isCredit?'▶ رصيد دائن لصالح الممول':'▶ ضريبة مستحقة للسداد'}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px" id="_pvCalcNote">= ضريبة مخرجات (${_vatFmtMoney(sv)}) − ضريبة مدخلات (${_vatFmtMoney(pv)})</div>
+    </div>
+    <div style="font-size:22px;font-weight:800;color:${isCredit?'#0F6E56':'#dc2626'}" id="_pvResultVal">${_vatFmtMoney(Math.abs(netVat))} ج.م</div>
+  </div>
+
+  <!-- Actions -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <button onclick="_vatDownloadDeclaration()" style="padding:10px 22px;background:#0F6E56;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⬇ تحميل ملف الإقرار (Excel — نموذج ١٠ ض.ق.م)</button>
+    <button onclick="_vatSetTab('dashboard')" class="btn btn-secondary" style="font-size:12px">← العودة للمراجعة</button>
+    <button onclick="_vatResetOverrides()" class="btn btn-secondary" style="font-size:12px">↺ استعادة الأصلي</button>
+  </div>`;
+}
+
+window._vatPreviewRecalc = function() {
+  const sv = +document.getElementById('_pvSalesVat')?.value || 0;
+  const pv = +document.getElementById('_pvPurVat')?.value  || 0;
+  const sn = +document.getElementById('_pvSalesNet')?.value || 0;
+  const pn = +document.getElementById('_pvPurNet')?.value  || 0;
+
+  // Save overrides
+  window._vat.overrides = { sales_net: sn, sales_vat: sv, pur_net: pn, pur_vat: pv };
+
+  const net = +(sv-pv).toFixed(2);
+  const isCredit = net < 0;
+  const box = document.getElementById('_pvResultBox');
+  const lbl = document.getElementById('_pvResultLabel');
+  const note = document.getElementById('_pvCalcNote');
+  const val = document.getElementById('_pvResultVal');
+  if (!box) return;
+  box.style.background = isCredit?'#f0fdf4':'#fff5f5';
+  box.style.borderColor = isCredit?'#86efac':'#fca5a5';
+  if (lbl) { lbl.style.color=isCredit?'#15803d':'#dc2626'; lbl.textContent=isCredit?'▶ رصيد دائن لصالح الممول':'▶ ضريبة مستحقة للسداد'; }
+  if (note) note.textContent=`= ضريبة مخرجات (${_vatFmtMoney(sv)}) − ضريبة مدخلات (${_vatFmtMoney(pv)})`;
+  if (val)  { val.style.color=isCredit?'#0F6E56':'#dc2626'; val.textContent=`${_vatFmtMoney(Math.abs(net))} ج.م`; }
+};
+
+window._vatResetOverrides = function() { window._vat.overrides = {}; _vatRenderPreview(document.getElementById('_vatContent')); };
+
+window._vatDownloadDeclaration = async function() {
+  const v = window._vat;
+  const id = v.analysis?.id;
+  if (!id) return;
+  let url = `/api/vat-excel/declaration/${id}`;
+  if (Object.keys(v.overrides).length) {
+    url += `?overrides=${encodeURIComponent(JSON.stringify(v.overrides))}`;
+  }
+  const resp = await fetch(API + url, {headers:{'Authorization':`Bearer ${token}`}});
+  if (!resp.ok) { alert('❌ فشل التحميل'); return; }
+  const blob = await resp.blob();
+  const burl = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=burl;
+  a.download = `إقرار_ضريبة_القيمة_المضافة_${(v.analysis?.period_label||'').replace(/[→\/]/g,'_')}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(burl);
+};
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function _vatRenderHistory(el) {
+  el.innerHTML = '<div style="padding:30px;text-align:center"><div class="spinner" style="margin:auto"></div></div>';
+  try {
+    const hist = await api('GET', '/api/vat-excel/history');
+    if (!hist?.length) {
+      el.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;background:white;border-radius:12px;border:1.5px solid #e8edf3">لا توجد تحليلات محفوظة — ارفع ملف Excel لإنشاء أول تحليل</div>';
+      return;
+    }
+    el.innerHTML = `
+    <div style="background:white;border:1.5px solid #e8edf3;border-radius:12px;overflow:hidden">
+      ${hist.map(h => {
+        const isCredit = (h.net_vat??0) < 0;
+        const netAbs = Math.abs(h.net_vat??0);
+        return `<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #f1f5f9">
+          <div style="width:42px;height:42px;background:#e0f2fe;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📊</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;color:#1e293b">${escH(h.company_name||'—')}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px">${escH(h.period_label||'')} · ${h.total_invoices??0} فاتورة · ${escH(h.created_at?.substring(0,10)||'')}</div>
+          </div>
+          <div style="text-align:left;flex-shrink:0;margin-left:12px">
+            <div style="font-size:13px;font-weight:800;color:${isCredit?'#0F6E56':'#dc2626'}">${_vatFmtMoney(netAbs)} ج.م</div>
+            <div style="font-size:10px;color:#94a3b8">${isCredit?'رصيد دائن':'مستحق'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button onclick="_vatOpenHistory(${h.id})" style="padding:5px 12px;background:#0F6E56;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">فتح</button>
+            <button onclick="_vatHistDownload(${h.id},'${escH((h.period_label||'').replace(/[→\/]/g,'_'))}')" style="padding:5px 12px;background:#185FA5;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">⬇ Excel</button>
+            <button onclick="_vatHistDelete(${h.id},this)" style="padding:5px 10px;background:white;color:#dc2626;border:1.5px solid #fca5a5;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">🗑</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:#dc2626;padding:16px">${escH(e.message)}</div>`;
+  }
+}
+
+window._vatOpenHistory = async function(id) {
+  try {
+    const data = await api('GET', `/api/vat-excel/history/${id}`);
+    window._vat.analysis = data;
+    window._vat.tab = 'dashboard';
+    window._vat.overrides = {};
+    _vatRender();
+  } catch(e) { alert('❌ ' + e.message); }
+};
+
+window._vatHistDownload = async function(id, period) {
+  const resp = await fetch(API + `/api/vat-excel/declaration/${id}`, {headers:{'Authorization':`Bearer ${token}`}});
+  if (!resp.ok) { alert('❌ فشل التحميل'); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`إقرار_${period}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
+};
+
+window._vatHistDelete = async function(id, btn) {
+  if (!confirm('حذف هذا التحليل نهائياً؟')) return;
+  btn.disabled = true;
+  try {
+    await api('DELETE', `/api/vat-excel/history/${id}`);
+    // Re-render history
+    _vatRenderHistory(document.getElementById('_vatContent'));
+  } catch(e) { alert('❌ '+e.message); btn.disabled=false; }
+};
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function _vatFmtMoney(v) {
+  if (v === null || v === undefined) return '—';
+  return (+v).toLocaleString('ar-EG', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ── VAT RETURNS (client-specific, preserved) ──────────────────────────────────
 
 // ── VAT Status config ────────────────────────────────────
 const VAT_STATUS = {
@@ -5622,194 +6315,6 @@ window.tcVatBuildManual = async function() {
     await _tcVatLoadList();
   } catch(e) { toast(e.message, 'error'); }
 };
-
-// ── ETA Excel Import ─────────────────────────────────────────────────────────
-window.tcVatExcelModal = function() {
-  const mo = document.createElement('div');
-  mo.className = 'modal-overlay'; mo.id = 'etaImportModal';
-  mo.innerHTML = `
-  <div class="modal" style="max-width:560px;width:100%">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <div>
-        <div style="font-size:17px;font-weight:800;color:#1e293b">📊 استيراد من بوابة الفواتير الإلكترونية</div>
-        <div style="font-size:12px;color:#64748b;margin-top:2px">حمّل ملف الـ Excel من موقع ETA واستيراد الإقرار تلقائياً</div>
-      </div>
-      <button onclick="document.getElementById('etaImportModal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">×</button>
-    </div>
-
-    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 14px;font-size:12px;color:#0369a1;margin-bottom:16px;line-height:1.7">
-      <strong>كيفية الحصول على الملف:</strong><br>
-      ١. سجّل دخول في بوابة الفواتير الإلكترونية → الفواتير → تصدير<br>
-      ٢. اختر الفترة (الشهر المطلوب) وحمّل بصيغة <strong>Excel (.xlsx)</strong><br>
-      ٣. ارفع الملف هنا وسيُبنى الإقرار تلقائياً
-    </div>
-
-    <div style="margin-bottom:14px">
-      <label style="font-size:13px;font-weight:700;color:#374151;display:block;margin-bottom:6px">الملف (.xlsx)</label>
-      <input type="file" id="etaFile" accept=".xlsx,.xls"
-        style="width:100%;padding:10px;border:2px dashed #cbd5e1;border-radius:10px;font-size:13px;cursor:pointer;background:#f8fafc">
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div>
-        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">السنة (اختياري — تُستنتج من الملف)</label>
-        <input type="number" id="etaYear" value="${_tcYear}" min="2020" max="2035"
-          style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
-      </div>
-      <div>
-        <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">الشهر (اختياري)</label>
-        <select id="etaMonth" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
-          ${Array.from({length:12},(_,i)=>`<option value="${i+1}"${i+1===_tcMonth?' selected':''}>${TC_MONTH_AR[i+1]}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;margin-bottom:20px;cursor:pointer">
-      <input type="checkbox" id="etaForce" checked style="width:15px;height:15px">
-      إعادة بناء الإقرار لو كان موجود مسبقاً
-    </label>
-
-    <div id="etaProgress" style="display:none;text-align:center;padding:20px;color:#64748b">
-      <div class="spinner" style="margin:0 auto 10px"></div>جاري المعالجة...
-    </div>
-
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button onclick="document.getElementById('etaImportModal').remove()" class="btn btn-secondary">إلغاء</button>
-      <button onclick="tcVatImportEta()" class="btn btn-primary" id="etaImportBtn">⚡ استيراد وبناء الإقرار</button>
-    </div>
-  </div>`;
-  document.body.appendChild(mo);
-};
-
-window.tcVatImportEta = async function() {
-  const fileInput = document.getElementById('etaFile');
-  if (!fileInput?.files?.length) { toast('اختر ملف Excel أولاً', 'error'); return; }
-  const year  = parseInt(document.getElementById('etaYear')?.value) || _tcYear;
-  const month = parseInt(document.getElementById('etaMonth')?.value) || _tcMonth;
-  const force = document.getElementById('etaForce')?.checked ?? true;
-
-  document.getElementById('etaProgress').style.display = 'block';
-  document.getElementById('etaImportBtn').disabled = true;
-
-  try {
-    const fd = new FormData();
-    fd.append('file', fileInput.files[0]);
-    fd.append('client_id', String(_tcClientId));
-    fd.append('year', String(year));
-    fd.append('month', String(month));
-    fd.append('force_rebuild', force ? 'true' : 'false');
-
-    const resp = await fetch(getApiBase() + '/api/tax-center/vat/import-eta', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('ms_token') },
-      body: fd,
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(()=>({}));
-      throw new Error(err.detail || `HTTP ${resp.status}`);
-    }
-    const data = await resp.json();
-    document.getElementById('etaImportModal').remove();
-    _showEtaResult(data);
-    await _tcVatLoadList();
-  } catch(e) {
-    document.getElementById('etaProgress').style.display = 'none';
-    document.getElementById('etaImportBtn').disabled = false;
-    toast('❌ ' + e.message, 'error');
-  }
-};
-
-function _showEtaResult(data) {
-  const s = data.eta_summary || {};
-  const ret = data.vat_return || {};
-  const mo = document.createElement('div');
-  mo.className = 'modal-overlay'; mo.id = 'etaResultModal';
-
-  const clientRows = (data.top_clients || []).map(c =>
-    `<tr><td>${escH(c.name)}</td><td>${money(c.net)}</td><td style="color:#15803d">${money(c.vat)}</td><td>${c.count}</td></tr>`
-  ).join('') || `<tr><td colspan="4" style="text-align:center;color:#94a3b8">لا توجد مبيعات</td></tr>`;
-
-  const supplierRows = (data.top_suppliers || []).map(c =>
-    `<tr><td>${escH(c.name)}</td><td>${money(c.net)}</td><td style="color:#1a2472">${money(c.vat)}</td><td>${c.count}</td></tr>`
-  ).join('') || `<tr><td colspan="4" style="text-align:center;color:#94a3b8">لا توجد مشتريات</td></tr>`;
-
-  const netColor = (ret.net_vat_due||0) > 0 ? '#dc2626' : '#15803d';
-
-  mo.innerHTML = `
-  <div class="modal" style="max-width:780px;width:100%;max-height:90vh;overflow-y:auto">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <div>
-        <div style="font-size:17px;font-weight:800;color:#1e293b">✅ تم الاستيراد بنجاح — ${TC_MONTH_AR[data.period?.month]} ${data.period?.year}</div>
-        <div style="font-size:12px;color:#64748b">${s.total_invoices} فاتورة (${s.outgoing_count} صادرة · ${s.incoming_count} واردة)</div>
-      </div>
-      <button onclick="document.getElementById('etaResultModal').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b">×</button>
-    </div>
-
-    <!-- VAT Summary -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
-      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:14px;text-align:center">
-        <div style="font-size:11px;color:#15803d;font-weight:700;margin-bottom:4px">ضريبة المخرجات</div>
-        <div style="font-size:20px;font-weight:800;color:#15803d">${money(s.output_vat)}</div>
-        <div style="font-size:11px;color:#64748b">وعاء: ${money(s.output_taxable)}</div>
-      </div>
-      <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:12px;padding:14px;text-align:center">
-        <div style="font-size:11px;color:#1a2472;font-weight:700;margin-bottom:4px">ضريبة المدخلات</div>
-        <div style="font-size:20px;font-weight:800;color:#1a2472">${money(s.input_vat)}</div>
-        <div style="font-size:11px;color:#64748b">وعاء: ${money(s.input_taxable)}</div>
-      </div>
-      <div style="background:${(ret.net_vat_due||0)>0?'#fef2f2':'#f0fdf4'};border:1px solid ${(ret.net_vat_due||0)>0?'#fca5a5':'#86efac'};border-radius:12px;padding:14px;text-align:center">
-        <div style="font-size:11px;color:${netColor};font-weight:700;margin-bottom:4px">صافي الضريبة المستحقة</div>
-        <div style="font-size:22px;font-weight:900;color:${netColor}">${money(ret.net_vat_due||0)}</div>
-        <div style="font-size:11px;color:#64748b">استحقاق: ${dateAr(ret.due_date)}</div>
-      </div>
-    </div>
-
-    <!-- Top Clients -->
-    <div style="margin-bottom:16px">
-      <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px">🏆 أهم العملاء (المبيعات)</div>
-      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="background:#f8fafc">
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">العميل</th>
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">صافي المبيعات</th>
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">ض.ق.م.</th>
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">فواتير</th>
-          </tr></thead>
-          <tbody>${clientRows}</tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Top Suppliers -->
-    ${supplierRows.includes('لا توجد') ? '' : `
-    <div style="margin-bottom:16px">
-      <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px">🏭 أهم الموردين (المشتريات)</div>
-      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="background:#f8fafc">
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">المورد</th>
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">صافي المشتريات</th>
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">ض.ق.م.</th>
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#64748b">فواتير</th>
-          </tr></thead>
-          <tbody>${supplierRows}</tbody>
-        </table>
-      </div>
-    </div>`}
-
-    <div style="text-align:center;margin-top:16px">
-      <button onclick="document.getElementById('etaResultModal').remove();tcVatWorkflow(${ret.id})" class="btn btn-primary">
-        📋 فتح الإقرار ومتابعة سير العمل
-      </button>
-      <button onclick="document.getElementById('etaResultModal').remove()" class="btn btn-secondary" style="margin-right:8px">
-        إغلاق
-      </button>
-    </div>
-  </div>`;
-  document.body.appendChild(mo);
-}
-window.tcVatExcelModal = window.tcVatExcelModal;
-window.tcVatImportEta = window.tcVatImportEta;
 
 window.tcVatBuild = async function() {
   const btn = event?.target;
@@ -6177,13 +6682,13 @@ window.tcVatDoSubmit = async function(id) {
     const fd = new FormData();
     fd.append('file', window._vatPdfFile);
     if (_tcClientId) fd.append('client_id', _tcClientId);
-    fd.append('category', 'TAX');
+    fd.append('category', 'tax_return');
     fd.append('description', window._vatPdfFile.name);
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('ms_token');
     const uploadRes = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
-    if (!uploadRes.ok) { const err=await uploadRes.json(); throw new Error(err.detail||'فشل رفع الملف'); }
+    if (!uploadRes.ok) { const err=await uploadRes.json(); const msg=Array.isArray(err.detail)?err.detail[0]?.msg:err.detail; throw new Error(msg||'فشل رفع الملف'); }
     // Submit VAT return
     await api('POST', `/api/tax-center/vat/${id}/submit`, {submission_ref: ref});
     document.getElementById('vatSubmitModal')?.remove();
@@ -6356,16 +6861,16 @@ window.tcVatExcelUpload = async function() {
     const fd = new FormData();
     fd.append('file', window._vatExcelFile);
     if (_tcClientId) fd.append('client_id', _tcClientId);
-    fd.append('category', 'TAX');
+    fd.append('category', 'tax_return');
     fd.append('description', `فواتير ${typeLabel} — ${TC_MONTH_AR[month]} ${year} — ${escH(_tcClientName||'')}`);
     fd.append('tags', `vat_invoices,${type},${year},${month}`);
     fd.append('year', year);
     fd.append('month', month);
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('ms_token');
     const res = await fetch(API + '/api/documents/upload', {
       method:'POST', headers:{'Authorization':'Bearer '+token}, body:fd
     });
-    if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'فشل الرفع'); }
+    if (!res.ok) { const err=await res.json(); const msg=Array.isArray(err.detail)?err.detail[0]?.msg:err.detail; throw new Error(msg||'فشل الرفع'); }
     toast(`✅ تم رفع ملف فواتير ${TC_MONTH_AR[month]} ${year} بنجاح`);
     document.getElementById('vatExcelModal')?.remove();
   } catch(e) {
@@ -7104,22 +7609,15 @@ async function loadReports() {
  * يتعامل مع: 01x... / 1x... / 201x... / +201x...
  */
 function toWAPhone(raw) {
-  const s = (raw || '').trim();
-  // Strip leading + or 00 to get pure digits
-  let d = s.startsWith('+') ? s.slice(1).replace(/\D/g, '') : s.replace(/\D/g, '');
-  if (d.startsWith('00')) d = d.slice(2);
+  let d = (raw || '').replace(/\D/g, ''); // احذف كل حرف غير رقمي
   if (!d) return null;
-  // International number: starts with + or 00 in original, use digits as-is
-  if (s.startsWith('+') || (raw||'').trim().startsWith('00')) return d;
-  // Egyptian: 20 + 10 digits (12 total) → use as-is
+  // إذا كان الرقم يبدأ بـ 20 وطوله 12 → صحيح مباشرة
   if (d.startsWith('20') && d.length === 12) return d;
-  // Egyptian local: 01XXXXXXXXX (11 digits) → add country code
+  // إذا بدأ بـ 0 وطوله 11 → 01XXXXXXXXX → نحذف الصفر ونضيف 20
   if (d.startsWith('0') && d.length === 11) return '20' + d.slice(1);
-  // Egyptian short: 1XXXXXXXXX (10 digits) → add country code
+  // إذا بدأ بـ 1 وطوله 10 → 1XXXXXXXXX → نضيف 20 مباشرة
   if (d.startsWith('1') && d.length === 10) return '20' + d;
-  // Already looks like an international number (≥11 digits starting with non-0/1)
-  if (d.length >= 10 && !d.startsWith('0') && !d.startsWith('1')) return d;
-  // Fallback: assume Egyptian
+  // أي حالة أخرى → احذف الأصفار الأولى وأضف 20
   return '20' + d.replace(/^0+/, '');
 }
 const LEAD_STATUS_COLORS={new:'#6b7280',interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
@@ -8665,7 +9163,6 @@ function _fmCaseCard(c) {
         <div style="display:flex;gap:6px">
           ${!c.is_completed?`<button onclick="showMoveStageModal(${c.id},'${c.current_stage}')" style="padding:5px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;font-size:11px;cursor:pointer;color:#1a2472;font-family:inherit">➜ التالية</button>`:''}
           <button onclick="showFormationDetail(${c.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;font-size:11px;cursor:pointer;color:#374151;font-family:inherit">📋 التفاصيل</button>
-          <button onclick="deleteFormationCase(${c.id},'${c.company_name.replace(/'/g,"\\'")}')" style="padding:5px 8px;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;font-size:11px;cursor:pointer;color:#dc2626;font-family:inherit" title="حذف الملف">🗑️</button>
         </div>
       </div>
     </div>
@@ -8681,22 +9178,6 @@ function _fmSearchChange(val) {
   _fmSearch = val;
   renderEstablishment();
 }
-
-window.deleteFormationCase = async function(caseId, companyName) {
-  const confirmed = await _SL.confirmDestructive({
-    title: 'حذف ملف التأسيس',
-    message: `سيتم حذف ملف "${companyName}" نهائياً. هل أنت متأكد؟`,
-    confirmText: '🗑️ نعم، احذف الملف',
-    backupNote: false,
-  });
-  if (!confirmed) return;
-  try {
-    await api('DELETE', `/api/formation/${caseId}`);
-    _fmData = _fmData.filter(c => c.id !== caseId);
-    toast('✅ تم حذف الملف');
-    renderEstablishment();
-  } catch(e) { toast(e.message, 'error'); }
-};
 
 // ── Move Stage Modal ──────────────────────────────
 function showMoveStageModal(caseId, currentStage) {
@@ -9153,58 +9634,25 @@ const FREQ_AR = {monthly:'شهري', quarterly:'ربعي', annual:'سنوي'};
 
 var oblStats={}, oblInstances=[], oblTab='upcoming', oblDays=30, oblClientFilter='', oblTypeFilter='', oblStatusFilter='', oblSearchQ='';
 let oblClientsCache=[];
-var oblPageTab = 'deadlines'; // 'deadlines' | 'companies'
-var oblCompSubTab = 'vat';    // 'vat' | 'payroll' | 'income' | 'insurance' | 'other'
-var oblAllClients = [];
 
 async function loadObligations(silent=false) {
   try {
-    const [stats, inst, clientsRaw] = await Promise.all([
+    const [stats, inst] = await Promise.all([
       api('GET', '/api/obligations/stats'),
-      api('GET', `/api/obligations/instances?days_ahead=${oblDays}&page_size=1000`),
-      api('GET', '/api/clients?page_size=500').catch(()=>({items:[]})),
+      api('GET', `/api/obligations/instances?days_ahead=${oblDays}&page_size=200`),
     ]);
     if (!stats) return;
     oblStats = stats;
     oblInstances = inst?.items || [];
-    oblAllClients = Array.isArray(clientsRaw) ? clientsRaw : (clientsRaw?.items || []);
     // Also refresh notifications badge
     loadNotifCount();
     renderObligations();
   } catch(e){ toast(e.message,'error'); }
 }
 
-function switchOblPageTab(tab) {
-  oblPageTab = tab;
-  renderObligations();
-}
-window.switchOblPageTab = switchOblPageTab;
-
-function switchOblCompSubTab(tab) {
-  oblCompSubTab = tab;
-  renderObligations();
-}
-window.switchOblCompSubTab = switchOblCompSubTab;
-
 function renderObligations() {
   const main = document.getElementById('main');
   main.className = 'page';
-
-  // Page-level tab switcher
-  const pageTabs = '<div style="display:flex;gap:4px;margin-bottom:18px;background:white;border:1.5px solid #e8edf3;border-radius:12px;padding:5px">'
-    + ['deadlines:📅 المواعيد والإنذارات', 'companies:🏢 الشركات المسجلة'].map(t=>{
-        const [id, label] = t.split(':');
-        const active = oblPageTab === id;
-        return '<button onclick="switchOblPageTab(\'' + id + '\')" style="flex:1;padding:8px 16px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s;'
-          + (active ? 'background:#1a2472;color:white;' : 'background:transparent;color:#64748b;') + '">' + label + '</button>';
-      }).join('')
-    + '</div>';
-
-  if (oblPageTab === 'companies') {
-    main.innerHTML = pageTabs + renderOblCompanies();
-    return;
-  }
-
   // Save focus state before re-render (search input loses focus on innerHTML replace)
   const _prevActive = document.activeElement;
   const _searchHadFocus = _prevActive && _prevActive.id === 'oblSearchInput';
@@ -9330,7 +9778,6 @@ function renderObligations() {
     const overdueG = grpItems.filter(i=>i.days_remaining<0).length;
     const soonG = grpItems.filter(i=>i.days_remaining>=0&&i.days_remaining<=7).length;
     const sorted = [...grpItems].sort((a,b)=>a.days_remaining-b.days_remaining);
-    const uniqueClientsG = new Set(grpItems.map(i=>i.client_id)).size;
 
     groupedSections += `
     <div class="card" style="overflow:hidden;margin-bottom:18px">
@@ -9340,7 +9787,7 @@ function renderObligations() {
           <div>
             <div style="font-size:14px;font-weight:800;color:${grp.color}">${grp.label}</div>
             <div style="font-size:11px;color:${grp.color}99;margin-top:1px">
-              ${uniqueClientsG} عميل
+              ${grpItems.length} عميل
               ${overdueG?`<span style="color:#dc2626;font-weight:700;margin-right:8px">• ${overdueG} متأخر</span>`:''}
               ${soonG?`<span style="color:#d97706;font-weight:700;margin-right:8px">• ${soonG} هذا الأسبوع</span>`:''}
             </div>
@@ -9385,90 +9832,12 @@ function renderObligations() {
     groupedSections = `<div class="card" style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:48px;margin-bottom:12px">✅</div><div style="font-size:15px">لا توجد التزامات بالفلاتر المختارة</div></div>`;
   }
 
-  main.innerHTML = pageTabs + kpiRow + toolbar + groupedSections;
+  main.innerHTML = kpiRow + toolbar + groupedSections;
   // Restore search focus after re-render
   if (_searchHadFocus) {
     const si = document.getElementById('oblSearchInput');
     if (si) { si.focus(); if (_searchCursor != null) try { si.setSelectionRange(_searchCursor, _searchCursor); } catch(_){} }
   }
-}
-
-function renderOblCompanies() {
-  const OBL_COMP_GROUPS = [
-    { id:'vat',       label:'🧾 ضريبة القيمة المضافة',       color:'#0369a1', bg:'#e0f2fe', border:'#7dd3fc', types:['vat_monthly','vat_quarterly'] },
-    { id:'payroll',   label:'💼 أسس توحيد المرتبات',         color:'#7c3aed', bg:'#f5f3ff', border:'#c4b5fd', types:['payroll_monthly','withholding_monthly'] },
-    { id:'income',    label:'📊 ضريبة الدخل',               color:'#b45309', bg:'#fffbeb', border:'#fcd34d', types:['income_annual','corporate_tax'] },
-    { id:'insurance', label:'🛡️ التأمينات الاجتماعية',      color:'#15803d', bg:'#f0fdf4', border:'#86efac', types:['insurance_monthly'] },
-    { id:'other',     label:'📋 التزامات أخرى',              color:'#475569', bg:'#f8fafc', border:'#cbd5e1', types:['stamp_quarterly','commercial_register_renewal','form_41'] },
-  ];
-
-  const activeClients = oblAllClients.filter(c => c.status === 'active');
-
-  // Sub-tabs
-  const subTabsHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">'
-    + OBL_COMP_GROUPS.map(g => {
-        const cnt = activeClients.filter(c => (c.tax_obligations||[]).some(t => g.types.includes(t))).length;
-        const active = oblCompSubTab === g.id;
-        return '<button onclick="switchOblCompSubTab(\'' + g.id + '\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px solid '
-          + (active ? g.color : '#e2e8f0') + ';border-radius:10px;background:' + (active ? g.bg : 'white') + ';color:'
-          + (active ? g.color : '#64748b') + ';font-size:12px;font-weight:' + (active ? '800' : '600') + ';cursor:pointer;font-family:inherit">'
-          + g.label + ' <span style="background:' + (active ? g.color : '#e2e8f0') + ';color:' + (active ? 'white' : '#64748b')
-          + ';border-radius:99px;padding:1px 7px;font-size:11px">' + cnt + '</span></button>';
-      }).join('')
-    + '</div>';
-
-  const grp = OBL_COMP_GROUPS.find(g => g.id === oblCompSubTab) || OBL_COMP_GROUPS[0];
-  const clients = activeClients.filter(c => (c.tax_obligations||[]).some(t => grp.types.includes(t)));
-
-  let rows = '';
-  if (clients.length === 0) {
-    rows = '<div style="text-align:center;padding:60px;color:#94a3b8"><div style="font-size:48px;margin-bottom:12px">🏢</div>'
-      + '<div style="font-size:15px;font-weight:600">لا توجد شركات مسجلة لهذا الالتزام</div>'
-      + '<div style="font-size:12px;margin-top:8px">افتح ملف الشركة وفعّل الالتزام المطلوب</div></div>';
-  } else {
-    rows = '<table style="width:100%;border-collapse:collapse">'
-      + '<thead><tr style="background:' + grp.bg + ';border-bottom:2px solid ' + grp.border + '">'
-      + '<th style="padding:10px 14px;text-align:right;font-size:12px;font-weight:700;color:' + grp.color + '">الشركة</th>'
-      + '<th style="padding:10px 14px;text-align:center;font-size:12px;font-weight:700;color:' + grp.color + '">الالتزامات الفعّالة</th>'
-      + '<th style="padding:10px 14px;text-align:center;font-size:12px;font-weight:700;color:' + grp.color + '">نوع الكيان</th>'
-      + '<th style="padding:10px 14px;text-align:center;font-size:12px;font-weight:700;color:' + grp.color + '">إجراءات</th>'
-      + '</tr></thead><tbody>'
-      + clients.map((c,i) => {
-          const bg = i % 2 === 0 ? 'white' : '#fafbff';
-          const myObls = (c.tax_obligations||[]).filter(t => grp.types.includes(t));
-          const allObls = (c.tax_obligations||[]);
-          const oblBadges = allObls.map(t => '<span style="background:#eef1fb;color:#1a2472;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;display:inline-block;margin:1px">' + (OBL_NAME_AR[t]||t) + '</span>').join('');
-          const entityMap = {llc:'ذ.م.م',one_person:'شخص واحد',sole:'فردية',limited_partnership:'توصية بسيطة',joint_stock:'مساهمة',partnership:'تضامن',individual:'فرد'};
-          return '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9">'
-            + '<td style="padding:10px 14px"><div style="font-weight:700;color:#1e293b;font-size:13px">' + escH(c.name||'—') + '</div>'
-            + (c.activity ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">' + escH(c.activity) + '</div>' : '') + '</td>'
-            + '<td style="padding:8px 14px;text-align:center">' + oblBadges + '</td>'
-            + '<td style="padding:8px 14px;text-align:center;font-size:12px;color:#64748b">' + escH(entityMap[c.client_type]||c.client_type||'—') + '</td>'
-            + '<td style="padding:8px 14px;text-align:center"><button onclick="showClientModal(' + c.id + ')" style="background:#eef1fb;color:#1a2472;border:1px solid #c7d3ef;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">✏️ تعديل الالتزامات</button></td>'
-            + '</tr>';
-        }).join('')
-      + '</tbody></table>';
-  }
-
-  // Summary stats
-  const totalReg = activeClients.filter(c => (c.tax_obligations||[]).length > 0).length;
-  const totalActive = activeClients.length;
-  const statsRow = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">'
-    + OBL_COMP_GROUPS.map(g => {
-        const cnt = activeClients.filter(c => (c.tax_obligations||[]).some(t => g.types.includes(t))).length;
-        return '<div class="stat-card" style="padding:14px;cursor:pointer;border:2px solid ' + (oblCompSubTab===g.id ? g.color : 'transparent') + '" onclick="switchOblCompSubTab(\'' + g.id + '\')">'
-          + '<div style="font-size:22px;font-weight:800;color:' + g.color + '">' + cnt + '</div>'
-          + '<div style="font-size:11px;color:#64748b;margin-top:3px">' + g.label + '</div></div>';
-      }).join('')
-    + '</div>';
-
-  return statsRow + subTabsHtml
-    + '<div class="card" style="overflow:hidden">'
-    + '<div style="padding:14px 18px;background:' + grp.bg + ';border-bottom:2px solid ' + grp.border + ';display:flex;align-items:center;justify-content:space-between">'
-    + '<div style="font-size:14px;font-weight:800;color:' + grp.color + '">' + grp.label + '</div>'
-    + '<div style="font-size:12px;color:' + grp.color + '99">' + clients.length + ' شركة مسجلة</div>'
-    + '</div>'
-    + '<div style="overflow-x:auto">' + rows + '</div></div>';
 }
 
 async function runBulkGenerate() {
@@ -9693,6 +10062,23 @@ let _fmOblExpanded = {};  // case_id → bool
 const FMO_STATUS_LABEL = {not_started:'لم يبدأ', in_progress:'جاري', completed:'مكتمل', late:'متأخر'};
 const FMO_STATUS_COLOR = {not_started:'#94a3b8', in_progress:'#f59e0b', completed:'#10b981', late:'#ef4444'};
 const FMO_STATUS_BG    = {not_started:'#f1f5f9', in_progress:'#fffbeb', completed:'#f0fdf4', late:'#fef2f2'};
+
+
+window.deleteFormationCase = async function(caseId, companyName) {
+  const confirmed = await _SL.confirmDestructive({
+    title: 'حذف ملف التأسيس',
+    message: `سيتم حذف ملف "${companyName}" نهائياً. هل أنت متأكد؟`,
+    confirmText: '🗑️ نعم، احذف الملف',
+    backupNote: false,
+  });
+  if (!confirmed) return;
+  try {
+    await api('DELETE', `/api/formation/${caseId}`);
+    _fmData = _fmData.filter(c => c.id !== caseId);
+    toast('✅ تم حذف الملف');
+    renderEstablishment();
+  } catch(e) { toast(e.message, 'error'); }
+};
 
 async function loadFormationObligations(silent=false) {
   if(!silent){const m=document.getElementById('main');if(m)m.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';}
@@ -13125,20 +13511,19 @@ window.markLeadUnderEstablishment = markLeadUnderEstablishment;
 
 // ── صفحة عملاء تحت التأسيس ────────────────────────────────────────────────────
 async function loadUnderEstablishmentClients(silent) {
-  const _main = document.getElementById('main');
-  if(!silent && _main) _main.innerHTML = '<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
+  if(!silent) showPageLoading();
   var data;
   try {
     data = await api('GET', '/api/leads?status=under_establishment&limit=500');
   } catch(err) {
-    if(_main) _main.innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">فشل تحميل البيانات: ' + (err.message||err) + '</div>';
+    setPageContent('<div style="padding:40px;text-align:center;color:#ef4444">فشل تحميل البيانات: ' + (err.message||err) + '</div>');
     return;
   }
   var leads = Array.isArray(data) ? data : (data.items || data.leads || []);
   try {
     renderUnderEstablishmentClients(leads);
   } catch(err2) {
-    if(_main) _main.innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444">خطأ في عرض البيانات: ' + (err2.message||err2) + '</div>';
+    setPageContent('<div style="padding:40px;text-align:center;color:#ef4444">خطأ في عرض البيانات: ' + (err2.message||err2) + '</div>');
   }
 }
 
@@ -13193,8 +13578,7 @@ function renderUnderEstablishmentClients(leads) {
     + '</tr></thead><tbody>'
     + leads.map(_ueRow).join('')
     + '</tbody></table></div>';
-  const _m = document.getElementById('main');
-  if(_m) _m.innerHTML = '<div style="padding:20px">'
+  setPageContent('<div style="padding:20px">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">'
     + '<div><h2 style="margin:0;font-size:22px;font-weight:800;color:#0891b2">⭐ عملاء تحت التأسيس</h2>'
     + '<p style="margin:4px 0 0;font-size:13px;color:#64748b">العملاء الذين بدأت معهم إجراءات التأسيس الفعلية</p></div>'
@@ -13210,7 +13594,7 @@ function renderUnderEstablishmentClients(leads) {
     + '<div class="stat-card"><div style="font-size:24px;font-weight:800;color:#0891b2">' + withName + '</div><div style="font-size:11px;color:#64748b;margin-top:2px">اسم مقترح 🏷️</div></div>'
     + '</div>'
     + (count === 0 ? emptyHtml : tableHtml)
-    + '</div>';
+    + '</div>');
 }
 
 async function ueEditNotes(id, currentNotes) {
@@ -13255,8 +13639,8 @@ async function revertLeadToLead(id) {
 }
 
 function sendUEWhatsApp(id, phone) {
-  const p = toWAPhone(phone);
-  if(!p) { toast('لا يوجد رقم هاتف', 'warning'); return; }
+  if(!phone) { toast('لا يوجد رقم هاتف', 'warning'); return; }
+  const p = phone.startsWith('0') ? '2' + phone : (phone.startsWith('20') ? phone : '20'+phone);
   window.open(`https://wa.me/${p}`, '_blank');
 }
 
@@ -20699,7 +21083,7 @@ async function renderMFPage() {
   ]);
   _mfAllRecords = records;
   window._mfLastDash = dash;
-  // Build phone map from mf_clients (has correct phones per Excel)
+  // Build phone map from mf_clients
   _mfClientsMap = {};
   (Array.isArray(mfClients) ? mfClients : []).forEach(c => {
     _mfClientsMap[c.id] = {phone: c.phone, name: c.name};
@@ -20964,6 +21348,7 @@ window.mfFilterChange = function() {
   renderMFPage();
 };
 
+
 // ── WhatsApp Reminder System ──────────────────────────────────────────────────
 
 function _mfGetOverdueInfo(r) {
@@ -21100,6 +21485,8 @@ window.mfSendWA = function(phone) {
 window.mfOpenWA = window.mfOpenWA;
 
 window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
+
+window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
   document.getElementById('mfPayModalEl')?.remove();
   const isEdit = (currentPaid||0) > 0;
   // remaining relative to totalDue (not to previous partial)
@@ -21192,33 +21579,13 @@ window.mfPayPreview = function(totalDue, currentPaid) {
 };
 
 window.mfResetPay = async function(recordId, clientName) {
-  const confirmed = await _SL.confirmDestructive({
-    title: 'إلغاء الدفعة',
-    message: `هل تريد إلغاء الدفعة المسجلة لـ "${clientName}"؟ سيتم إرجاع الحالة إلى "غير مدفوع".`,
-    confirmText: '↩️ نعم، إلغاء الدفعة',
-    backupNote: false,
-  });
-  if (!confirmed) return;
-  // Capture current state for undo
-  const current = _mfAllRecords.find(r => r.id === recordId);
-  const prevPaid = current?.paid_amount || 0;
-  const prevDate = current?.paid_date || null;
-  const prevBayan = current?.bayan || '';
+  if(!confirm(`هل تريد حذف الدفعة لـ ${clientName}؟`)) return;
   try {
     await api('PUT', `/api/monthly-fees/records/${recordId}/pay`,
       {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'},
       {queue:true, queueLabel:'إلغاء دفعة أتعاب'});
-    toast('تم إلغاء الدفعة', 'success');
+    toast('تم حذف الدفعة', 'success');
     _mfUpdateLocalRecord(recordId, {paid_amount:0, paid_date:null, bayan:'لم يتم الدفع'});
-    _SL.log({
-      action: 'reset_pay', entity: 'monthly_fee', entityId: recordId,
-      label: `إلغاء دفعة ${clientName} (كان ${prevPaid.toLocaleString('ar-EG')} ج.م)`,
-      canUndo: true,
-      undoFn: async () => {
-        await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount:prevPaid, paid_date:prevDate, bayan:prevBayan});
-        _mfUpdateLocalRecord(recordId, {paid_amount:prevPaid, paid_date:prevDate, bayan:prevBayan});
-      }
-    });
   } catch(e) {
     if (e._queued) { toast('⏳ '+e.message, 'warning'); _mfUpdateLocalRecord(recordId, {paid_amount:0, paid_date:null}); }
     else toast(e.message, 'error');
@@ -21241,17 +21608,8 @@ window.mfSavePay = async function(recordId, totalDue, currentPaid) {
       {queue: true, queueLabel: 'تسجيل دفعة أتعاب'});
     document.getElementById('mfPayModalEl')?.remove();
     toast('✅ تم تسجيل الدفعة');
+    // Instant local update — no full page refresh
     _mfUpdateLocalRecord(recordId, {paid_amount: amount, paid_date: pdate||null, bayan});
-    const prevPaidForUndo = currentPaid || 0;
-    _SL.log({
-      action: 'pay', entity: 'monthly_fee', entityId: recordId,
-      label: `دفعة ${(amount).toLocaleString('ar-EG')} ج.م`,
-      canUndo: true,
-      undoFn: async () => {
-        await api('PUT', `/api/monthly-fees/records/${recordId}/pay`, {paid_amount: prevPaidForUndo, paid_date: null, bayan: 'لم يتم الدفع'});
-        _mfUpdateLocalRecord(recordId, {paid_amount: prevPaidForUndo, paid_date: null, bayan: 'لم يتم الدفع'});
-      }
-    });
   } catch(e) {
     if (e._queued) {
       document.getElementById('mfPayModalEl')?.remove();
@@ -21473,15 +21831,6 @@ window.mfQuickPay = async function(recordId, totalDue, clientName, remaining, cu
       {queue: true, queueLabel: 'دفع سريع أتعاب'});
     toast('✅ تم التسجيل');
     _mfUpdateLocalRecord(recordId, {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'});
-    _SL.log({
-      action: 'pay', entity: 'monthly_fee', entityId: recordId,
-      label: `دفع سريع ${clientName} — ${(remaining||0).toLocaleString('ar-EG')} ج.م`,
-      canUndo: true,
-      undoFn: async () => {
-        await api('PUT', '/api/monthly-fees/records/' + recordId + '/pay', {paid_amount: currentPaid||0, paid_date: null, bayan: 'لم يتم الدفع'});
-        _mfUpdateLocalRecord(recordId, {paid_amount: currentPaid||0, paid_date: null, bayan: 'لم يتم الدفع'});
-      }
-    });
   } catch(e) {
     if (e._queued) { toast('⏳ ' + e.message, 'warning'); _mfUpdateLocalRecord(recordId, {paid_amount: newPaid, paid_date: pdate, bayan: 'تم دفع'}); }
     else toast(e.message, 'error');
@@ -21524,19 +21873,11 @@ window.mfDeleteClientModal = function(clientId, clientName) {
 };
 
 window.mfConfirmDeleteClient = async function(clientId, clientName, fromYear, fromMonth) {
-  // Extra safety gate for delete
-  const gate = await _SL.confirmDestructive({
-    title: 'تأكيد أرشفة الشركة',
-    message: `سيتم أرشفة "${clientName}" وحذف سجلاتها المستقبلية من ${fromMonth}/${fromYear}. البيانات التاريخية محفوظة.`,
-    confirmText: '🗑️ تأكيد الأرشفة',
-  });
-  if (!gate) return;
   try {
     const res = await api('DELETE', `/api/monthly-fees/clients/${clientId}?from_year=${fromYear}&from_month=${fromMonth}`);
     document.getElementById('mfDeleteClientModalEl')?.remove();
     document.getElementById('mfHistoryModal')?.remove();
     toast(`✅ تم أرشفة "${clientName}" وحذف ${res.deleted_records} سجل مستقبلي`);
-    _SL.log({ action: 'delete', entity: 'mf_client', entityId: clientId, label: `أرشفة ${clientName} من ${fromMonth}/${fromYear}` });
     await renderMFPage();
   } catch(e) { toast(e.message, 'error'); }
 };
@@ -22753,7 +23094,16 @@ window._cnShowAddRejected = _cnShowAddRejected;
 window._cnSaveManualReject = _cnSaveManualReject;
 window._cnDeleteRejected = _cnDeleteRejected;
 
-// ─── Health Check Page ────────────────────────────────────────────────────────
+// Register service worker for cache control
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/ms-accounting/sw.js', {scope: '/ms-accounting/'})
+    .catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'RELOAD') location.reload(true);
+  });
+}
+
+// ── Health Check ─────────────────────────────────────────
 async function loadHealthCheck() {
   const el = document.getElementById('page');
   el.innerHTML = `<div style="padding:24px;max-width:960px;margin:0 auto">
@@ -22870,14 +23220,7 @@ async function loadHealthCheck() {
 }
 window.loadHealthCheck = loadHealthCheck;
 
-// Register service worker for cache control
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/ms-accounting/sw.js', {scope: '/ms-accounting/'})
-    .catch(() => {});
-  navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data?.type === 'RELOAD') location.reload(true);
-  });
-}
+
 </script>
 
 </body>
