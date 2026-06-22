@@ -13,9 +13,19 @@ TEMPLATE="$ROOT/frontend/index.template.html"
 
 # ── Order matters — must match runtime dependency order ──────────────────────
 SOURCE_FILES=(
-  "01-core.js"
-  "02-monthly-fees.js"
-  "03-tail.js"
+  "01-infrastructure.js"    # API + auth + shell + navigate (1841 lines)
+  "02-dashboard.js"         # Dashboard (601 lines)
+  "03-clients.js"           # Clients (634 lines)
+  "04-invoices.js"          # Invoices (320 lines)
+  "05-tasks.js"             # Tasks (816 lines)
+  "06-documents.js"         # Documents (600 lines)
+  "07-vat.js"               # VAT / Tax (2429 lines)
+  "08-crm.js"               # CRM / Leads (1379 lines)
+  "09-formation.js"         # Formation (565 lines)
+  "10-obligations.js"       # Obligations (969 lines)
+  "11-rest.js"              # Remaining pages (10486 lines)
+  "02-monthly-fees.js"      # Monthly Fees module (918 lines)
+  "03-tail.js"              # Tail / language / daily-revenues (1246 lines)
 )
 
 echo "╔══════════════════════════════════════════════════╗"
