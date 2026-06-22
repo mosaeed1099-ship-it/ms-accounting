@@ -21116,8 +21116,8 @@ function _mfRecomputeDash(records) {
   s.total_paid      = records.reduce((a,r)=>a+(r.paid_amount||0), 0);
   s.total_remaining = records.reduce((a,r)=>a+(r.remaining||0), 0);
   s.collection_pct  = s.total_due > 0 ? (s.total_paid / s.total_due * 100) : 0;
-  dash.clients.paid_this_month   = records.filter(r=>r.paid).length;
-  dash.clients.unpaid_this_month = records.filter(r=>!r.paid).length;
+  dash.clients.paid_this_month   = records.filter(r=>_mfStatus(r)==='paid').length;
+  dash.clients.unpaid_this_month = records.filter(r=>_mfStatus(r)==='unpaid' || _mfStatus(r)==='overdue').length;
   dash.top_debtors = records
     .filter(r=>r.remaining>0)
     .sort((a,b)=>(b.remaining||0)-(a.remaining||0))
