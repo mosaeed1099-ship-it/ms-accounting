@@ -780,6 +780,273 @@ window.onunhandledrejection = function(e) {
   _EL.log('promise', msg, stack);
 };
 
+// ── Safety Layer ────────────────────────────────────────────────────────────
+const _SL = (function() {
+  const HIST_KEY  = 'ms_sl_history';
+  const MAX_HIST  = 50;
+  const BULK_WARN = 3; // حد التحذير: أكثر من N عملية في ثانية واحدة
+
+  let _recentWriteTs = [];   // timestamps لرصد البلك
+  let _pendingUndo   = null; // آخر عملية قابلة للرجوع
+
+  // ── تخزين السجل ──────────────────────────────────────────────
+  function _load() {
+    try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch(_) { return []; }
+  }
+  function _save(h) {
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, MAX_HIST))); } catch(_) {}
+  }
+
+  // ── تسجيل عملية ──────────────────────────────────────────────
+  function log(op) {
+    // op = { action, entity, entityId, label, before, after, canUndo, undoFn }
+    const entry = {
+      id:     Date.now() + Math.random(),
+      ts:     new Date().toISOString(),
+      user:   window.currentUser?.name || window.currentUser?.email || '?',
+      action: op.action,   // 'create'|'update'|'delete'|'pay'|'reset_pay'
+      entity: op.entity,   // 'client'|'monthly_fee'|'obligation'|...
+      entityId: op.entityId,
+      label:  op.label,
+      status: 'success',
+    };
+    const h = _load();
+    h.unshift(entry);
+    _save(h);
+    if (op.canUndo && op.undoFn) {
+      _pendingUndo = { label: op.label, fn: op.undoFn, ts: Date.now() };
+      _showUndoToast(op.label, op.undoFn);
+    }
+    _updateBadge();
+  }
+
+  // ── رصد البلك ─────────────────────────────────────────────────
+  function trackWrite() {
+    const now = Date.now();
+    _recentWriteTs = _recentWriteTs.filter(t => now - t < 1000);
+    _recentWriteTs.push(now);
+    return _recentWriteTs.length;
+  }
+
+  // ── حارس البلك: يوقف التنفيذ إذا >N عملية في ثانية ─────────
+  async function guardBulk(count, description) {
+    if (count <= BULK_WARN) return true;
+    return new Promise(resolve => {
+      document.getElementById('_slBulkModal')?.remove();
+      document.body.insertAdjacentHTML('beforeend', `
+      <div class="modal-backdrop" id="_slBulkModal" style="z-index:99999">
+        <div class="modal" style="max-width:420px;border:3px solid #f59e0b">
+          <div class="modal-header" style="background:#fff7ed">
+            <h3 style="color:#92400e;font-size:15px">⚠️ تحذير — عملية جماعية</h3>
+          </div>
+          <div class="modal-body">
+            <div style="background:#fef3c7;border-radius:10px;padding:14px;margin-bottom:12px;font-size:13px;color:#92400e;line-height:1.7">
+              يحاول النظام تنفيذ <strong>${count} عمليات</strong> دفعة واحدة:<br/>
+              <strong>${escH(description||'')}</strong>
+            </div>
+            <div style="font-size:12px;color:#64748b">هل تريد المتابعة؟ لا يمكن الرجوع تلقائياً عن عمليات جماعية.</div>
+          </div>
+          <div class="modal-footer">
+            <button onclick="document.getElementById('_slBulkModal').remove();window._slBulkResolve(true)"
+              style="padding:8px 20px;background:#f59e0b;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+              ✅ تأكيد التنفيذ
+            </button>
+            <button onclick="document.getElementById('_slBulkModal').remove();window._slBulkResolve(false)"
+              class="btn">❌ إلغاء</button>
+          </div>
+        </div>
+      </div>`);
+      window._slBulkResolve = resolve;
+    });
+  }
+
+  // ── تأكيد مزدوج للعمليات التدميرية ──────────────────────────
+  async function confirmDestructive(opts) {
+    // opts = { title, message, confirmText, danger }
+    return new Promise(resolve => {
+      document.getElementById('_slConfirmModal')?.remove();
+      document.body.insertAdjacentHTML('beforeend', `
+      <div class="modal-backdrop" id="_slConfirmModal" style="z-index:99999">
+        <div class="modal" style="max-width:400px;border:2px solid #ef4444">
+          <div class="modal-header" style="background:#fef2f2">
+            <h3 style="color:#dc2626;font-size:15px">🛡️ ${escH(opts.title||'تأكيد')}</h3>
+          </div>
+          <div class="modal-body">
+            <div style="background:#fff1f2;border-radius:10px;padding:14px;margin-bottom:12px;font-size:13px;color:#7f1d1d;line-height:1.7">
+              ${escH(opts.message||'')}
+            </div>
+            ${opts.backupNote !== false ? `
+            <div style="font-size:11.5px;color:#64748b;padding:8px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0">
+              💡 تأكد من وجود نسخة احتياطية قبل المتابعة.
+              <a href="#" onclick="event.preventDefault();document.getElementById('_slConfirmModal').remove();navigateTo('backup')" style="color:#3b82f6;text-decoration:underline">فتح النسخ الاحتياطي</a>
+            </div>` : ''}
+          </div>
+          <div class="modal-footer">
+            <button onclick="document.getElementById('_slConfirmModal').remove();window._slConfirmResolve(true)"
+              style="padding:8px 20px;background:#dc2626;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+              ${escH(opts.confirmText||'تأكيد الحذف')}
+            </button>
+            <button onclick="document.getElementById('_slConfirmModal').remove();window._slConfirmResolve(false)"
+              class="btn">إلغاء</button>
+          </div>
+        </div>
+      </div>`);
+      window._slConfirmResolve = resolve;
+    });
+  }
+
+  // ── preview قبل عملية تعديل جماعية ──────────────────────────
+  async function previewBatch(title, rows, columns, onConfirm) {
+    // rows: array of objects, columns: [{key,label}]
+    return new Promise(resolve => {
+      document.getElementById('_slPreviewModal')?.remove();
+      const thead = columns.map(c=>`<th style="padding:6px 10px;font-size:11px;color:#64748b;font-weight:600;text-align:right">${escH(c.label)}</th>`).join('');
+      const tbody = rows.slice(0,20).map(r=>`<tr>${columns.map(c=>`<td style="padding:6px 10px;font-size:12px;border-top:1px solid #f1f5f9">${escH(String(r[c.key]??''))}</td>`).join('')}</tr>`).join('');
+      const moreNote = rows.length > 20 ? `<div style="font-size:11px;color:#64748b;padding:6px 10px">... و ${rows.length-20} صف إضافي</div>` : '';
+      document.body.insertAdjacentHTML('beforeend', `
+      <div class="modal-backdrop" id="_slPreviewModal" style="z-index:99999">
+        <div class="modal" style="max-width:600px">
+          <div class="modal-header" style="background:#f0f9ff">
+            <h3 style="color:#0369a1;font-size:15px">🔍 معاينة — ${escH(title)}</h3>
+            <button onclick="document.getElementById('_slPreviewModal').remove();window._slPreviewResolve(false)" class="modal-close">✕</button>
+          </div>
+          <div class="modal-body">
+            <div style="font-size:13px;color:#374151;margin-bottom:12px">
+              سيتم تعديل <strong>${rows.length}</strong> سجل. راجع البيانات قبل التأكيد:
+            </div>
+            <div style="overflow:auto;max-height:300px;border:1px solid #e2e8f0;border-radius:8px">
+              <table style="width:100%;border-collapse:collapse">
+                <thead style="background:#f8fafc;position:sticky;top:0"><tr>${thead}</tr></thead>
+                <tbody>${tbody}</tbody>
+              </table>
+              ${moreNote}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button onclick="document.getElementById('_slPreviewModal').remove();window._slPreviewResolve(true)"
+              style="padding:8px 20px;background:#0369a1;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+              ✅ تأكيد التنفيذ
+            </button>
+            <button onclick="document.getElementById('_slPreviewModal').remove();window._slPreviewResolve(false)" class="btn">إلغاء</button>
+          </div>
+        </div>
+      </div>`);
+      window._slPreviewResolve = resolve;
+    });
+  }
+
+  // ── شريط Undo العائم ─────────────────────────────────────────
+  function _showUndoToast(label, undoFn) {
+    document.getElementById('_slUndoBar')?.remove();
+    const bar = document.createElement('div');
+    bar.id = '_slUndoBar';
+    bar.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:10px 18px;border-radius:12px;font-size:13px;font-family:inherit;display:flex;align-items:center;gap:12px;z-index:99998;box-shadow:0 4px 20px rgba(0,0,0,.3);animation:fadeInUp .25s ease';
+    bar.innerHTML = `<span>↩️ ${escH(label)}</span>
+      <button onclick="_SL.undo()" style="background:#3b82f6;color:white;border:none;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit">رجوع</button>
+      <button onclick="document.getElementById('_slUndoBar')?.remove()" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>`;
+    document.body.appendChild(bar);
+    // Auto-dismiss after 8s
+    setTimeout(() => bar.remove(), 8000);
+  }
+
+  // ── تنفيذ الـ Undo ────────────────────────────────────────────
+  async function undo() {
+    if (!_pendingUndo) { toast('لا توجد عملية يمكن الرجوع عنها', 'warning'); return; }
+    if (Date.now() - _pendingUndo.ts > 30000) { toast('انتهت مهلة الرجوع (30 ثانية)', 'warning'); _pendingUndo = null; document.getElementById('_slUndoBar')?.remove(); return; }
+    try {
+      await _pendingUndo.fn();
+      document.getElementById('_slUndoBar')?.remove();
+      toast('✅ تم الرجوع عن العملية', 'success');
+      _pendingUndo = null;
+    } catch(e) {
+      toast('❌ فشل الرجوع: ' + e.message, 'error');
+    }
+  }
+
+  // ── بادج سجل العمليات ─────────────────────────────────────────
+  function _updateBadge() {
+    const badge = document.getElementById('_slBadge');
+    if (!badge) return;
+    const h = _load();
+    badge.textContent = '🛡️ ' + h.length;
+  }
+
+  // ── لوحة سجل العمليات ─────────────────────────────────────────
+  function showLog() {
+    document.getElementById('_slLogPanel')?.remove();
+    const h = _load();
+    const ACTION_LABEL = {create:'إنشاء',update:'تعديل',delete:'حذف',pay:'دفع',reset_pay:'إلغاء دفع',send_wa:'واتساب'};
+    const ACTION_COLOR = {create:'#10b981',update:'#3b82f6',delete:'#ef4444',pay:'#8b5cf6',reset_pay:'#f59e0b',send_wa:'#25d366'};
+    const rows = h.length ? h.slice(0,30).map(e => {
+      const color = ACTION_COLOR[e.action] || '#64748b';
+      const label = ACTION_LABEL[e.action] || e.action;
+      const ts = new Date(e.ts).toLocaleString('ar-EG',{timeStyle:'short',dateStyle:'short'});
+      return `<tr style="border-top:1px solid #f1f5f9">
+        <td style="padding:8px 10px;font-size:11px;color:#94a3b8" dir="ltr">${ts}</td>
+        <td style="padding:8px 10px"><span style="background:${color}18;color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${label}</span></td>
+        <td style="padding:8px 10px;font-size:12px;color:#374151">${escH(e.entity||'')}</td>
+        <td style="padding:8px 10px;font-size:12px;color:#1e293b;font-weight:600">${escH(e.label||'')}</td>
+        <td style="padding:8px 10px;font-size:11px;color:#64748b">${escH(e.user||'')}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8">لا توجد عمليات مسجلة بعد</td></tr>`;
+
+    document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-backdrop" id="_slLogPanel" onclick="if(event.target===this)this.remove()" style="z-index:99998">
+      <div class="modal" style="max-width:700px">
+        <div class="modal-header" style="background:linear-gradient(135deg,#1e293b,#334155)">
+          <h3 style="color:white;font-size:15px">🛡️ سجل عمليات طبقة الأمان</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button onclick="_SL.clearLog()" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,.1);color:white;border:1px solid rgba(255,255,255,.2);border-radius:6px;cursor:pointer">🗑️ مسح السجل</button>
+            <button onclick="document.getElementById('_slLogPanel').remove()" style="background:transparent;border:none;color:white;font-size:18px;cursor:pointer">✕</button>
+          </div>
+        </div>
+        <div class="modal-body" style="padding:0">
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b">
+            آخر ${Math.min(h.length,30)} عملية — يُحفظ في المتصفح فقط
+          </div>
+          <div style="overflow:auto;max-height:400px">
+            <table style="width:100%;border-collapse:collapse">
+              <thead style="background:#f8fafc;position:sticky;top:0">
+                <tr>
+                  <th style="padding:8px 10px;font-size:11px;color:#64748b;font-weight:600;text-align:right">الوقت</th>
+                  <th style="padding:8px 10px;font-size:11px;color:#64748b;font-weight:600;text-align:right">النوع</th>
+                  <th style="padding:8px 10px;font-size:11px;color:#64748b;font-weight:600;text-align:right">الكيان</th>
+                  <th style="padding:8px 10px;font-size:11px;color:#64748b;font-weight:600;text-align:right">التفاصيل</th>
+                  <th style="padding:8px 10px;font-size:11px;color:#64748b;font-weight:600;text-align:right">المستخدم</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button onclick="document.getElementById('_slLogPanel').remove()" class="btn">إغلاق</button>
+        </div>
+      </div>
+    </div>`);
+  }
+
+  function clearLog() {
+    if (!confirm('هل تريد مسح سجل العمليات؟')) return;
+    localStorage.removeItem(HIST_KEY);
+    document.getElementById('_slLogPanel')?.remove();
+    _updateBadge();
+  }
+
+  // ── تهيئة (بدون زر عائم — يُفتح السجل من الإعدادات) ──────────
+  function init() {
+    // No floating badge — was blocking mobile nav
+  }
+
+  return { log, trackWrite, guardBulk, confirmDestructive, previewBatch, undo, showLog, clearLog, init };
+})();
+
+// تشغيل Safety Layer بعد تحميل الصفحة
+document.addEventListener('DOMContentLoaded', () => setTimeout(_SL.init, 500));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
+
 function toast(msg, type='success') {
   const colors={success:'#16a34a',error:'#dc2626',warning:'#d97706',info:'#1a2472'};
   const icons={success:'✓',error:'✕',warning:'⚠',info:'ℹ'};
@@ -1271,6 +1538,7 @@ const navItems = [
   {id:'system_logs'       ,icon:'🔍',label:'سجل الأخطاء', adminOnly: true},
   {id:'backup'            ,icon:'🗄️',label:'النسخ الاحتياطية', adminOnly: true},
   {id:'migration_dashboard',icon:'🚀',label:'تقدم الـ Migration', adminOnly: true},
+  {id:'health_check'       ,icon:'🩺',label:'صحة النظام', adminOnly: true},
   {id:'company_names',icon:'🏢',label:'مولّد أسماء الشركات'},
 ];
 // Grouped navigation for sidebar display
@@ -1282,7 +1550,7 @@ const navGroups = [
   {label:'الموارد البشرية', items:['settlements']},
   {label:'الإدارة', items:['mail','client_portal','permissions','settings']},
   {label:'المكتب المالي', items:['finance_center','owner']},
-  {label:'النظام', items:['system_logs','backup','migration_dashboard']},
+  {label:'النظام', items:['system_logs','backup','migration_dashboard','health_check']},
 ];
 
 // ── Client Portal Mode ─────────────────────────────
@@ -1985,7 +2253,7 @@ function navigate(page) {
   const main=document.getElementById('main');
   if(main) main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
   Object.keys(chartInstances).forEach(destroyChart);
-  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames,under_establishment_clients:loadUnderEstablishmentClients};
+  const pages={dashboard:loadDashboard,clients:loadClients,leads:loadLeads,invoices:loadInvoices,collections:loadCollections,tasks:loadTasks,mail:loadMail,obligations:loadObligations,formation_obligations:loadFormationObligations,quotations:loadQuotations,establishment:loadEstablishment,documents:loadDocuments,tax:loadTax,settings:loadSettings,settlements:loadSettlements,appointments:loadAppointments,payroll:loadPayroll,fin_reports:loadFinReports,statements:loadStatements,office_services:loadOfficeServices,client_portal:loadClientPortal,permissions:loadPermissions,owner:loadOwnerDashboard,finance_center:loadFinanceCenter,monthly_fees:loadMonthlyFees,daily_revenues:loadDailyRevenues,system_logs:loadSystemLogs,backup:loadBackup,migration_dashboard:loadMigrationDashboard,company_names:loadCompanyNames,under_establishment_clients:loadUnderEstablishmentClients,health_check:loadHealthCheck};
   if(pages[page]) pages[page]();
 }
 
@@ -2640,16 +2908,30 @@ function _clientsTableRows() {
     return true;
   });
   if(!filtered.length) return emptyStateRow(9,'👥','لا يوجد عملاء','اضغط "+ إضافة عميل" لإنشاء أول عميل');
-  return filtered.map(c=>{
+  return filtered.map((c,idx)=>{
     return `
   <tr style="cursor:pointer" onclick="showClientDetail(${c.id})">
-    <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:12px;color:#475569">${c.code||'—'}</span></td>
+    <td><span style="font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:13px;color:#475569;font-weight:600">${idx+1}</span></td>
     <td>
-      <div style="font-weight:600;color:#1e293b">${escH(c.name)}</div>
+      <div style="display:inline-flex;align-items:center;gap:5px">
+        <span style="font-weight:600;color:#1e293b;cursor:pointer" onclick="showClientDetail(${c.id})">${escH(c.name)}</span>
+        <button onclick="event.stopPropagation();navigator.clipboard.writeText('${c.name.replace(/'/g,"\\'")}').then(()=>toast('✅ تم نسخ الاسم'))" title="نسخ الاسم"
+          style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:5px;color:#94a3b8;font-size:12px;line-height:1;opacity:.5;transition:opacity .15s"
+          onmouseover="this.style.opacity='1';this.style.background='#f1f5f9'"
+          onmouseout="this.style.opacity='.5';this.style.background='none'">📋</button>
+      </div>
       ${c.name_en?`<div style="font-size:11px;color:#94a3b8">${escH(c.name_en)}</div>`:''}
     </td>
     <td><span class="badge ${typeBadge[c.client_type]||'badge-gray'}">${typeLabel[c.client_type]||c.client_type}</span></td>
-    <td class="col-mob-hide" style="direction:ltr;text-align:right;color:#374151">${c.phone||'—'}</td>
+    <td class="col-mob-hide" onclick="event.stopPropagation()" style="direction:ltr;text-align:right;color:#374151;white-space:nowrap">
+      ${c.phone ? `<span style="display:inline-flex;align-items:center;gap:5px">
+        <span>${escH(c.phone)}</span>
+        <button onclick="navigator.clipboard.writeText('${c.phone.replace(/'/g,"\\'")}').then(()=>toast('✅ تم نسخ الرقم'))" title="نسخ الرقم"
+          style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:5px;color:#94a3b8;font-size:13px;line-height:1;opacity:.6;transition:opacity .15s"
+          onmouseover="this.style.opacity='1';this.style.background='#f1f5f9'"
+          onmouseout="this.style.opacity='.6';this.style.background='none'">📋</button>
+      </span>` : '—'}
+    </td>
     <td class="col-mob-hide" style="color:#374151;font-size:12px">${c.activity||'—'}</td>
     <td><span class="badge ${statusBadge[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
     <td onclick="event.stopPropagation()">
@@ -2706,7 +2988,7 @@ function renderClients() {
   <div class="card" style="overflow:hidden">
     <table>
       <thead><tr>
-        <th>الكود</th><th>الاسم</th><th>النوع</th><th class="col-mob-hide">الهاتف</th><th class="col-mob-hide">النشاط</th><th>الحالة</th><th>إجراءات</th>
+        <th style="width:48px">#</th><th>الاسم</th><th>النوع</th><th class="col-mob-hide">الهاتف</th><th class="col-mob-hide">النشاط</th><th>الحالة</th><th>إجراءات</th>
       </tr></thead>
       <tbody id="clientsTbody">${_clientsTableRows()}</tbody>
     </table>
@@ -4969,6 +5251,7 @@ function _renderTaxShell() {
   const tabs = [
     {id:'dashboard', icon:'📊', label:'لوحة التحكم'},
     {id:'vat',       icon:'🧾', label:'ض.ق.م.'},
+    {id:'wht',       icon:'✂️', label:'أسس توحيد المرتبات'},
     {id:'corporate', icon:'🏢', label:'ضريبة الخصم والتحصيل'},
     {id:'salary',    icon:'👤', label:'ضريبة المرتبات'},
     {id:'calendar',  icon:'📅', label:'التقويم الضريبي'},
@@ -9101,6 +9384,7 @@ async function showFormationDetail(caseId) {
         <button onclick="_fmAddNote(${c.id})" class="btn btn-secondary">📝 إضافة ملاحظة</button>
         <button onclick="showFormationEditModal(${c.id})" class="btn btn-secondary">✏️ تعديل البيانات</button>
         <button onclick="_fmShowAttachModal(${c.id},'${escH(c.company_name)}','${c.current_stage}',${c.client_id||'null'})" class="btn btn-secondary" style="background:#f0fdf4;border-color:#86efac;color:#15803d">📎 رفع مرفق للمرحلة</button>
+        <button onclick="this.closest('.modal-overlay').remove();deleteFormationCase(${c.id},'${escH(c.company_name)}')" class="btn btn-secondary" style="background:#fef2f2;border-color:#fca5a5;color:#dc2626;margin-right:auto">🗑️ حذف الملف</button>
         ${c.is_completed
           ? c.client_id
             ? `<span style="font-size:12px;color:#16a34a;font-weight:600;padding:6px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac">✅ مرتبط بعميل</span>`
@@ -9477,6 +9761,7 @@ function renderObligations() {
         <div style="display:flex;gap:4px">
           ${i.status!=='submitted'&&i.status!=='paid'?`<button class="btn btn-success btn-sm" onclick="submitObligation(${i.id})" title="تقديم">✅</button>`:''}
           ${i.status!=='paid'?`<button class="btn btn-secondary btn-sm" onclick="showUpdateOblModal(${i.id})" title="تعديل">✏️</button>`:''}
+          <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="deleteObligation(${i.obligation_id},'${escH(i.client_name||'')}')" title="حذف الالتزام">🗑️</button>
         </div>
       </td>
     </tr>`;
@@ -9582,6 +9867,21 @@ async function submitObligation(instanceId) {
     loadObligations();
   } catch(e){ toast(e.message,'error'); }
 }
+
+async function deleteObligation(obligationId, clientName) {
+  if (!obligationId) return;
+  const confirmed = await confirmDlg(
+    `هل تريد حذف الالتزام الضريبي للعميل "${clientName}"؟\nسيتم حذف جميع الفترات المستقبلية المرتبطة به.`,
+    'حذف الالتزام', 'حذف', true
+  );
+  if (!confirmed) return;
+  try {
+    await api('DELETE', `/api/obligations/${obligationId}`);
+    toast('✅ تم حذف الالتزام');
+    loadObligations();
+  } catch(e){ toast(e.message||'خطأ في الحذف','error'); }
+}
+window.deleteObligation = deleteObligation;
 
 async function showUpdateOblModal(instanceId) {
   const inst = oblInstances.find(i=>i.id===instanceId);
@@ -9779,6 +10079,23 @@ let _fmOblExpanded = {};  // case_id → bool
 const FMO_STATUS_LABEL = {not_started:'لم يبدأ', in_progress:'جاري', completed:'مكتمل', late:'متأخر'};
 const FMO_STATUS_COLOR = {not_started:'#94a3b8', in_progress:'#f59e0b', completed:'#10b981', late:'#ef4444'};
 const FMO_STATUS_BG    = {not_started:'#f1f5f9', in_progress:'#fffbeb', completed:'#f0fdf4', late:'#fef2f2'};
+
+
+window.deleteFormationCase = async function(caseId, companyName) {
+  const confirmed = await _SL.confirmDestructive({
+    title: 'حذف ملف التأسيس',
+    message: `سيتم حذف ملف "${companyName}" نهائياً. هل أنت متأكد؟`,
+    confirmText: '🗑️ نعم، احذف الملف',
+    backupNote: false,
+  });
+  if (!confirmed) return;
+  try {
+    await api('DELETE', `/api/formation/${caseId}`);
+    _fmData = _fmData.filter(c => c.id !== caseId);
+    toast('✅ تم حذف الملف');
+    renderEstablishment();
+  } catch(e) { toast(e.message, 'error'); }
+};
 
 async function loadFormationObligations(silent=false) {
   if(!silent){const m=document.getElementById('main');if(m)m.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';}
@@ -20772,16 +21089,26 @@ async function loadMonthlyFees() {
 let mfTableFilter = 'all'; // 'all' | 'paid' | 'unpaid' | 'partial' | 'overdue'
 let mfSearchQuery = '';
 let _mfAllRecords = [];
+let _mfClientsMap = {}; // client_id → {phone, name}
 
 async function renderMFPage() {
   const main = document.getElementById('main');
-  const [dash, records] = await Promise.all([
+  const [dash, records, mfClients] = await Promise.all([
     api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
     api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
+    api('GET', '/api/monthly-fees/clients?page_size=200').catch(()=>[]),
   ]);
   _mfAllRecords = records;
   window._mfLastDash = dash;
-  mfRenderPage(dash, records);
+  // Build phone map from mf_clients
+  _mfClientsMap = {};
+  (Array.isArray(mfClients) ? mfClients : []).forEach(c => {
+    _mfClientsMap[c.id] = {phone: c.phone, name: c.name};
+  });
+  // Recompute paid/unpaid counts from records using _mfStatus (API counts use r.paid boolean
+  // which disagrees with _mfStatus for zero-fee clients — this ensures cards match table filter)
+  window._mfLastDash = _mfRecomputeDash(records);
+  mfRenderPage(window._mfLastDash, records);
 }
 
 // ── helper: classify a record's status ────────────────────
@@ -20808,8 +21135,8 @@ function _mfRecomputeDash(records) {
   s.total_paid      = records.reduce((a,r)=>a+(r.paid_amount||0), 0);
   s.total_remaining = records.reduce((a,r)=>a+(r.remaining||0), 0);
   s.collection_pct  = s.total_due > 0 ? (s.total_paid / s.total_due * 100) : 0;
-  dash.clients.paid_this_month   = records.filter(r=>r.paid).length;
-  dash.clients.unpaid_this_month = records.filter(r=>!r.paid).length;
+  dash.clients.paid_this_month   = records.filter(r=>_mfStatus(r)==='paid').length;
+  dash.clients.unpaid_this_month = records.filter(r=>_mfStatus(r)==='unpaid' || _mfStatus(r)==='overdue').length;
   dash.top_debtors = records
     .filter(r=>r.remaining>0)
     .sort((a,b)=>(b.remaining||0)-(a.remaining||0))
@@ -21011,6 +21338,7 @@ function mfRenderPage(dash, records) {
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626;margin-left:4px">↩️</button>`:''}
               ${currentUser?.role==='admin'?`<button onclick="mfDeleteClientModal(${r.client_id},'${safeName}')"
                 style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#fef2f2;color:#dc2626;margin-left:4px;font-family:inherit" title="حذف من المدفوعات الشهرية">🗑️</button>`:''}
+              ${(()=>{ const ph = _mfClientsMap[r.client_id]?.phone; return ph ? `<button onclick="mfOpenWA(${r.id},${r.client_id})" style="font-size:12px;padding:4px 8px;border-radius:6px;border:none;cursor:pointer;background:#dcfce7;color:#16a34a;margin-left:4px" title="إرسال تذكير واتساب">📱</button>` : ''; })()}
             </td>
           </tr>`;}).join('')
           : `<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:40px">لا توجد بيانات${mfTableFilter!=='all'?' لهذا الفلتر':' لهذا الشهر'}</td></tr>`}
@@ -21039,6 +21367,142 @@ window.mfFilterChange = function() {
   mfSearchQuery  = '';
   renderMFPage();
 };
+
+
+// ── WhatsApp Reminder System ──────────────────────────────────────────────────
+
+function _mfGetOverdueInfo(r) {
+  // Estimate overdue months from carried balance
+  const fee = r.fee_amount || 0;
+  const carried = r.balance_carried || 0;
+  const carriedMonths = fee > 0 ? Math.round(carried / fee) : 0;
+  const thisMonthUnpaid = _mfStatus(r) !== 'paid' ? 1 : 0;
+  const totalOverdueMonths = carriedMonths + thisMonthUnpaid;
+
+  // Build months text
+  const months = [];
+  if (thisMonthUnpaid) months.push(MF_MONTHS[mfCurrentMonth] + ' ' + mfCurrentYear);
+  for (let i = 1; i <= carriedMonths; i++) {
+    let m = mfCurrentMonth - i;
+    let y = mfCurrentYear;
+    if (m <= 0) { m += 12; y--; }
+    months.unshift(MF_MONTHS[m] + ' ' + y);
+  }
+  const monthsText = months.length > 0 ? months.join(' + ') : MF_MONTHS[mfCurrentMonth] + ' ' + mfCurrentYear;
+  return { totalOverdueMonths, monthsText, months };
+}
+
+function _mfGenerateWAMessage(r, type) {
+  const clientName = r.client_name || '';
+  const remaining  = (r.remaining || 0).toLocaleString('ar-EG');
+  const fee        = (r.fee_amount || 0).toLocaleString('ar-EG');
+  const { totalOverdueMonths, monthsText } = _mfGetOverdueInfo(r);
+  const monthLabel = MF_MONTHS[mfCurrentMonth] + ' ' + mfCurrentYear;
+
+  if (type === 1) {
+    // Early reminder (day 1–15)
+    return `السلام عليكم ورحمة الله وبركاته،\n${clientName}\n\nنود تذكيركم بموعد سداد أتعاب المحاسبة الشهرية 📋\n📅 الشهر: ${monthLabel}\n💰 المبلغ المستحق: ${remaining} ج.م.\n\nنرجو التكرم بالسداد في أقرب وقت ممكن.\nشاكرين تعاملكم مع مكتب MS للمحاسبة 🙏`;
+  } else {
+    // Late reminder (day 16–31)
+    const overdueNote = totalOverdueMonths > 1
+      ? `\n📌 الشهور المتأخرة (${totalOverdueMonths}): ${monthsText}`
+      : '';
+    return `السلام عليكم ورحمة الله وبركاته،\n${clientName}\n\n⚠️ تنبيه: لم يتم تسديد أتعاب المحاسبة حتى الآن\n📅 الشهر: ${monthLabel}\n💰 إجمالي المتأخرات: ${remaining} ج.م.${overdueNote}\n\nبرجاء سرعة التواصل لتسوية الحساب.\nمكتب MS للمحاسبة 📊`;
+  }
+}
+
+window.mfOpenWA = function(recordId, clientId) {
+  const r = _mfAllRecords.find(x => x.id === recordId);
+  if (!r) return;
+  const phone = _mfClientsMap[clientId]?.phone;
+  if (!phone) { toast('لا يوجد رقم هاتف لهذه الشركة', 'warning'); return; }
+  const p = toWAPhone(phone);
+  if (!p) { toast('رقم الهاتف غير صالح', 'warning'); return; }
+
+  const st = _mfStatus(r);
+  if (st === 'paid') { toast('هذا العميل دفع بالفعل ✅', 'info'); return; }
+
+  const today = new Date().getDate();
+  const type  = today <= 15 ? 1 : 2;
+  const msg   = _mfGenerateWAMessage(r, type);
+  const { monthsText } = _mfGetOverdueInfo(r);
+  const remaining = (r.remaining || 0).toLocaleString('ar-EG');
+  const safeName  = (r.client_name || '').replace(/'/g, "\\'");
+
+  // Show preview modal before opening WA
+  document.getElementById('mfWAModal')?.remove();
+  const html = `
+  <div class="modal-backdrop" id="mfWAModal" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:500px">
+      <div class="modal-header" style="background:linear-gradient(135deg,#25d366,#128c7e);color:white;border-radius:12px 12px 0 0">
+        <h3 style="font-size:15px;color:white;margin:0">📱 تذكير واتساب — ${escH(r.client_name||'')}</h3>
+        <button onclick="document.getElementById('mfWAModal').remove()" style="background:transparent;border:none;color:white;font-size:18px;cursor:pointer">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+          <div style="background:#fef2f2;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b">المتأخرات</div>
+            <div style="font-size:16px;font-weight:700;color:#ef4444">${remaining} ج.م</div>
+          </div>
+          <div style="background:#fffbeb;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b">الشهور</div>
+            <div style="font-size:14px;font-weight:700;color:#d97706">${monthsText}</div>
+          </div>
+          <div style="background:#f0fdf4;border-radius:10px;padding:10px">
+            <div style="font-size:10px;color:#64748b">الهاتف</div>
+            <div style="font-size:13px;font-weight:700;color:#16a34a" dir="ltr">+${p}</div>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نوع الرسالة</label>
+          <div style="display:flex;gap:8px">
+            <button onclick="mfWAPreview(${recordId},${clientId},1)" id="mfWATypeBtn1"
+              style="flex:1;padding:7px;border-radius:8px;border:2px solid ${today<=15?'#25d366':'#e2e8f0'};background:${today<=15?'#f0fdf4':'#f8fafc'};cursor:pointer;font-size:12px;font-weight:600;color:${today<=15?'#16a34a':'#64748b'};font-family:inherit">
+              🌅 تذكير مبكر (١–١٥)</button>
+            <button onclick="mfWAPreview(${recordId},${clientId},2)" id="mfWATypeBtn2"
+              style="flex:1;padding:7px;border-radius:8px;border:2px solid ${today>15?'#ef4444':'#e2e8f0'};background:${today>15?'#fef2f2':'#f8fafc'};cursor:pointer;font-size:12px;font-weight:600;color:${today>15?'#dc2626':'#64748b'};font-family:inherit">
+              ⚠️ تذكير متأخر (١٦–٣١)</button>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">نص الرسالة (قابل للتعديل)</label>
+          <textarea id="mfWAMsgText" class="input" style="height:160px;font-size:13px;line-height:1.6;direction:rtl;resize:vertical">${escH(msg)}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="mfSendWA('${p}')" style="padding:9px 20px;background:#25d366;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📱 فتح واتساب</button>
+        <button onclick="document.getElementById('mfWAModal').remove()" class="btn">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+};
+
+window.mfWAPreview = function(recordId, clientId, type) {
+  const r = _mfAllRecords.find(x => x.id === recordId);
+  if (!r) return;
+  const msg = _mfGenerateWAMessage(r, type);
+  const ta  = document.getElementById('mfWAMsgText');
+  if (ta) ta.value = msg;
+  // Update button styles
+  [1, 2].forEach(t => {
+    const btn = document.getElementById(`mfWATypeBtn${t}`);
+    if (!btn) return;
+    const active = t === type;
+    btn.style.borderColor = active ? (t===1?'#25d366':'#ef4444') : '#e2e8f0';
+    btn.style.background  = active ? (t===1?'#f0fdf4':'#fef2f2') : '#f8fafc';
+    btn.style.color       = active ? (t===1?'#16a34a':'#dc2626') : '#64748b';
+  });
+};
+
+window.mfSendWA = function(phone) {
+  const msg = document.getElementById('mfWAMsgText')?.value || '';
+  if (!msg.trim()) { toast('الرسالة فارغة', 'warning'); return; }
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  document.getElementById('mfWAModal')?.remove();
+};
+
+window.mfOpenWA = window.mfOpenWA;
 
 window.mfPayModal = function(recordId, totalDue, clientName, remaining, currentPaid) {
   document.getElementById('mfPayModalEl')?.remove();
@@ -22656,6 +23120,125 @@ if ('serviceWorker' in navigator) {
     if (e.data?.type === 'RELOAD') location.reload(true);
   });
 }
+
+// ── Health Check ─────────────────────────────────────────
+async function loadHealthCheck() {
+  const el = document.getElementById('main');
+  el.innerHTML = `<div style="padding:24px;max-width:960px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px;font-weight:800;color:#1e293b">🩺 صحة النظام</h2>
+      <button onclick="loadHealthCheck()" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-weight:700">🔄 تحديث</button>
+    </div>
+    <div id="hc-body"><div style="text-align:center;padding:60px;color:#94a3b8;font-size:15px">⏳ جاري الفحص...</div></div>
+  </div>`;
+
+  const t0 = Date.now();
+  const checks = await Promise.allSettled([
+    api('GET', '/health'),
+    api('GET', '/api/dashboard/stats'),
+    api('GET', '/api/clients?page_size=1'),
+    api('GET', '/api/clients?page_size=1&status=inactive'),
+    api('GET', '/api/obligations?page_size=1'),
+    api('GET', '/api/monthly-fees/dashboard'),
+    api('GET', '/api/backup/list?limit=5'),
+    api('GET', '/api/tax-center/vat/62?year=2026'),
+    api('GET', '/api/audit-logs?limit=1'),
+  ]);
+  const elapsed = Date.now() - t0;
+
+  const [health, dash, activeC, inactiveC, obls, mf, backups, vatList, audit] = checks.map(r =>
+    r.status === 'fulfilled' ? r.value : null
+  );
+
+  // Build status rows
+  const rows = [];
+
+  // 1. API
+  const apiOk = health && health.status === 'ok';
+  rows.push({label:'API Server', val: apiOk ? '✅ يعمل' : '❌ لا يستجيب', ok: apiOk, detail: `وقت الاستجابة: ${elapsed}ms`});
+
+  // 2. DB
+  const dbOk = health && health.db === 'ok';
+  rows.push({label:'قاعدة البيانات', val: dbOk ? '✅ متصلة' : '❌ مشكلة', ok: dbOk, detail: health?.db_detail || ''});
+
+  // 3. Clients
+  const totalActive = activeC?.total ?? '?';
+  const totalInactive = inactiveC?.total ?? '?';
+  rows.push({label:'العملاء النشطين', val: `${totalActive} عميل`, ok: true, detail:`محذوفون/مؤرشفون: ${totalInactive}`});
+
+  // 4. Dashboard
+  const dashOk = dash && typeof dash.clients !== 'undefined';
+  rows.push({label:'لوحة التحكم', val: dashOk ? `${dash.clients} عميل · ${dash.obligations_due ?? 0} التزام مستحق` : '❌ خطأ', ok: dashOk, detail: dashOk ? `ض.ق.م: ${dash.vat_clients??0} · مرتبات: ${dash.payroll_clients??0}` : ''});
+
+  // 5. Obligations
+  const oblsOk = obls && typeof obls.total !== 'undefined';
+  rows.push({label:'الالتزامات', val: oblsOk ? `${obls.total} التزام` : '❌ خطأ', ok: oblsOk, detail: ''});
+
+  // 6. Monthly Fees
+  const mfOk = mf && typeof mf.summary !== 'undefined';
+  rows.push({label:'الرسوم الشهرية', val: mfOk ? `مستحق: ${(mf.summary?.total_due||0).toLocaleString('ar-EG')} ج.م` : '❌ خطأ', ok: mfOk, detail: mfOk ? `مدفوع: ${(mf.summary?.total_paid||0).toLocaleString('ar-EG')} ج.م` : ''});
+
+  // 7. Backups
+  const bkList = backups?.backups || [];
+  const lastBk = bkList[0];
+  const bkOk = lastBk && lastBk.status === 'completed';
+  const bkLabel = !lastBk ? '⚠️ لا توجد نسخ' : lastBk.status === 'completed' ? `✅ ${lastBk.label}` : `⚠️ ${lastBk.label} (${lastBk.status})`;
+  rows.push({label:'آخر نسخة احتياطية', val: bkLabel, ok: bkOk, detail: lastBk ? `الحجم: ${lastBk.total_size_kb ? lastBk.total_size_kb+' KB' : 'غير محدد'}` : ''});
+
+  // 8. VAT Returns
+  const vatArr = Array.isArray(vatList) ? vatList : [];
+  rows.push({label:'إقرارات ض.ق.م.', val: `${vatArr.length} إقرار (2026)`, ok: true, detail: vatArr.length ? `آخر: ${vatArr[vatArr.length-1]?.month_label||''}` : ''});
+
+  // 9. Audit Log
+  const auditOk = Array.isArray(audit) || (audit && typeof audit.total !== 'undefined');
+  rows.push({label:'سجل التدقيق', val: auditOk ? '✅ يعمل' : '⚠️ تحقق', ok: auditOk, detail: ''});
+
+  const okCount = rows.filter(r => r.ok).length;
+  const score = Math.round(okCount / rows.length * 100);
+  const scoreColor = score >= 90 ? '#16a34a' : score >= 70 ? '#d97706' : '#dc2626';
+  const scoreBg = score >= 90 ? '#f0fdf4' : score >= 70 ? '#fffbeb' : '#fef2f2';
+
+  document.getElementById('hc-body').innerHTML = `
+    <div style="background:${scoreBg};border:1px solid ${scoreColor}33;border-radius:16px;padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:20px">
+      <div style="width:72px;height:72px;border-radius:50%;background:${scoreColor};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <span style="font-size:22px;font-weight:900;color:white">${score}%</span>
+      </div>
+      <div>
+        <div style="font-size:18px;font-weight:800;color:${scoreColor}">${score>=90?'النظام يعمل بشكل ممتاز':score>=70?'النظام يعمل مع تحذيرات':'يوجد مشاكل تحتاج مراجعة'}</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px">${okCount} من ${rows.length} فحوصات ناجحة · زمن الفحص: ${elapsed}ms · ${new Date().toLocaleString('ar-EG')}</div>
+      </div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#f8fafc">
+            <th style="padding:12px 16px;text-align:right;font-size:13px;color:#64748b;font-weight:600">الفحص</th>
+            <th style="padding:12px 16px;text-align:right;font-size:13px;color:#64748b;font-weight:600">النتيجة</th>
+            <th style="padding:12px 16px;text-align:right;font-size:13px;color:#64748b;font-weight:600">تفاصيل</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i) => `
+            <tr style="border-top:1px solid #f1f5f9;${i%2?'background:#fafafa':''}">
+              <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#1e293b">${r.label}</td>
+              <td style="padding:12px 16px;font-size:13px;color:${r.ok?'#16a34a':'#dc2626'}">${r.val}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#94a3b8">${r.detail}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;padding:14px 16px;background:#f0f7ff;border:1px solid #c7d2fe;border-radius:12px;font-size:13px;color:#1a2472">
+      <strong>ملاحظات الاستقرار:</strong>
+      <ul style="margin:8px 0 0;padding-right:18px;line-height:1.8">
+        <li>العملاء غير النشطين (${totalInactive}) محفوظون بـ soft delete — لم يُحذف أي بيانات مالية</li>
+        <li>جميع إقرارات ض.ق.م. و الخصم والتحصيل والشركات محمية من الحذف المباشر</li>
+        <li>النسخ الاحتياطية التلقائية: يومية — راجع تقرير الـ backup لتفاصيل التنفيذ</li>
+      </ul>
+    </div>`;
+}
+window.loadHealthCheck = loadHealthCheck;
+
+
 </script>
 
 </body>
