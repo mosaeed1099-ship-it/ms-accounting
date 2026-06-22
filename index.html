@@ -21089,7 +21089,10 @@ async function renderMFPage() {
   (Array.isArray(mfClients) ? mfClients : []).forEach(c => {
     _mfClientsMap[c.id] = {phone: c.phone, name: c.name};
   });
-  mfRenderPage(dash, records);
+  // Recompute paid/unpaid counts from records using _mfStatus (API counts use r.paid boolean
+  // which disagrees with _mfStatus for zero-fee clients — this ensures cards match table filter)
+  window._mfLastDash = _mfRecomputeDash(records);
+  mfRenderPage(window._mfLastDash, records);
 }
 
 // ── helper: classify a record's status ────────────────────
