@@ -1,91 +1,130 @@
-# MS Accounting — قواعد التطوير الإلزامية
+# MS Accounting — Stable Maintenance Mode
 
-## مصدر التعديل الوحيد
+> **الوضع الحالي: Stable Maintenance — ممنوع أي Refactor أو Migration أو Architecture Change**
 
-```
-✅ js/src/*.js        ← هنا فقط تحدث التعديلات
-❌ frontend/index.html ← ممنوع التعديل المباشر
-```
+---
 
-## شرط النشر الإجباري (بالترتيب)
+## 1. Source of Truth
 
-```bash
-bash scripts/build.sh             # 1. بناء index.html من js/src
-bash .claude/pre_deploy_check.sh  # 2. التحقق من الجودة (36 check)
-git add frontend/index.html js/src/
-git commit -m "وصف التغيير"
-git push origin main
-```
-
-أو باختصار:
-```bash
-bash scripts/deploy.sh "وصف التغيير"
-```
-
-**إذا فشلت أي خطوة → ممنوع النشر.**
-
-## قواعد ثابتة
-
-| القاعدة | التفاصيل |
-|---------|---------|
-| لا تعديل مباشر على `index.html` | استخدم `js/src/` دائماً |
-| لا deploy بدون build | `build.sh` أولاً دائماً |
-| لا deploy بدون pre_deploy_check | 36 check يجب أن تكون ✅ |
-| Drift = 0 | `js/src` و `index.html` دائماً متزامنان |
-| Stability First | ممنوع Refactor أو Architecture changes بدون قرار صريح |
-
-## هيكل المشروع
-
-```
-js/src/           ← مصدر الكود (13 module)
-  01-infrastructure.js
-  02-dashboard.js
-  02-monthly-fees.js
-  03-clients.js
-  03-tail.js
-  04-invoices.js
-  05-tasks.js
-  06-documents.js
-  07-vat.js
-  08-crm.js
-  09-formation.js
-  10-obligations.js
-  11-rest.js
-
-frontend/
-  index.html      ← مُنتَج من build.sh (لا تعدّله مباشرة)
-  index.template.html ← قالب البناء
-  portal.html     ← portal العملاء
-  config.js       ← API URL config
-  sw.js           ← Service Worker
-  assets/         ← ملفات static
-
-scripts/
-  build.sh        ← يجمع js/src → index.html
-  deploy.sh       ← build + check + push (الأمر الوحيد للنشر)
-
-.claude/
-  pre_deploy_check.sh   ← 36 فحص قبل النشر
-  post_deploy_check.sh  ← 24 فحص بعد النشر
-```
-
-## Source of Truth
-
-| الطبقة | الملف |
-|--------|-------|
+| الطبقة | المصدر |
+|--------|--------|
+| تعديل الكود | `js/src/*.js` فقط |
+| الملف المُنتَج | `frontend/index.html` (لا تلمسه مباشرة) |
 | Production | `https://mosaeed1099-ship-it.github.io/ms-accounting/` |
 | Backend | `https://ms-accounting-api-production.up.railway.app` |
-| Source | `js/src/*.js` |
-| Built | `frontend/index.html` (مُنتَج — لا تعدّله) |
+| Auth token key | `ms_token` في localStorage (وليس `token`) |
 
-## ممنوع حالياً
+---
 
-- Migration إلى React
-- تقسيم Modules إضافية
-- إعادة هيكلة Architecture
-- تعديل `index.html` مباشرة
+## 2. طريقة التعديل الإلزامية
 
-## Token Auth
+**قبل أي تعديل:**
+1. افحص الوضع الحالي
+2. حدد الملف الصحيح في `js/src/`
+3. اشرح التأثير المتوقع
+4. انتظر الموافقة إذا كان التعديل غير واضح
 
-- `ms_token` في localStorage (ليس `token`)
-- Admin: `ms.owner@mshq.io` (للاختبار فقط — لا تضعه في الكود)
+**التعديل:**
+```
+js/src/[الملف المناسب]  ← هنا فقط
+```
+
+**بعد التعديل — أمر واحد فقط:**
+```bash
+bash scripts/deploy.sh "وصف التغيير"
+# يشمل: build → 36 check → commit → push
+```
+
+**إذا فشلت أي خطوة → ممنوع النشر نهائياً.**
+
+---
+
+## 3. قواعد النشر
+
+```
+✅ bash scripts/deploy.sh "وصف"    ← الطريقة الوحيدة المسموحة
+❌ git push مباشرة بدون build
+❌ تعديل index.html مباشرة
+❌ تعديل gh-pages يدوياً
+❌ merge أو overwrite ملفات كبيرة يدوياً
+❌ تخطي pre_deploy_check
+```
+
+---
+
+## 4. ممنوع حالياً (Feature Freeze على Architecture)
+
+```
+❌ React Migration
+❌ Architecture Refactor
+❌ Modular Rewrite جديد
+❌ حذف ملفات أساسية
+❌ تغيير deploy workflow
+❌ تغيير build pipeline
+❌ أي تعديل كبير خارج نطاق المطلوب
+```
+
+---
+
+## 5. إذا وُجدت مشكلة
+
+**لا تُصلح مباشرة.** أعطِ أولاً:
+1. السبب الجذري
+2. الملفات المتأثرة
+3. مستوى الخطورة (Low / Medium / High)
+4. خطة الإصلاح المقترحة
+
+ثم انتظر الموافقة.
+
+---
+
+## 6. تقرير ما بعد كل تعديل
+
+```
+الملفات المعدلة:    js/src/XX.js
+نتيجة build:        ✅ / ❌
+نتيجة pre_check:    36/36 ✅ / X فشل
+نتيجة post_check:   24/24 ✅ / X فشل
+Drift:              0 سطر ✅ / X سطر ❌
+Production:         متأثر / غير متأثر
+```
+
+---
+
+## 7. هيكل js/src (الترتيب مهم في build)
+
+```
+01-infrastructure.js  (1841) — API, auth, shell, navigate, confirmDlg
+02-dashboard.js        (601)  — Dashboard
+02-monthly-fees.js     (921)  — المدفوعات الشهرية + WhatsApp
+03-clients.js          (634)  — العملاء
+03-tail.js            (1246)  — لغة + daily revenues
+04-invoices.js         (320)  — الفواتير
+05-tasks.js            (816)  — المهام
+06-documents.js        (600)  — المستندات
+07-vat.js             (2429)  — VAT / ضريبة القيمة المضافة
+08-crm.js             (1379)  — CRM / Leads
+09-formation.js        (565)  — تأسيس الشركات
+10-obligations.js      (985)  — الالتزامات الضريبية + deleteObligation
+11-rest.js           (10486)  — باقي الصفحات
+```
+
+---
+
+## 8. أخطاء محفوظة (لا تكررها)
+
+| # | الخطأ | الصواب |
+|---|-------|--------|
+| 1 | `showConfirm()` | `confirmDlg()` — دالة Legacy الصحيحة |
+| 2 | `token` في localStorage | `ms_token` |
+| 3 | تعديل `index.html` مباشرة | عدّل `js/src/` ثم `deploy.sh` |
+| 4 | `i.id` في upcoming obligations | `i.obligation_id` للحذف |
+| 5 | تعديل React src ظناً أنه Production | Production = Legacy فقط |
+| 6 | push بدون `--compressed` في curl | GitHub Pages يُرسل gzip |
+
+---
+
+## 9. Minimal Change Principle
+
+أي تعديل يجب أن يكون **أصغر تغيير ممكن** يحقق الهدف.
+لا cleanup إضافي، لا refactor جانبي، لا تحسينات غير مطلوبة.
