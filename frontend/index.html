@@ -9761,6 +9761,7 @@ function renderObligations() {
         <div style="display:flex;gap:4px">
           ${i.status!=='submitted'&&i.status!=='paid'?`<button class="btn btn-success btn-sm" onclick="submitObligation(${i.id})" title="تقديم">✅</button>`:''}
           ${i.status!=='paid'?`<button class="btn btn-secondary btn-sm" onclick="showUpdateOblModal(${i.id})" title="تعديل">✏️</button>`:''}
+          <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="deleteObligation(${i.obligation_id},'${escH(i.client_name||'')}')" title="حذف الالتزام">🗑️</button>
         </div>
       </td>
     </tr>`;
@@ -9866,6 +9867,21 @@ async function submitObligation(instanceId) {
     loadObligations();
   } catch(e){ toast(e.message,'error'); }
 }
+
+async function deleteObligation(obligationId, clientName) {
+  if (!obligationId) return;
+  const confirmed = await confirmDlg(
+    `هل تريد حذف الالتزام الضريبي للعميل "${clientName}"؟\nسيتم حذف جميع الفترات المستقبلية المرتبطة به.`,
+    'حذف الالتزام', 'حذف', true
+  );
+  if (!confirmed) return;
+  try {
+    await api('DELETE', `/api/obligations/${obligationId}`);
+    toast('✅ تم حذف الالتزام');
+    loadObligations();
+  } catch(e){ toast(e.message||'خطأ في الحذف','error'); }
+}
+window.deleteObligation = deleteObligation;
 
 async function showUpdateOblModal(instanceId) {
   const inst = oblInstances.find(i=>i.id===instanceId);
