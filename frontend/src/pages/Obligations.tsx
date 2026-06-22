@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Bell, CheckCircle2, Clock, AlertTriangle, RefreshCw, Calendar } from 'lucide-react'
+import { Plus, Bell, CheckCircle2, Clock, AlertTriangle, RefreshCw, Calendar, Trash2 } from 'lucide-react'
 import { coreApi, EP, wsOn } from '../core'
 import { toast } from '../hooks/useToast'
 import { Modal } from '../components/ui/Modal'
 import { PageLoader } from '../components/ui/Spinner'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 
 const OBL_TYPE_LABELS: Record<string, string> = {
   vat_monthly: 'ق.م.م شهري', vat_quarterly: 'ق.م.م ربعي',
@@ -53,8 +54,19 @@ export default function Obligations() {
   const [days, setDays] = useState(30)
   const [tab, setTab] = useState<'upcoming' | 'all'>('upcoming')
   const [showAdd, setShowAdd] = useState(false)
+  const [deletingObl, setDeletingObl] = useState<any>(null)
 
   const { upcoming, obligations, loading, load } = useObligations(days)
+
+  async function handleDeleteObligation() {
+    if (!deletingObl) return
+    const res = await coreApi('DELETE', `/obligations/${deletingObl.id}`, null, {
+      queue: true,
+      queueLabel: `حذف التزام — ${deletingObl.client_name}`,
+    })
+    if (res !== undefined) { toast('تم حذف الالتزام'); load(true) }
+    setDeletingObl(null)
+  }
 
   if (loading && !upcoming.length && !obligations.length) return <PageLoader />
 
@@ -140,11 +152,11 @@ export default function Obligations() {
         <div className="table-container">
           <table className="table">
             <thead>
-              <tr><th>العميل</th><th>نوع الالتزام</th><th>التكرار</th><th>يوم الاستحقاق</th><th>المحاسب</th><th>عدد الفترات</th></tr>
+              <tr><th>العميل</th><th>نوع الالتزام</th><th>التكرار</th><th>يوم الاستحقاق</th><th>المحاسب</th><th>عدد الفترات</th><th></th></tr>
             </thead>
             <tbody>
               {obligations.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-10 text-gray-400">لا توجد التزامات</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-gray-400">لا توجد التزامات</td></tr>
               ) : obligations.map(obl => (
                 <tr key={obl.id}>
                   <td className="font-medium">{obl.client_name}</td>
@@ -153,6 +165,15 @@ export default function Obligations() {
                   <td>اليوم {obl.due_day}</td>
                   <td className="text-gray-500 text-sm">{obl.assigned_name || '—'}</td>
                   <td>{obl.instances_count}</td>
+                  <td>
+                    <button
+                      className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"
+                      onClick={() => setDeletingObl(obl)}
+                      title="حذف الالتزام"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -166,6 +187,16 @@ export default function Obligations() {
           onSaved={() => { setShowAdd(false); load() }}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={!!deletingObl}
+        onClose={() => setDeletingObl(null)}
+        onConfirm={handleDeleteObligation}
+        title="حذف الالتزام الضريبي"
+        message={`هل تريد حذف التزام "${OBL_TYPE_LABELS[deletingObl?.obligation_type] || deletingObl?.obligation_type}" للعميل "${deletingObl?.client_name}"؟ سيتم حذف جميع الفترات المرتبطة به.`}
+        danger
+        confirmLabel="حذف"
+      />
     </div>
   )
 }
