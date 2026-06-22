@@ -32,30 +32,28 @@ jobs:
 
       - name: Deploy to gh-pages
         run: |
-          # Save frontend files from main
           cp frontend/index.html /tmp/deploy_index.html
           cp frontend/config.js  /tmp/deploy_config.js
           cp frontend/sw.js      /tmp/deploy_sw.js
+          cp frontend/portal.html /tmp/deploy_portal.html
+          [ -d frontend/assets ] && cp -r frontend/assets /tmp/deploy_assets || true
 
-          # Switch to gh-pages
           git checkout gh-pages
 
-          # Copy files
           cp /tmp/deploy_index.html index.html
           cp /tmp/deploy_config.js  config.js
           cp /tmp/deploy_sw.js      sw.js
+          cp /tmp/deploy_portal.html portal.html
 
-          # Also copy portal if exists
-          if [ -f /tmp/deploy_portal.html ]; then
-            cp /tmp/deploy_portal.html portal.html
+          if [ -d /tmp/deploy_assets ]; then
+            cp -r /tmp/deploy_assets assets
           fi
 
-          # Commit only if something changed
-          git add index.html config.js sw.js portal.html 2>/dev/null || true
+          git add index.html config.js sw.js portal.html assets/ 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No changes to deploy."
           else
-            COMMIT=$(git -C / log -1 --format='%h %s' main 2>/dev/null || echo "manual")
+            COMMIT=$(git log -1 --format='%h %s' origin/main 2>/dev/null || echo "manual")
             git commit -m "deploy: $COMMIT"
             git push origin gh-pages
             echo "✅ Deployed to GitHub Pages."
