@@ -9384,6 +9384,7 @@ async function showFormationDetail(caseId) {
         <button onclick="_fmAddNote(${c.id})" class="btn btn-secondary">📝 إضافة ملاحظة</button>
         <button onclick="showFormationEditModal(${c.id})" class="btn btn-secondary">✏️ تعديل البيانات</button>
         <button onclick="_fmShowAttachModal(${c.id},'${escH(c.company_name)}','${c.current_stage}',${c.client_id||'null'})" class="btn btn-secondary" style="background:#f0fdf4;border-color:#86efac;color:#15803d">📎 رفع مرفق للمرحلة</button>
+        <button onclick="this.closest('.modal-overlay').remove();deleteFormationCase(${c.id},'${escH(c.company_name)}')" class="btn btn-secondary" style="background:#fef2f2;border-color:#fca5a5;color:#dc2626;margin-right:auto">🗑️ حذف الملف</button>
         ${c.is_completed
           ? c.client_id
             ? `<span style="font-size:12px;color:#16a34a;font-weight:600;padding:6px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #86efac">✅ مرتبط بعميل</span>`
