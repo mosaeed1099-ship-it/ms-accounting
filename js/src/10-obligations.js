@@ -275,7 +275,10 @@ async function deleteObligation(obligationId, clientName) {
   try {
     await api('DELETE', `/api/obligations/${obligationId}`);
     toast('✅ تم حذف الالتزام');
-    loadObligations();
+    // Remove instantly from local array so UI updates immediately
+    oblInstances = oblInstances.filter(i => i.obligation_id !== obligationId);
+    renderObligations();
+    loadObligations(true);
   } catch(e){ toast(e.message||'خطأ في الحذف','error'); }
 }
 window.deleteObligation = deleteObligation;
