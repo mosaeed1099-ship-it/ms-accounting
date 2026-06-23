@@ -333,7 +333,8 @@ def list_instances(
     _joined_tax_obl = False
     if obligation_type:
         query = query.join(TaxObligation, ObligationInstance.obligation_id == TaxObligation.id).filter(
-            TaxObligation.obligation_type == obligation_type)
+            TaxObligation.obligation_type == obligation_type,
+            TaxObligation.is_active == True)
         _joined_tax_obl = True
     if days_ahead is not None:
         from sqlalchemy import or_
@@ -341,12 +342,17 @@ def list_instances(
         annual_types = ["income_annual", "corporate_tax", "form_41", "commercial_register_renewal"]
         if not _joined_tax_obl:
             query = query.join(TaxObligation, ObligationInstance.obligation_id == TaxObligation.id)
+            _joined_tax_obl = True
         query = query.filter(
+            TaxObligation.is_active == True,
             or_(
                 TaxObligation.obligation_type.in_(annual_types),
                 ObligationInstance.due_date <= until,
             )
         )
+    if not _joined_tax_obl:
+        query = query.join(TaxObligation, ObligationInstance.obligation_id == TaxObligation.id).filter(
+            TaxObligation.is_active == True)
     if overdue_only:
         query = query.filter(
             ObligationInstance.due_date < datetime.utcnow(),
