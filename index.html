@@ -9163,6 +9163,7 @@ function _fmCaseCard(c) {
         <div style="display:flex;gap:6px">
           ${!c.is_completed?`<button onclick="showMoveStageModal(${c.id},'${c.current_stage}')" style="padding:5px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;font-size:11px;cursor:pointer;color:#1a2472;font-family:inherit">➜ التالية</button>`:''}
           <button onclick="showFormationDetail(${c.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;font-size:11px;cursor:pointer;color:#374151;font-family:inherit">📋 التفاصيل</button>
+          <button onclick="deleteFormationCase(${c.id},'${escH(c.company_name)}')" style="padding:5px 10px;border-radius:6px;border:1px solid #fca5a5;background:#fef2f2;font-size:11px;cursor:pointer;color:#dc2626;font-family:inherit" title="حذف الملف">🗑️</button>
         </div>
       </div>
     </div>
