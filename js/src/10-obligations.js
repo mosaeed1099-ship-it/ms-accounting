@@ -278,7 +278,6 @@ async function deleteObligation(obligationId, clientName) {
     // Remove instantly from local array so UI updates immediately
     oblInstances = oblInstances.filter(i => i.obligation_id !== obligationId);
     renderObligations();
-    setTimeout(() => loadObligations(true), 600);
   } catch(e){ toast(e.message||'خطأ في الحذف','error'); }
 }
 window.deleteObligation = deleteObligation;
