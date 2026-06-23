@@ -80,6 +80,7 @@ function _clientsTableRows() {
         <button class="btn btn-secondary btn-sm" onclick="addInvoiceForClient(${c.id},'${c.name}')" title="فاتورة جديدة">📄</button>
         <button class="btn btn-secondary btn-sm" title="رفع ملف" onclick="showUploadModal(${c.id})">📎</button>
         <button class="btn btn-secondary btn-sm" title="إرسال بريد" onclick="showClientEmailModal(${c.id},'${c.name.replace(/'/g,"\\'")}','${c.email||''}')">📧</button>
+        <button onclick="deleteClient(${c.id},'${escH(c.name)}')" style="padding:4px 8px;border-radius:6px;border:1px solid #fca5a5;background:#fef2f2;font-size:12px;cursor:pointer;color:#dc2626" title="حذف العميل">🗑️</button>
       </div>
     </td>
   </tr>`;}).join('');
@@ -623,6 +624,21 @@ function addInvoiceForClient(clientId, clientName) {
   navigate('invoices');
   setTimeout(()=>showInvoiceModal(null,clientId),300);
 }
+
+async function deleteClient(clientId, clientName) {
+  const confirmed = await confirmDlg(
+    `هل تريد حذف العميل "${clientName}"؟\nسيتم إلغاء تفعيله ولن يظهر في القوائم.`,
+    'حذف العميل', 'حذف', true
+  );
+  if (!confirmed) return;
+  try {
+    await api('DELETE', `/api/clients/${clientId}`);
+    toast('✅ تم حذف العميل');
+    clientsData = clientsData.filter(c => c.id !== clientId);
+    renderClients();
+  } catch(e){ toast(e.message||'خطأ في الحذف','error'); }
+}
+window.deleteClient = deleteClient;
 
 // ── INVOICES ───────────────────────────────────────
 let invoicesData=[], invoiceFilter='all';
