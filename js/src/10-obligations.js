@@ -32,6 +32,7 @@ const FREQ_AR = {monthly:'شهري', quarterly:'ربعي', annual:'سنوي'};
 
 var oblStats={}, oblInstances=[], oblTab='upcoming', oblDays=30, oblClientFilter='', oblTypeFilter='', oblStatusFilter='', oblSearchQ='';
 let oblClientsCache=[];
+const _oblRecentlyDeleted = new Set();
 
 async function loadObligations(silent=false) {
   try {
@@ -41,7 +42,7 @@ async function loadObligations(silent=false) {
     ]);
     if (!stats) return;
     oblStats = stats;
-    oblInstances = inst?.items || [];
+    oblInstances = (inst?.items || []).filter(i => !_oblRecentlyDeleted.has(i.obligation_id));
     // Also refresh notifications badge
     loadNotifCount();
     renderObligations();
@@ -276,6 +277,8 @@ async function deleteObligation(obligationId, clientName) {
     await api('DELETE', `/api/obligations/${obligationId}`);
     toast('✅ تم حذف الالتزام');
     // Remove instantly from local array so UI updates immediately
+    _oblRecentlyDeleted.add(obligationId);
+    setTimeout(() => _oblRecentlyDeleted.delete(obligationId), 5000);
     oblInstances = oblInstances.filter(i => i.obligation_id !== obligationId);
     renderObligations();
   } catch(e){ toast(e.message||'خطأ في الحذف','error'); }
