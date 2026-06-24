@@ -3,6 +3,7 @@ async function loadLeads(silent=false) {
   if (silent) {
     const active = document.activeElement;
     if (active && active.closest && active.closest('#leadsGridBody')) return;
+    if (active && active.id === 'leadsSearchInput') return;
     // Also skip if there are unsaved new rows being saved
     if (document.querySelector('tr[data-id^="new-"]')) return;
   }
