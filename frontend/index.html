@@ -7782,7 +7782,20 @@ function renderLeads(stats) {
   </div>`;
   const si=document.getElementById('leadsSearchInput');
   const ss=document.getElementById('leadsStatusSelect');
-  if(si) si.oninput=e=>{leadsSearch=e.target.value;loadLeads()};
+  if(si) {
+    si.oninput=e=>{
+      leadsSearch=e.target.value;
+      clearTimeout(window._leadsSearchTimer);
+      window._leadsSearchTimer=setTimeout(()=>{
+        const sel=si.selectionStart, selE=si.selectionEnd;
+        loadLeads().then(()=>{
+          const inp=document.getElementById('leadsSearchInput');
+          if(inp){inp.focus();try{inp.setSelectionRange(sel,selE);}catch(ex){}}
+        });
+      },350);
+    };
+    si.focus();
+  }
   if(ss) ss.onchange=e=>{leadsStatusFilter=e.target.value;loadLeads()};
   _initLeadsColResize();
   _initLeadsKeyboard();
