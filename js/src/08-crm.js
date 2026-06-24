@@ -1164,6 +1164,7 @@ async function sendLeadWhatsApp(id) {
   if (mainRow) _syncLeadInlineToState(mainRow);
   const st = _getLeadExpandState(lead);
   const msg = _buildLeadMessage(lead, st);
+  previewLeadQuotePDF(id);
   window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
