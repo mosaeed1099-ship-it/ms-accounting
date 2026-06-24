@@ -812,7 +812,7 @@ async function login(email, password) {
   localStorage.setItem('ms_user',JSON.stringify(currentUser));
   window._lastApiOk = Date.now();
   renderApp();
-  if(isFirstLogin) setTimeout(()=>showWelcomeGreeting(currentUser?.name||''), 600);
+  // welcome greeting disabled
 }
 function showWelcomeGreeting(name) {
   const h = new Date().getHours();
