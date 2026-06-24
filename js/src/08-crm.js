@@ -1164,8 +1164,7 @@ async function sendLeadWhatsApp(id) {
   if (mainRow) _syncLeadInlineToState(mainRow);
   const st = _getLeadExpandState(lead);
   const msg = _buildLeadMessage(lead, st);
-  previewLeadQuotePDF(id, true);
-  setTimeout(()=>window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank'), 900);
+  window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 window.sendLeadEmailDirect = function(id) {
@@ -1206,7 +1205,7 @@ function sendLeadNoAnswerWhatsApp(lead) {
   window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
-async function previewLeadQuotePDF(id, autoPrint=false) {
+async function previewLeadQuotePDF(id) {
   // Gather data from modal or from leadsData
   const lead = leadsData.find(l=>l.id===id);
   const legalEntity = document.getElementById('qq-legal_entity')?.value || lead?.quote_legal_entity || '';
@@ -1219,29 +1218,15 @@ async function previewLeadQuotePDF(id, autoPrint=false) {
   const total       = fees + gov + svcTotal;
   const notes       = document.getElementById('qq-notes')?.value || lead?.quote_notes || '';
   const services    = (window._qsServices||[]).filter(s=>s.name);
+  const docs        = (window._qsDocs||[]).filter(Boolean);
   const today       = new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'});
-
-  // Read deliverables and required docs from DB (support both {text,checked} and flat string formats)
-  function _parsePdfList(jsonStr, defaults) {
-    try {
-      const arr = jsonStr ? JSON.parse(jsonStr) : null;
-      if (arr && arr.length) {
-        if (typeof arr[0] === 'object') return arr.filter(i=>i.checked!==false).map(i=>i.text);
-        return arr.filter(Boolean);
-      }
-    } catch(e) {}
-    return defaults || [];
-  }
-  const pdfDeliverables = _parsePdfList(lead?.quote_deliver_docs, typeof LEAD_DEFAULT_DELIVERABLES!=='undefined'?LEAD_DEFAULT_DELIVERABLES:[]);
-  const pdfReqDocs      = _parsePdfList(lead?.quote_required_docs, typeof LEAD_DEFAULT_REQUIRED_DOCS!=='undefined'?LEAD_DEFAULT_REQUIRED_DOCS:[]);
 
   const servicesHtml = services.map(s=>`
     <tr>
       <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#374151">${escH(s.name)}</td>
       <td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:700;color:#1a2472;text-align:left">${Number(s.price).toLocaleString('ar-EG')} جنيه</td>
     </tr>`).join('');
-  const deliversHtml = pdfDeliverables.map(d=>`<li style="margin:5px 0;font-size:13px;color:#374151">${escH(d)}</li>`).join('');
-  const reqDocsHtml  = pdfReqDocs.map(d=>`<li style="margin:5px 0;font-size:13px;color:#374151">${escH(d)}</li>`).join('');
+  const docsListHtml = docs.map(d=>`<li style="margin:5px 0;font-size:13px;color:#374151">${escH(d)}</li>`).join('');
 
   const printHtml = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -1326,18 +1311,14 @@ async function previewLeadQuotePDF(id, autoPrint=false) {
       <div>
         <div class="total-label">إجمالي المصاريف والأتعاب</div>
         <div class="total-amt">${total>0?total.toLocaleString('ar-EG')+' جنيه':'—'}</div>
+        ${fees||gov?`<div class="total-break">أتعاب المكتب: ${fees.toLocaleString('ar-EG')} جنيه — رسوم حكومية: ${gov.toLocaleString('ar-EG')} جنيه</div>`:''}
       </div>
       <div style="font-size:36px">💰</div>
     </div>
 
-    ${deliversHtml?`<div class="docs-block">
-      <div class="sec-title">📦 حضرتك هتستلم مننا</div>
-      <div class="docs-box"><ul style="padding-right:18px">${deliversHtml}</ul></div>
-    </div>`:''}
-
-    ${reqDocsHtml?`<div class="docs-block">
-      <div class="sec-title">📋 مطلوب من حضرتك</div>
-      <div class="docs-box"><ul style="padding-right:18px">${reqDocsHtml}</ul></div>
+    ${docsListHtml?`<div class="docs-block">
+      <div class="sec-title">📌 المستندات المطلوبة من حضرتكم</div>
+      <div class="docs-box"><ul style="padding-right:18px">${docsListHtml}</ul></div>
     </div>`:''}
 
     ${notes?`<div class="notes-block"><strong>ملاحظات:</strong> ${escH(notes)}</div>`:''}
@@ -1371,14 +1352,12 @@ async function previewLeadQuotePDF(id, autoPrint=false) {
   <button onclick="window.print()" style="background:linear-gradient(135deg,#1a2472,#152060);color:white;border:none;border-radius:9px;padding:10px 24px;font-size:14px;font-family:'Cairo',sans-serif;cursor:pointer;font-weight:700">🖨️ طباعة / حفظ PDF</button>
   <button onclick="window.close()" style="background:#f1f5f9;color:#374151;border:1.5px solid #d1d5db;border-radius:9px;padding:10px 24px;font-size:14px;font-family:'Cairo',sans-serif;cursor:pointer">إغلاق</button>
 </div>
-
 </body></html>`;
 
   const w = window.open('', '_blank', 'width=900,height=1000,scrollbars=yes');
   if(!w){ toast('يرجى السماح بفتح نوافذ منبثقة في المتصفح','error'); return; }
   w.document.write(printHtml);
   w.document.close();
-  if(autoPrint) w.setTimeout(()=>w.print(), 800);
 }
 
 function printLeadQuote(id) { previewLeadQuotePDF(id); }
