@@ -20,6 +20,8 @@ async function renderDailyRevenuesPage() {
   el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b7280">جاري التحميل...</div>';
 
   const now = new Date();
+  const _isOwner = currentUser?.role === 'admin';
+  const todayStr = now.toISOString().slice(0,10);
   let selYear = now.getFullYear(), selMonth = now.getMonth() + 1;
 
   async function load() {
@@ -36,7 +38,10 @@ async function renderDailyRevenuesPage() {
     const yearOpts = years.map(function(y){ return '<option value="'+y+'"'+(y===selYear?' selected':'')+'>'+y+'</option>'; }).join('');
     const monthOpts = MONTHS_AR.slice(1).map(function(m,i){ return '<option value="'+(i+1)+'"'+((i+1)===selMonth?' selected':'')+'>'+m+'</option>'; }).join('');
 
-    const items = data.items || [];
+    let items = data.items || [];
+    // Non-owner: show today only
+    if (!_isOwner) items = items.filter(function(r){ return (r.date||r.tx_date||'').slice(0,10) === todayStr; });
+
     const rows = items.length ? items.map(function(r) {
       var d = new Date(r.date||r.tx_date||'');
       var dateStr = isNaN(d) ? (r.date||'') : d.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -49,17 +54,24 @@ async function renderDailyRevenuesPage() {
         + '<td style="padding:10px 12px;font-weight:600;color:#059669">'+Number(r.amount||0).toLocaleString('ar-EG')+' ج.م</td>'
         + '<td style="padding:10px 12px;color:#6b7280;font-size:12px">'+(r.notes||'')+'</td>'
         + '</tr>';
-    }).join('') : '<tr><td colspan="6" style="padding:30px;text-align:center;color:#9ca3af">لا توجد إيرادات لهذا الشهر</td></tr>';
+    }).join('') : '<tr><td colspan="6" style="padding:30px;text-align:center;color:#9ca3af">لا توجد إيرادات لهذا اليوم</td></tr>';
 
     var total = Number(data.total_amount||0).toLocaleString('ar-EG');
 
-    el.innerHTML = '<div style="padding:16px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb">'
-      + '<select id="dr-year" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+yearOpts+'</select>'
-      + '<select id="dr-month" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+monthOpts+'</select>'
-      + '<button onclick="window._drLoad()" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit">عرض</button>'
-      + '<span style="margin-right:auto;font-weight:700;color:#059669">الإجمالي: '+total+' ج.م</span>'
-      + '<span style="color:#6b7280;font-size:13px">('+items.length+' إيراد)</span>'
-      + '</div>'
+    var header = _isOwner
+      ? '<div style="padding:16px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb">'
+        + '<select id="dr-year" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+yearOpts+'</select>'
+        + '<select id="dr-month" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+monthOpts+'</select>'
+        + '<button onclick="window._drLoad()" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit">عرض</button>'
+        + '<span style="margin-right:auto;font-weight:700;color:#059669">الإجمالي: '+total+' ج.م</span>'
+        + '<span style="color:#6b7280;font-size:13px">('+items.length+' إيراد)</span>'
+        + '</div>'
+      : '<div style="padding:12px 20px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px">'
+        + '📅 ' + now.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'})
+        + ' — ' + items.length + ' إيراد'
+        + '</div>';
+
+    el.innerHTML = header
       + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px">'
       + '<thead><tr style="background:#f8fafc;font-weight:600;color:#374151">'
       + '<th style="padding:10px 12px;text-align:right">التاريخ</th>'
