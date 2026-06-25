@@ -10640,9 +10640,9 @@ async function loadCollections(silent=false) {
         ${[2024,2025,2026].map(y=>`<option ${y===_collYear?'selected':''}>${y}</option>`).join('')}
       </select>
       <button onclick="window._collExport()" style="height:32px;padding:0 12px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#475569;cursor:pointer">📤 تصدير</button>` : `
-      <input type="text" id="collSName" placeholder="🔍 بحث باسم العميل..." value="${escH(_collSearchName)}" oninput="_collSearchName=this.value;window._collFetch()" style="height:32px;padding:0 10px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;min-width:160px;background:#fff"/>
-      <input type="date" id="collSFrom" value="${_collFromDate}" onchange="_collFromDate=this.value;window._collFetch()" title="من تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
-      <input type="date" id="collSTo" value="${_collToDate}" onchange="_collToDate=this.value;window._collFetch()" title="إلى تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+      <input type="text" id="collSName" placeholder="🔍 بحث باسم العميل..." value="${escH(_collSearchName)}" oninput="window._collOnSearch('name',this.value)" style="height:32px;padding:0 10px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;min-width:160px;background:#fff"/>
+      <input type="date" id="collSFrom" value="${_collFromDate}" onchange="window._collOnSearch('from',this.value)" title="من تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+      <input type="date" id="collSTo" value="${_collToDate}" onchange="window._collOnSearch('to',this.value)" title="إلى تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
       <select id="cMonthSel" onchange="window._collChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
         <option value="0" ${_collMonth===0?'selected':''}>كل الشهور</option>
         ${_COLL_MONTHS.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===_collMonth?'selected':''}>${m}</option>`).join('')}
@@ -10901,6 +10901,13 @@ window._collUpdate = function(id, field, val) {
 };
 
 window._collFetch = _collFetch;
+
+window._collOnSearch = function(field, val) {
+  if (field === 'name') _collSearchName = val;
+  else if (field === 'from') _collFromDate = val;
+  else if (field === 'to')   _collToDate   = val;
+  _collFetch();
+};
 
 window._collClearSearch = function() {
   _collSearchName = '';
