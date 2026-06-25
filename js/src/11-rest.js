@@ -13,9 +13,9 @@ async function loadCollections(silent=false) {
         ${[2024,2025,2026].map(y=>`<option ${y===_collYear?'selected':''}>${y}</option>`).join('')}
       </select>
       <button onclick="window._collExport()" style="height:32px;padding:0 12px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#475569;cursor:pointer">📤 تصدير</button>` : `
-      <input type="text" id="collSName" placeholder="🔍 بحث باسم العميل..." value="${escH(_collSearchName)}" oninput="_collSearchName=this.value;_collFetch()" style="height:32px;padding:0 10px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;min-width:160px;background:#fff"/>
-      <input type="date" id="collSFrom" value="${_collFromDate}" onchange="_collFromDate=this.value;_collFetch()" title="من تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
-      <input type="date" id="collSTo" value="${_collToDate}" onchange="_collToDate=this.value;_collFetch()" title="إلى تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+      <input type="text" id="collSName" placeholder="🔍 بحث باسم العميل..." value="${escH(_collSearchName)}" oninput="_collSearchName=this.value;window._collFetch()" style="height:32px;padding:0 10px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;min-width:160px;background:#fff"/>
+      <input type="date" id="collSFrom" value="${_collFromDate}" onchange="_collFromDate=this.value;window._collFetch()" title="من تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+      <input type="date" id="collSTo" value="${_collToDate}" onchange="_collToDate=this.value;window._collFetch()" title="إلى تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
       <select id="cMonthSel" onchange="window._collChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
         <option value="0" ${_collMonth===0?'selected':''}>كل الشهور</option>
         ${_COLL_MONTHS.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===_collMonth?'selected':''}>${m}</option>`).join('')}
@@ -113,14 +113,16 @@ async function _collFetch() {
 
 function _collRender() {
   const mode = _collMode;
-  const rows = _collRows.filter(r => r.collection_type === mode);
+  const _searchActive = !!((_collSearchName||'').trim() || _collFromDate || _collToDate);
+  // when searching: show all types; otherwise: filter by current tab
+  const rows = _searchActive ? _collRows : _collRows.filter(r => r.collection_type === mode);
   const total = rows.reduce((s,r)=>s+r.amount,0);
   const avg   = rows.length ? Math.round(total/rows.length) : 0;
   const color = mode==='acc'?'#0f6e56':'#185fa5';
 
   // title
   const tEl = document.getElementById('collSheetTitle');
-  if (tEl) tEl.textContent = mode==='acc'?'سجل تحصيل الحسابات':'سجل تحصيل التأسيس';
+  if (tEl) tEl.textContent = _searchActive ? `نتائج البحث — ${rows.length} سجل` : (mode==='acc'?'سجل تحصيل الحسابات':'سجل تحصيل التأسيس');
 
   // kpis
   const kEl = document.getElementById('collKpis');
@@ -153,6 +155,7 @@ function _collRender() {
   if (thEl) thEl.innerHTML = `<tr style="background:#f8fafc">
     <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:95px">التاريخ</th>
     <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0">اسم العميل</th>
+    ${_searchActive?'<th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:80px">النوع</th>':''}
     <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:120px">${col3}</th>
     <th style="padding:8px 10px;text-align:center;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:100px">المبلغ (ج.م)</th>
     <th style="padding:8px 10px;text-align:right;font-size:10px;color:#94a3b8;font-weight:700;border-bottom:2px solid #e2e8f0;width:105px">الطريقة</th>
@@ -167,6 +170,7 @@ function _collRender() {
   const rowsHTML = rows.map((r,i) => `<tr style="border-bottom:1px solid #f8fafc" id="crow_${r.id}">
     <td style="padding:0"><input value="${r.date}" onchange="window._collUpdate(${r.id},'date',this.value)" style="width:100%;height:36px;padding:0 8px;font-size:12px;border:none;background:transparent;outline:none;color:#64748b" /></td>
     <td style="padding:0"><input value="${escH(r.client_name)}" onchange="window._collUpdate(${r.id},'client_name',this.value)" style="width:100%;height:36px;padding:0 10px;font-size:12px;border:none;background:transparent;outline:none;font-weight:600;color:#1e293b" /></td>
+    ${_searchActive?`<td style="padding:0 8px;vertical-align:middle"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:${r.collection_type==='acc'?'#d1fae5':'#dbeafe'};color:${r.collection_type==='acc'?'#065f46':'#1d4ed8'}">${r.collection_type==='acc'?'حسابات':'تأسيس'}</span></td>`:''}
     <td style="padding:0"><input value="${r.billing_month_label||''}" style="width:100%;height:36px;padding:0 8px;font-size:12px;border:none;background:transparent;outline:none;color:#475569" /></td>
     <td style="padding:0"><input value="${r.amount}" onchange="window._collUpdate(${r.id},'amount',this.value)" style="width:100%;height:36px;padding:0 8px;font-size:13px;font-weight:700;color:#0f6e56;border:none;background:transparent;outline:none;text-align:center" /></td>
     <td style="padding:2px 6px"><select onchange="window._collUpdate(${r.id},'payment_method',this.value)" style="width:100%;height:28px;font-size:11px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#1e293b">
@@ -268,6 +272,8 @@ window._collUpdate = function(id, field, val) {
     } catch(e) { toast(e.message||'خطأ في الحفظ','error'); }
   }, 600);
 };
+
+window._collFetch = _collFetch;
 
 window._collClearSearch = function() {
   _collSearchName = '';
