@@ -17,6 +17,7 @@ from app.models.user import User, UserRole
 from app.models.finance_center import FinanceCollection, FinanceManualExpense
 from app.models.settlement import EmployeeSettlement
 from app.models.client import Client
+from app.models.accounting import AccAccount, AccJournalEntry, AccJournalLine
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance-center"])
@@ -69,6 +70,66 @@ def _coll_dict(c: FinanceCollection, user_id: int) -> dict:
     }
 
 
+# ─── Accounting Journal Helper ────────────────────────────────────────────────
+
+COLL_TYPE_ACCOUNTS = {
+    "acc": ("4100", "أتعاب المحاسبة والمراجعة"),
+    "est": ("4200", "أتعاب تأسيس الشركات"),
+}
+
+def _create_collection_je(c: FinanceCollection, db: Session, user_id: int) -> Optional[AccJournalEntry]:
+    """إنشاء قيد يومي (مدين نقدية / دائن إيراد) عند تسجيل تحصيل — على مستوى المكتب (client_id=None)."""
+    try:
+        # جلب حسابات المكتب (client_id IS NULL)
+        office_accounts = {a.code: a for a in db.query(AccAccount).filter(AccAccount.client_id.is_(None)).all()}
+        if not office_accounts:
+            return None  # الحسابات غير مثبتة بعد — تُنشأ القيود عند الـ backfill
+
+        def get_acc(code, fallback_name):
+            a = office_accounts.get(code)
+            return (a.id if a else None, code, a.name if a else fallback_name)
+
+        rev_code, rev_name = COLL_TYPE_ACCOUNTS.get(c.collection_type or "acc", ("4100", "إيرادات"))
+        cash_id, cash_code, cash_name = get_acc("1210", "النقدية والخزينة")
+        rev_id, r_code, r_name       = get_acc(rev_code, rev_name)
+
+        month_label = MONTH_AR[c.billing_month] if 1 <= (c.billing_month or 0) <= 12 else ""
+        ctype_label = "حسابات" if c.collection_type == "acc" else "تأسيس"
+
+        # توليد رقم القيد
+        count = db.query(func.count(AccJournalEntry.id)).filter(AccJournalEntry.client_id.is_(None)).scalar() or 0
+        je_number = f"OFF-{(c.date or date.today()).year}-{str(count + 1).zfill(4)}"
+
+        je = AccJournalEntry(
+            client_id=None,
+            entry_number=je_number,
+            date=c.date or date.today(),
+            month=c.billing_month,
+            year=c.billing_year,
+            description=f"تحصيل أتعاب {ctype_label} — {c.client_name} — {month_label} {c.billing_year}",
+            reference=str(c.id),
+            entry_type="receipt",
+            status="posted",
+            total_debit=c.amount,
+            total_credit=c.amount,
+            is_balanced=True,
+            created_by=user_id,
+        )
+        db.add(je)
+        db.flush()
+
+        db.add(AccJournalLine(entry_id=je.id, account_id=cash_id, account_code=cash_code,
+                              account_name=cash_name, debit=c.amount, credit=0,
+                              description=f"قُبض من {c.client_name}", sort_order=0))
+        db.add(AccJournalLine(entry_id=je.id, account_id=rev_id, account_code=r_code,
+                              account_name=r_name, debit=0, credit=c.amount,
+                              description=f"أتعاب {ctype_label} — {c.client_name}", sort_order=1))
+        return je
+    except Exception as e:
+        print(f"[accounting] _create_collection_je failed: {e}")
+        return None
+
+
 # ─── Collections ──────────────────────────────────────────────────────────────
 
 class CollectionIn(BaseModel):
@@ -102,6 +163,8 @@ def add_collection(
         created_by=current_user.id,
     )
     db.add(c)
+    db.flush()
+    _create_collection_je(c, db, current_user.id)
     db.commit()
     db.refresh(c)
     return _coll_dict(c, current_user.id)
@@ -420,3 +483,52 @@ def get_fees_grid(
         })
 
     return {"year": year, "clients": rows}
+
+
+# ─── Accounting Setup (Admin only) ────────────────────────────────────────────
+
+@router.post("/setup/backfill-journals")
+def backfill_collection_journals(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_owner),
+):
+    """ترحيل التحصيلات السابقة إلى قيود يومية — يُنفَّذ مرة واحدة فقط (آمن: يتخطى ما له قيد)."""
+    collections = db.query(FinanceCollection).order_by(FinanceCollection.date).all()
+
+    created, skipped, errors = [], [], []
+    for c in collections:
+        # تحقق هل يوجد قيد مرتبط بهذا التحصيل (reference = str(c.id))
+        existing = db.query(AccJournalEntry).filter(
+            AccJournalEntry.reference == str(c.id),
+            AccJournalEntry.entry_type == "receipt",
+            AccJournalEntry.client_id.is_(None),
+        ).first()
+        if existing:
+            skipped.append(c.id)
+            continue
+        try:
+            je = _create_collection_je(c, db, current_user.id)
+            if je:
+                created.append({"collection_id": c.id, "je_number": je.entry_number,
+                                 "amount": c.amount, "client_name": c.client_name})
+            else:
+                errors.append({"collection_id": c.id, "reason": "حسابات المكتب غير مثبتة"})
+        except Exception as e:
+            db.rollback()
+            errors.append({"collection_id": c.id, "reason": str(e)})
+
+    db.commit()
+
+    # إحصاء الميزان
+    total_d = sum(r["amount"] for r in created)
+    return {
+        "message": f"تم إنشاء {len(created)} قيد، تخطي {len(skipped)}، أخطاء {len(errors)}",
+        "created_count": len(created),
+        "skipped_count": len(skipped),
+        "error_count": len(errors),
+        "total_debit": total_d,
+        "total_credit": total_d,
+        "is_balanced": True,
+        "entries": created,
+        "errors": errors,
+    }

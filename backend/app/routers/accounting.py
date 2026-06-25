@@ -127,9 +127,13 @@ DEFAULT_COA = [
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _je_number(client_id: int, db: Session) -> str:
+def _je_number(client_id: Optional[int], db: Session) -> str:
+    year = datetime.now().year
+    if client_id is None:
+        count = db.query(func.count(AccJournalEntry.id)).filter(AccJournalEntry.client_id.is_(None)).scalar() or 0
+        return f"OFF-{year}-{str(count + 1).zfill(4)}"
     count = db.query(func.count(AccJournalEntry.id)).filter(AccJournalEntry.client_id == client_id).scalar() or 0
-    return f"JE-{datetime.now().year}-{str(count + 1).zfill(4)}"
+    return f"JE-{year}-{str(count + 1).zfill(4)}"
 
 
 def _account_balances(client_id: int, db: Session,
@@ -285,6 +289,55 @@ async def install_default_coa(
         code_to_id[a["code"]] = acc.id
     db.commit()
     return {"message": f"تم تثبيت {len(DEFAULT_COA)} حساب بنجاح", "count": len(DEFAULT_COA)}
+
+
+@router.post("/install-all-coa")
+async def install_all_clients_coa(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """تثبيت دليل الحسابات لجميع العملاء + المكتب (office) — آمن: يتخطى من لديه حسابات مثبتة."""
+    from app.models.client import Client
+    if current_user.role.value != "admin":
+        raise HTTPException(403, detail="للمدير فقط")
+
+    clients = db.query(Client).all()
+    installed, skipped = [], []
+
+    # تثبيت للمكتب (client_id=None)
+    office_existing = db.query(func.count(AccAccount.id)).filter(AccAccount.client_id.is_(None)).scalar()
+    if not office_existing:
+        for a in sorted(DEFAULT_COA, key=lambda x: x["sort"]):
+            db.add(AccAccount(client_id=None, code=a["code"], name=a["name"],
+                              account_type=a["account_type"], sort_order=a["sort"],
+                              created_by=current_user.id))
+        db.flush()
+        installed.append({"id": None, "name": "المكتب (office)", "accounts": len(DEFAULT_COA)})
+    else:
+        skipped.append({"id": None, "name": "المكتب (office)", "reason": "موجود"})
+
+    # تثبيت لكل عميل
+    for client in clients:
+        existing = db.query(func.count(AccAccount.id)).filter(AccAccount.client_id == client.id).scalar()
+        if existing:
+            skipped.append({"id": client.id, "name": client.name})
+            continue
+        for a in sorted(DEFAULT_COA, key=lambda x: x["sort"]):
+            db.add(AccAccount(client_id=client.id, code=a["code"], name=a["name"],
+                              account_type=a["account_type"], sort_order=a["sort"],
+                              created_by=current_user.id))
+        db.flush()
+        installed.append({"id": client.id, "name": client.name, "accounts": len(DEFAULT_COA)})
+
+    db.commit()
+    return {
+        "message": f"تم تثبيت الحسابات لـ {len(installed)} كيان، تم تخطي {len(skipped)}",
+        "installed_count": len(installed),
+        "skipped_count": len(skipped),
+        "installed": installed,
+        "skipped": skipped,
+        "accounts_per_entity": len(DEFAULT_COA),
+    }
 
 
 @router.post("/{client_id}/accounts")

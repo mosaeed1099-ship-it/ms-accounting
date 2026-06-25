@@ -477,6 +477,26 @@ def _migrate_users_columns():
     print("✅ Users migration done")
 
 
+def _migrate_accounting_nullable():
+    """Make acc_journal_entries.client_id and acc_accounts.client_id nullable for office-level entries."""
+    from app.database import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE acc_journal_entries ALTER COLUMN client_id DROP NOT NULL"))
+            conn.commit()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+        try:
+            conn.execute(text("ALTER TABLE acc_accounts ALTER COLUMN client_id DROP NOT NULL"))
+            conn.commit()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+    print("✅ Accounting nullable migration done")
+
+
 def _init_db_sync():
     """Blocking DB init — runs in thread pool."""
     import time
@@ -488,6 +508,7 @@ def _init_db_sync():
             _migrate_formation_tables()
             _migrate_tasks_columns()
             _migrate_users_columns()
+            _migrate_accounting_nullable()
             _seed_wht_types()
             print("✅ Database ready")
             return

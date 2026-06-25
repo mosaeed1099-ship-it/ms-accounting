@@ -16,7 +16,7 @@ class AccAccount(Base):
     __tablename__ = "acc_accounts"
 
     id              = Column(Integer, primary_key=True, index=True)
-    client_id       = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    client_id       = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     code            = Column(String(20), nullable=False)
     name            = Column(String(200), nullable=False)
     name_en         = Column(String(200))
@@ -47,8 +47,8 @@ class AccJournalEntry(Base):
     __tablename__ = "acc_journal_entries"
 
     id           = Column(Integer, primary_key=True, index=True)
-    client_id    = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
-    entry_number = Column(String(30), index=True)   # JE-2025-0001
+    client_id    = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
+    entry_number = Column(String(30), index=True)   # JE-2025-0001 | OFF-2025-0001
     date         = Column(Date, nullable=False)
     month        = Column(Integer)
     year         = Column(Integer)
