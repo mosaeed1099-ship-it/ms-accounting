@@ -13,7 +13,17 @@ async function loadCollections(silent=false) {
         ${[2024,2025,2026].map(y=>`<option ${y===_collYear?'selected':''}>${y}</option>`).join('')}
       </select>
       <button onclick="window._collExport()" style="height:32px;padding:0 12px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#475569;cursor:pointer">📤 تصدير</button>` : `
-      <span style="font-size:12px;color:#94a3b8">📅 ${today.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
+      <input type="text" id="collSName" placeholder="🔍 بحث باسم العميل..." value="${escH(_collSearchName)}" oninput="_collSearchName=this.value;_collFetch()" style="height:32px;padding:0 10px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;min-width:160px;background:#fff"/>
+      <input type="date" id="collSFrom" value="${_collFromDate}" onchange="_collFromDate=this.value;_collFetch()" title="من تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+      <input type="date" id="collSTo" value="${_collToDate}" onchange="_collToDate=this.value;_collFetch()" title="إلى تاريخ" style="height:32px;padding:0 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"/>
+      <select id="cMonthSel" onchange="window._collChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+        <option value="0" ${_collMonth===0?'selected':''}>كل الشهور</option>
+        ${_COLL_MONTHS.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===_collMonth?'selected':''}>${m}</option>`).join('')}
+      </select>
+      <select id="cYearSel" onchange="window._collChangeMonth()" style="height:32px;padding:0 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+        ${[2024,2025,2026].map(y=>`<option ${y===_collYear?'selected':''}>${y}</option>`).join('')}
+      </select>
+      <button onclick="window._collClearSearch()" style="height:32px;padding:0 10px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#64748b;cursor:pointer" title="إعادة الضبط">↺</button>`;
 
   main.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
@@ -75,12 +85,27 @@ async function loadCollections(silent=false) {
 
 async function _collFetch() {
   try {
-    const data = await api('GET', `/api/finance/collections?month=${_collMonth}&year=${_collYear}`);
+    const _isOwner = currentUser?.role === 'admin';
+    let url;
+    if (_isOwner) {
+      url = `/api/finance/collections?month=${_collMonth}&year=${_collYear}`;
+    } else {
+      // fetch all when month=0, else fetch selected month
+      url = _collMonth === 0
+        ? '/api/finance/collections'
+        : `/api/finance/collections?month=${_collMonth}&year=${_collYear}`;
+    }
+    const data = await api('GET', url);
     _collRows = data || [];
-    // Non-owner: filter to today only
-    if (currentUser?.role !== 'admin') {
-      const todayStr = new Date().toISOString().slice(0,10);
-      _collRows = _collRows.filter(r => (r.date||'').slice(0,10) === todayStr);
+    if (!_isOwner) {
+      // filter by client name
+      if (_collSearchName.trim()) {
+        const q = _collSearchName.trim().toLowerCase();
+        _collRows = _collRows.filter(r => (r.client_name||'').toLowerCase().includes(q));
+      }
+      // filter by date range
+      if (_collFromDate) _collRows = _collRows.filter(r => (r.date||'') >= _collFromDate);
+      if (_collToDate)   _collRows = _collRows.filter(r => (r.date||'') <= _collToDate);
     }
   } catch(e) { _collRows = []; }
   _collRender();
@@ -97,10 +122,18 @@ function _collRender() {
   const tEl = document.getElementById('collSheetTitle');
   if (tEl) tEl.textContent = mode==='acc'?'سجل تحصيل الحسابات':'سجل تحصيل التأسيس';
 
-  // kpis — owner only
+  // kpis
   const kEl = document.getElementById('collKpis');
-  if (kEl && currentUser?.role !== 'admin') { kEl.innerHTML = ''; kEl.style.display='none'; }
-  else if (kEl) kEl.innerHTML = `
+  if (kEl && currentUser?.role !== 'admin') {
+    // non-owner: show total only (no %, no averages)
+    kEl.style.display = 'grid';
+    kEl.style.gridTemplateColumns = '1fr';
+    kEl.innerHTML = `
+    <div style="background:#fff;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0">
+      <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">إجمالي التحصيل</div>
+      <div style="font-size:20px;font-weight:700;color:${color}">${total.toLocaleString('ar-EG')} <span style="font-size:11px;font-weight:400;color:#94a3b8">ج.م</span></div>
+    </div>`;
+  } else if (kEl) kEl.innerHTML = `
     <div style="background:#fff;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0">
       <div style="font-size:10px;color:#94a3b8;margin-bottom:3px">إجمالي التحصيل</div>
       <div style="font-size:20px;font-weight:700;color:${color}">${total.toLocaleString('ar-EG')} <span style="font-size:11px;font-weight:400;color:#94a3b8">ج.م</span></div>
@@ -234,6 +267,15 @@ window._collUpdate = function(id, field, val) {
       await api('PUT', `/api/finance/collections/${id}`, {[field]: field==='amount'?parseFloat(val)||0:val});
     } catch(e) { toast(e.message||'خطأ في الحفظ','error'); }
   }, 600);
+};
+
+window._collClearSearch = function() {
+  _collSearchName = '';
+  _collFromDate   = '';
+  _collToDate     = '';
+  _collMonth      = new Date().getMonth() + 1;
+  _collYear       = new Date().getFullYear();
+  loadCollections();
 };
 
 // keep old refs working (modal functions still referenced elsewhere)
