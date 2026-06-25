@@ -90,8 +90,9 @@ async function _collFetch() {
     if (_isOwner) {
       url = `/api/finance/collections?month=${_collMonth}&year=${_collYear}`;
     } else {
-      // fetch all when month=0, else fetch selected month
-      url = _collMonth === 0
+      // fetch all when month=0 OR when search is active (to search across all history)
+      const _searchActive = !!((_collSearchName||'').trim() || _collFromDate || _collToDate);
+      url = (_collMonth === 0 || _searchActive)
         ? '/api/finance/collections'
         : `/api/finance/collections?month=${_collMonth}&year=${_collYear}`;
     }
