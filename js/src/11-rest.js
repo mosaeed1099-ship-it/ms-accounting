@@ -3556,7 +3556,11 @@ async function accDashboard() {
   return `
   <div style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
     <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0">📊 لوحة تحكم — ${_accClientName} (${_accYear})</h2>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:white;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:6px">
+        🤖 رفع فاتورة (AI)
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="accImportInvoice(this.files[0])">
+      </label>
       <label style="background:white;border:1.5px solid #e8edf3;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:#1a2472;font-weight:600">
         📎 استيراد Excel
         <input type="file" accept=".xlsx,.xls" style="display:none" onchange="accImportExcel(this.files[0])">
@@ -4610,6 +4614,202 @@ async function confirmImportExcel() {
   } catch(e) {
     toast(e.message, 'error');
     if(btn) { btn.disabled = false; btn.textContent = `✅ اعتماد وترحيل ${rows.length} معاملة`; }
+  }
+}
+
+// ── AI Invoice OCR — PDF / Image Reader ───────────────────────────────────────
+async function accImportInvoice(file) {
+  if(!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+
+  // Show loading overlay
+  const loadingId = 'invoiceLoadingOverlay';
+  const lo = document.createElement('div');
+  lo.id = loadingId;
+  lo.className = 'modal-overlay';
+  lo.style.zIndex = '1400';
+  lo.innerHTML = `<div style="background:white;border-radius:18px;padding:40px;text-align:center;min-width:300px">
+    <div style="font-size:48px;margin-bottom:16px">🤖</div>
+    <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:8px">جاري قراءة الفاتورة...</div>
+    <div style="font-size:13px;color:#64748b">الذكاء الاصطناعي يحلل المستند</div>
+    <div class="spinner" style="margin:20px auto 0"></div>
+  </div>`;
+  document.body.append(lo);
+
+  try {
+    const r = await fetch(`${API}/api/accounting/${_accClientId}/import/invoice`, {
+      method: 'POST',
+      headers: token ? {Authorization: `Bearer ${token}`} : {},
+      body: formData,
+    });
+    const data = await r.json();
+    lo.remove();
+    if(!r.ok) throw new Error(data.detail || 'فشل تحليل الفاتورة');
+    showInvoicePreview(data);
+  } catch(e) {
+    lo.remove();
+    toast(e.message, 'error');
+  }
+}
+
+function showInvoicePreview(data) {
+  const typeInfo   = ACC_TX_TYPES[data.tx_type] || {icon:'📄', label:data.tx_type, color:'#374151'};
+  const confColor  = data.confidence >= 80 ? '#15803d' : data.confidence >= 50 ? '#d97706' : '#dc2626';
+  const confBg     = data.confidence >= 80 ? '#dcfce7' : data.confidence >= 50 ? '#fef9c3' : '#fef2f2';
+  const today      = new Date().toISOString().split('T')[0];
+
+  const jeLines = {
+    sale:     [{d:'1220 عملاء',c:''},{d:'',c:'4100 مبيعات'},{d:'',c:'2120 ض.ق.م'}],
+    purchase: [{d:'5110 مشتريات',c:''},{d:'1250 ض.ق.م مدين',c:''},{d:'',c:'2110 موردون'}],
+    expense:  [{d:'5200 مصروفات',c:''},{d:'',c:'1210 نقدية'}],
+    asset:    [{d:'1110 أصول ثابتة',c:''},{d:'',c:'1210 نقدية'}],
+    salary:   [{d:'5220 رواتب',c:''},{d:'',c:'1210 نقدية'}],
+    tax:      [{d:'2140 ضرائب مستحقة',c:''},{d:'',c:'1210 نقدية'}],
+  }[data.tx_type] || [];
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '1300';
+  overlay.id = 'invoicePreviewOverlay';
+  overlay.innerHTML = `<div class="modal" style="max-width:650px;max-height:92vh;display:flex;flex-direction:column">
+
+    <!-- Header -->
+    <div style="padding:16px 22px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div>
+        <div style="color:white;font-size:14px;font-weight:700">🤖 نتيجة تحليل الفاتورة بالذكاء الاصطناعي</div>
+        <div style="color:rgba(255,255,255,.7);font-size:11px;margin-top:2px">${escH(data.filename||'')}</div>
+      </div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white;font-size:16px">✕</button>
+    </div>
+
+    <div style="padding:18px 22px;overflow-y:auto;flex:1">
+
+      <!-- نوع + ثقة -->
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+        <div style="background:${typeInfo.color};color:white;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700">
+          ${typeInfo.icon} ${typeInfo.label}
+        </div>
+        <div style="background:${confBg};color:${confColor};padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700">
+          نسبة الثقة: ${data.confidence}%
+        </div>
+        ${data.notes ? `<div style="font-size:11px;color:#64748b;background:#f1f5f9;padding:4px 10px;border-radius:8px">${escH(data.notes)}</div>` : ''}
+      </div>
+
+      <!-- البيانات المستخرجة -->
+      <div style="background:#f8fafc;border-radius:12px;padding:16px;margin-bottom:16px">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px">📋 البيانات المستخرجة — يمكنك التعديل قبل الاعتماد</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">التاريخ</label>
+            <input id="invDate" type="date" class="input" style="font-size:13px" value="${data.date || today}"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">رقم المستند</label>
+            <input id="invDoc" class="input" style="font-size:13px" value="${escH(data.doc_number||'')}"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">الجهة (عميل / مورد)</label>
+            <input id="invPartner" class="input" style="font-size:13px" value="${escH(data.partner||'')}"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">نوع المعاملة</label>
+            <select id="invType" class="input" style="font-size:13px">
+              ${['sale','purchase','expense','asset','salary','tax'].map(t=>
+                `<option value="${t}" ${t===data.tx_type?'selected':''}>${ACC_TX_TYPES[t]?.icon||''} ${ACC_TX_TYPES[t]?.label||t}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">المبلغ (قبل الضريبة)</label>
+            <input id="invAmount" type="number" class="input" style="font-size:13px;font-weight:700" value="${data.amount}"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">ض.ق.م</label>
+            <input id="invVat" type="number" class="input" style="font-size:13px" value="${data.vat}"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">خصم / استقطاع</label>
+            <input id="invWht" type="number" class="input" style="font-size:13px" value="${data.wht}"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">الصافي</label>
+            <input id="invNet" type="number" class="input" style="font-size:13px;color:#15803d;font-weight:700" value="${data.net}"/>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px">الوصف / البيان</label>
+          <input id="invDesc" class="input" style="font-size:13px" value="${escH(data.description||'')}"/>
+        </div>
+      </div>
+
+      <!-- القيد المقترح -->
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:10px">🔄 القيد المحاسبي الذي سيُنشأ تلقائياً</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr>
+            <th style="padding:6px 10px;text-align:right;color:#64748b;border-bottom:1px solid #bfdbfe">الحساب</th>
+            <th style="padding:6px 10px;text-align:right;color:#1a2472;border-bottom:1px solid #bfdbfe">مدين ←</th>
+            <th style="padding:6px 10px;text-align:right;color:#dc2626;border-bottom:1px solid #bfdbfe">→ دائن</th>
+          </tr></thead>
+          <tbody>
+            ${jeLines.map(l=>`<tr>
+              <td style="padding:5px 10px">${l.d||l.c}</td>
+              <td style="padding:5px 10px;color:#1a2472;font-weight:${l.d?'700':'400'}">${l.d?'✓':''}</td>
+              <td style="padding:5px 10px;color:#dc2626;font-weight:${l.c?'700':'400'}">${l.c?'✓':''}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div id="invResult"></div>
+    </div>
+
+    <!-- Footer buttons -->
+    <div style="padding:14px 22px;border-top:1px solid #e8edf3;display:flex;gap:10px;justify-content:flex-end;flex-shrink:0">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      <button class="btn btn-primary" id="confirmInvBtn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)" onclick="confirmInvoiceImport()">
+        ✅ اعتماد وترحيل القيد
+      </button>
+    </div>
+  </div>`;
+
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+}
+
+async function confirmInvoiceImport() {
+  const btn = document.getElementById('confirmInvBtn');
+  const resultDiv = document.getElementById('invResult');
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ جاري الترحيل...'; }
+
+  const row = {
+    date:        document.getElementById('invDate')?.value || new Date().toISOString().split('T')[0],
+    amount:      parseFloat(document.getElementById('invAmount')?.value || 0),
+    vat:         parseFloat(document.getElementById('invVat')?.value || 0),
+    wht:         parseFloat(document.getElementById('invWht')?.value || 0),
+    net:         parseFloat(document.getElementById('invNet')?.value || 0),
+    partner:     document.getElementById('invPartner')?.value?.trim() || null,
+    doc_number:  document.getElementById('invDoc')?.value?.trim() || null,
+    description: document.getElementById('invDesc')?.value?.trim() || null,
+    tx_type:     document.getElementById('invType')?.value || 'expense',
+  };
+
+  if(!row.amount) {
+    if(resultDiv) resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px">⚠️ المبلغ مطلوب</div>`;
+    if(btn) { btn.disabled = false; btn.textContent = '✅ اعتماد وترحيل القيد'; }
+    return;
+  }
+  if(!row.net) row.net = row.amount + row.vat - row.wht;
+
+  try {
+    const r = await api('POST', `/api/accounting/${_accClientId}/import/excel/confirm`, { rows: [row] });
+    document.getElementById('invoicePreviewOverlay')?.remove();
+    toast(`✅ تم ترحيل القيد — ${ACC_TX_TYPES[row.tx_type]?.label||row.tx_type}: ${money(row.amount)}`);
+    accRender();
+  } catch(e) {
+    if(resultDiv) resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px">❌ ${escH(e.message)}</div>`;
+    if(btn) { btn.disabled = false; btn.textContent = '✅ اعتماد وترحيل القيد'; }
   }
 }
 
@@ -7332,6 +7532,9 @@ window.accImportExcel = accImportExcel;
 window.showAddTransaction = showAddTransaction;
 window.confirmImportExcel = confirmImportExcel;
 window.showImportPreview = showImportPreview;
+window.accImportInvoice = accImportInvoice;
+window.showInvoicePreview = showInvoicePreview;
+window.confirmInvoiceImport = confirmInvoiceImport;
 window.saveAccTransaction = saveAccTransaction;
 window.deleteAccTx = deleteAccTx;
 window.calcTxTotals = calcTxTotals;
