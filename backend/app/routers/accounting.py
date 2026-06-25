@@ -136,7 +136,7 @@ def _je_number(client_id: Optional[int], db: Session) -> str:
     return f"JE-{year}-{str(count + 1).zfill(4)}"
 
 
-def _account_balances(client_id: int, db: Session,
+def _account_balances(client_id: Optional[int], db: Session,
                       year: Optional[int] = None, month: Optional[int] = None) -> dict:
     """Return {account_id: {debit, credit, balance}} computed from posted journal lines."""
     query = (
@@ -149,7 +149,7 @@ def _account_balances(client_id: int, db: Session,
         )
         .join(AccJournalEntry, AccJournalLine.entry_id == AccJournalEntry.id)
         .filter(
-            AccJournalEntry.client_id == client_id,
+            AccJournalEntry.client_id.is_(None) if client_id is None else AccJournalEntry.client_id == client_id,
             AccJournalEntry.status == "posted",
         )
     )
@@ -338,6 +338,56 @@ async def install_all_clients_coa(
         "skipped": skipped,
         "accounts_per_entity": len(DEFAULT_COA),
     }
+
+
+@router.get("/office/accounts")
+async def office_accounts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """حسابات المكتب (client_id=NULL)"""
+    accs = db.query(AccAccount).filter(AccAccount.client_id.is_(None)).order_by(AccAccount.code).all()
+    return [{"id": a.id, "code": a.code, "name": a.name, "account_type": a.account_type} for a in accs]
+
+
+@router.get("/office/journal-entries")
+async def office_journal_entries(
+    year: Optional[int] = None, month: Optional[int] = None,
+    page: int = 1, page_size: int = 100,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    """قيود المكتب اليومية (client_id=NULL)"""
+    q = db.query(AccJournalEntry).filter(AccJournalEntry.client_id.is_(None))
+    if year:  q = q.filter(AccJournalEntry.year == year)
+    if month: q = q.filter(AccJournalEntry.month == month)
+    total = q.count()
+    items = q.order_by(AccJournalEntry.date.desc()).offset((page-1)*page_size).limit(page_size).all()
+    def je_dict(je):
+        return {"id": je.id, "entry_number": je.entry_number, "date": str(je.date),
+                "description": je.description, "entry_type": je.entry_type, "status": je.status,
+                "total_debit": je.total_debit, "total_credit": je.total_credit, "is_balanced": je.is_balanced,
+                "lines": [{"account_code": l.account_code, "account_name": l.account_name,
+                            "debit": l.debit, "credit": l.credit} for l in je.lines]}
+    return {"total": total, "items": [je_dict(j) for j in items]}
+
+
+@router.get("/office/trial-balance")
+async def office_trial_balance(year: Optional[int] = None, db: Session = Depends(get_db),
+                               current_user: User = Depends(get_current_user)):
+    """ميزان مراجعة المكتب (client_id=NULL)"""
+    balances = _account_balances(None, db, year=year)
+    accounts = db.query(AccAccount).filter(AccAccount.client_id.is_(None)).order_by(AccAccount.code).all()
+    acc_map = {a.id: a for a in accounts}
+    rows, total_d, total_c = [], 0, 0
+    for aid, b in balances.items():
+        d, c = b["debit"], b["credit"]
+        if d == 0 and c == 0: continue
+        acc = acc_map.get(aid)
+        total_d += d; total_c += c
+        rows.append({"code": acc.code if acc else b.get("account_code",""),
+                     "name": acc.name if acc else b.get("account_name",""),
+                     "account_type": acc.account_type if acc else "unknown",
+                     "debit": round(d,2), "credit": round(c,2), "balance": round(d-c,2)})
+    rows.sort(key=lambda r: r["code"])
+    return {"rows": rows, "total_debit": round(total_d,2), "total_credit": round(total_c,2),
+            "is_balanced": abs(total_d-total_c) < 0.01, "year": year}
 
 
 @router.post("/{client_id}/accounts")
