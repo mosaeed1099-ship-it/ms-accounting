@@ -390,6 +390,23 @@ async def office_trial_balance(year: Optional[int] = None, db: Session = Depends
             "is_balanced": abs(total_d-total_c) < 0.01, "year": year}
 
 
+@router.delete("/office/journal-entries/{je_id}")
+async def delete_office_journal_entry(je_id: int, db: Session = Depends(get_db),
+                                      current_user: User = Depends(get_current_user)):
+    """حذف قيد يومي للمكتب (للمدير فقط)."""
+    if current_user.role.value != "admin":
+        raise HTTPException(403, detail="للمدير فقط")
+    je = db.query(AccJournalEntry).filter(AccJournalEntry.id == je_id,
+                                          AccJournalEntry.client_id.is_(None)).first()
+    if not je:
+        raise HTTPException(404, "القيد غير موجود")
+    # المدير يمكنه حذف قيود المكتب مباشرة (بما فيها posted) لأغراض التصحيح
+    db.delete(je)
+    db.commit()
+    return {"message": "تم الحذف"}
+
+
+
 @router.post("/{client_id}/accounts")
 async def create_account(
     client_id: int,
