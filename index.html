@@ -16686,7 +16686,12 @@ async function renderEmpSettlements() {
                     '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
                     '<td style="padding:10px 14px;text-align:center;font-weight:800;color:#15803d;font-size:15px">' + money(t.amount) + '</td>' +
                     '<td style="padding:10px 14px;text-align:center;color:#94a3b8">—</td>' +
-                    '<td></td>' +
+                    '<td style="padding:10px 14px;text-align:center;vertical-align:middle">' +
+                      '<div style="display:flex;gap:4px;justify-content:center">' +
+                        '<button onclick="showEditCustodyTopup(' + t.id + ',' + t.amount + ',\'' + escH(t.notes||'') + '\')" title="تعديل" style="background:#eef1fb;border:none;border-radius:6px;color:#1a2472;cursor:pointer;font-size:13px;padding:5px 8px">✏️</button>' +
+                        '<button onclick="deleteCustodyTopup(' + t.id + ')" title="حذف" style="background:#fee2e2;border:none;border-radius:6px;color:#ef4444;cursor:pointer;font-size:13px;padding:5px 8px">🗑️</button>' +
+                      '</div>' +
+                    '</td>' +
                   '</tr>';
                 }
                 const s=row.data;
@@ -16843,6 +16848,55 @@ async function saveCustodyTopup() {
     await api('POST', '/api/settlements/custody/topup', {employee_name:empName, amount, notes});
     closeModal();
     if (_settleEmp) renderEmpSettlements(); else loadSettlements(true);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function deleteCustodyTopup(id) {
+  if (!await confirmDlg('حذف العهدة؟', 'هيتم حذف هذه العهدة وخصمها من رصيد الموظف — متأكد؟')) return;
+  try {
+    await api('DELETE', `/api/settlements/custody/topup/${id}`);
+    toast('✅ تم حذف العهدة');
+    _AC.invalidate('/api/settlements');
+    renderEmpSettlements();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+function showEditCustodyTopup(id, currentAmount, currentNotes) {
+  const html = `
+  <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:380px">
+      <div style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);border-radius:14px 14px 0 0;padding:16px 20px">
+        <div style="color:white;font-weight:700;font-size:15px">✏️ تعديل العهدة</div>
+        <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:3px">المبلغ الحالي: ${money(currentAmount)}</div>
+      </div>
+      <div style="padding:20px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">المبلغ الجديد (ج.م.)</label>
+        <input id="editTopupAmt" class="input" type="number" value="${currentAmount}" step="0.01" style="margin-bottom:14px"/>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">ملاحظات</label>
+        <input id="editTopupNote" class="input" value="${escH(currentNotes||'')}" placeholder="سبب العهدة..." style="margin-bottom:20px"/>
+        <div style="display:flex;gap:10px">
+          <button onclick="saveEditCustodyTopup(${id})" class="btn btn-primary" style="flex:1">💾 حفظ التعديل</button>
+          <button onclick="this.closest('.modal-overlay').remove()" class="btn" style="flex:1">إلغاء</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(()=>document.getElementById('editTopupAmt')?.focus(),100);
+}
+
+async function saveEditCustodyTopup(id) {
+  const amt = parseFloat(document.getElementById('editTopupAmt')?.value||'');
+  const notes = document.getElementById('editTopupNote')?.value?.trim()||'';
+  if (isNaN(amt) || amt <= 0) { toast('ادخل مبلغ صحيح','error'); return; }
+  try {
+    await api('DELETE', `/api/settlements/custody/topup/${id}`);
+    const empName = _settleEmp?.name;
+    await api('POST', '/api/settlements/custody/topup', {employee_name: empName, amount: amt, notes});
+    document.querySelector('.modal-overlay')?.remove();
+    toast('✅ تم تعديل العهدة');
+    _AC.invalidate('/api/settlements');
+    renderEmpSettlements();
   } catch(e) { toast(e.message,'error'); }
 }
 
@@ -17735,6 +17789,9 @@ window.removeStlItem = removeStlItem;
 window.calcStlTotal = calcStlTotal;
 window.saveSettlement = saveSettlement;
 window.deleteSettlement = deleteSettlement;
+window.deleteCustodyTopup = deleteCustodyTopup;
+window.showEditCustodyTopup = showEditCustodyTopup;
+window.saveEditCustodyTopup = saveEditCustodyTopup;
 window.resetEmployeeBalance = resetEmployeeBalance;
 window.showSetOpeningBalance = showSetOpeningBalance;
 window.saveOpeningBalance = saveOpeningBalance;
