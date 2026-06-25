@@ -17003,16 +17003,18 @@ function addStlItem(data={}) {
   const cellStyle = 'padding:4px 6px;border-left:1px solid #e2e8f0;';
   const inp = (f,type,val,ph) => `<input data-f="${f}" type="${type}" value="${escH(String(val||''))}" placeholder="${ph}"
     class="input" style="width:100%;padding:5px 8px;font-size:12px;border:none;border-radius:0;background:transparent" oninput="calcStlTotal()"/>`;
-  const catOpts = STL_CATS.map(c=>`<option${(data.description||data.cat||'')==c?' selected':''}>${c}</option>`).join('');
+  // ensure datalist exists once in DOM
+  if (!document.getElementById('stlCatList')) {
+    const dl = document.createElement('datalist');
+    dl.id = 'stlCatList';
+    dl.innerHTML = STL_CATS.map(c=>`<option value="${c}">`).join('');
+    document.body.appendChild(dl);
+  }
   row.innerHTML = `
     <div style="${cellStyle}">${inp('date','date',data.expense_date||today,'')}</div>
     <div style="${cellStyle}">${inp('client','text',data.client_name||'','مدينة نصر اول...')}</div>
-    <div style="${cellStyle}"><select data-f="cat" style="width:100%;padding:5px 6px;border:none;font-size:12px;font-family:inherit;background:transparent" onchange="calcStlTotal()">
-      <option value="">اختر البند</option>${catOpts}
-      <option${!STL_CATS.includes(data.description||'')&&(data.description)?' selected':''} value="${escH(data.description||'')}">
-        ${STL_CATS.includes(data.description||'')?'':escH(data.description||'')}
-      </option>
-    </select></div>
+    <div style="${cellStyle}"><input data-f="cat" type="text" list="stlCatList" value="${escH(data.description||data.cat||'')}" placeholder="اكتب البند يدوياً..."
+      class="input" style="width:100%;padding:5px 8px;font-size:12px;border:none;border-radius:0;background:transparent;font-family:inherit" oninput="calcStlTotal()"/></div>
     <div style="${cellStyle};text-align:center">${inp('amt','number',data.amount||'','0.00')}</div>
     <div style="display:flex;align-items:center;justify-content:center;padding:2px">
       <button type="button" onclick="removeStlItem(this.closest('[data-stl-row]'))"
