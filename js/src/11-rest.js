@@ -3417,6 +3417,9 @@ const ACC_TX_TYPES = {
   sale:     {label:'بيع / إيراد',    icon:'📈', color:'#15803d'},
   purchase: {label:'مشتريات',        icon:'📦', color:'#1a2472'},
   expense:  {label:'مصروفات',        icon:'💸', color:'#d97706'},
+  asset:    {label:'أصول ثابتة',     icon:'🏭', color:'#0369a1'},
+  salary:   {label:'مرتبات',         icon:'👥', color:'#7c3aed'},
+  tax:      {label:'ضرائب',          icon:'📋', color:'#dc2626'},
   receipt:  {label:'تحصيل',          icon:'💰', color:'#0369a1'},
   payment:  {label:'سداد',           icon:'💳', color:'#dc2626'},
 };
@@ -3468,6 +3471,9 @@ async function openClientAccounting(clientId, clientName) {
         ['sales','📈','المبيعات'],
         ['purchases','📦','المشتريات'],
         ['expenses','💸','المصروفات'],
+        ['assets','🏭','أصول ثابتة'],
+        ['salaries','👥','مرتبات'],
+        ['taxes','📋','ضرائب'],
         ['trial','⚖️','ميزان المراجعة'],
         ['income','📄','قائمة الدخل'],
         ['balance','🏛️','الميزانية'],
@@ -3521,6 +3527,9 @@ async function accRender() {
       case 'sales':      content.innerHTML = await accTransactions('sale'); break;
       case 'purchases':  content.innerHTML = await accTransactions('purchase'); break;
       case 'expenses':   content.innerHTML = await accTransactions('expense'); break;
+      case 'assets':     content.innerHTML = await accTransactions('asset'); break;
+      case 'salaries':   content.innerHTML = await accTransactions('salary'); break;
+      case 'taxes':      content.innerHTML = await accTransactions('tax'); break;
       case 'trial':      content.innerHTML = await accTrialBalance(); break;
       case 'income':     content.innerHTML = await accIncomeStatement(); break;
       case 'balance':    content.innerHTML = await accBalanceSheet(); break;
@@ -3574,23 +3583,29 @@ async function accDashboard() {
   </div>
 
   <!-- Quick actions -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
     ${[
-      ['📈','تسجيل مبيعات','sales'],
-      ['📦','تسجيل مشتريات','purchases'],
-      ['💸','تسجيل مصروفات','expenses'],
+      ['📈','مبيعات','sales'],
+      ['📦','مشتريات','purchases'],
+      ['💸','مصروفات','expenses'],
+      ['🏭','أصول ثابتة','assets'],
+      ['👥','مرتبات','salaries'],
+      ['📋','ضرائب','taxes'],
       ['📋','القيود اليومية','journal'],
       ['⚖️','ميزان المراجعة','trial'],
-      ['🧾','ملخص ض ق م','vat'],
+      ['📄','قائمة الدخل','income'],
+      ['🏛️','الميزانية','balance'],
+      ['🧾','ض ق م','vat'],
+      ['📖','دفتر الأستاذ','ledger'],
     ].map(([icon,label,tab])=>`
       <button onclick="switchAccTab('${tab}')" style="background:white;border:1.5px solid #e8edf3;border-radius:10px;padding:14px;font-family:inherit;cursor:pointer;text-align:center;transition:all .15s" onmouseover="this.style.borderColor='#1a2472'" onmouseout="this.style.borderColor='#e8edf3'">
-        <div style="font-size:24px;margin-bottom:6px">${icon}</div>
-        <div style="font-size:13px;font-weight:600;color:#1e293b">${label}</div>
+        <div style="font-size:22px;margin-bottom:6px">${icon}</div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b">${label}</div>
       </button>`).join('')}
   </div>
 
   ${!hasData ? `<div style="margin-top:20px;padding:20px;background:#fef9c3;border:1px solid #fde68a;border-radius:10px;font-size:13px;color:#92400e">
-    <strong>💡 للبدء:</strong> يمكنك إما (1) رفع ملف Excel بمبيعاتك ومشترياتك، أو (2) إدخال المعاملات يدوياً من الأقسام أعلاه.
+    <strong>💡 للبدء:</strong> ارفع ملف Excel (أي تنسيق) أو أدخل المعاملات يدوياً — يتولد القيد المحاسبي تلقائياً.
   </div>` : ''}`;
 }
 
@@ -3676,8 +3691,36 @@ async function accTransactions(type) {
 // ── Add Transaction Modal ─────────────────────────────────────────────────────
 function showAddTransaction(type) {
   const typeInfo = ACC_TX_TYPES[type];
-  const isExpense = type === 'expense';
+  const isSimple = ['expense','asset','salary','tax'].includes(type);  // no VAT fields
+  const isSale   = type === 'sale';
   const today = new Date().toISOString().split('T')[0];
+
+  const categoryPlaceholder = {
+    expense: 'إيجار / كهرباء / اتصالات...',
+    asset:   'مكيف / سيارة / معدات...',
+    salary:  'مرتبات شهر يونيو...',
+    tax:     'ضريبة قيمة مضافة / دخل...',
+  }[type] || '';
+
+  const partnerPlaceholder = {
+    sale:     'اسم العميل أو الشركة',
+    purchase: 'اسم المورد أو الشركة',
+    expense:  'اسم الجهة (اختياري)',
+    asset:    'المورد / جهة الشراء (اختياري)',
+    salary:   'قسم / موظف (اختياري)',
+    tax:      'مصلحة الضرائب (اختياري)',
+  }[type] || '';
+
+  // JE preview lines (shown as info)
+  const jePreview = {
+    sale:     'مدين: عملاء (1220) | دائن: مبيعات (4100) + ض.ق.م (2120)',
+    purchase: 'مدين: مشتريات (5110) + ض.ق.م (1250) | دائن: موردون (2110)',
+    expense:  'مدين: مصروفات (5200) | دائن: نقدية (1210)',
+    asset:    'مدين: أصول ثابتة (1110) | دائن: نقدية (1210)',
+    salary:   'مدين: رواتب (5220) | دائن: نقدية (1210)',
+    tax:      'مدين: ضرائب مستحقة (2140) | دائن: نقدية (1210)',
+  }[type] || '';
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.style.zIndex = '1200';
@@ -3687,28 +3730,38 @@ function showAddTransaction(type) {
       <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white;font-size:16px">✕</button>
     </div>
     <div style="padding:20px 22px">
+
+      <!-- القيد المتوقع -->
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#1e40af">
+        🔄 <strong>القيد الذي سيُنشأ تلقائياً:</strong> ${jePreview}
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">التاريخ *</label>
           <input id="txDate" type="date" class="input" value="${today}"/></div>
-        ${isExpense ? `
-          <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">نوع المصروف</label>
-            <input id="txCategory" class="input" placeholder="إيجار / رواتب / كهرباء..."/></div>
+        ${isSimple ? `
+          <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">التصنيف / الوصف</label>
+            <input id="txCategory" class="input" placeholder="${categoryPlaceholder}"/></div>
         ` : `
           <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">رقم المستند</label>
             <input id="txDocNum" class="input" placeholder="1"/></div>
         `}
       </div>
-      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">${isExpense ? 'الجهة / الوصف' : 'اسم الشركة *'}</label>
-        <input id="txPartner" class="input" placeholder="${isExpense ? 'اسم الجهة أو وصف المصروف' : 'جولدن بيلرز للتطوير'}"/></div>
-      ${!isExpense ? `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">رقم التسجيل الضريبي</label>
+
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">الجهة / الاسم</label>
+        <input id="txPartner" class="input" placeholder="${partnerPlaceholder}"/></div>
+
+      ${!isSimple ? `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">رقم التسجيل الضريبي</label>
         <input id="txTaxId" class="input" placeholder="758833555"/></div>` : ''}
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">القيمة (قبل الضريبة) *</label>
+        <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">المبلغ *</label>
           <input id="txAmount" type="number" class="input" placeholder="0" oninput="calcTxTotals('${type}')"/></div>
-        ${!isExpense ? `<div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">نسبة ض ق م %</label>
+        ${!isSimple ? `<div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">نسبة ض ق م %</label>
           <input id="txVatRate" type="number" class="input" value="14" oninput="calcTxTotals('${type}')"/></div>` : '<div></div>'}
       </div>
-      ${!isExpense ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+
+      ${!isSimple ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">ض ق م</label>
           <input id="txVatAmt" type="number" class="input" placeholder="0"/></div>
         <div><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">خصم وإضافة</label>
@@ -3720,6 +3773,7 @@ function showAddTransaction(type) {
         <div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">الإجمالي بعد الخصم</div>
           <div id="txNet" style="font-size:16px;font-weight:800;color:#15803d">0 ج.م.</div></div>
       </div>` : ''}
+
       <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">ملاحظات</label>
         <input id="txNotes" class="input" placeholder="ملاحظات اختيارية"/></div>
       <div id="txResult" style="margin-bottom:10px"></div>
@@ -3734,7 +3788,7 @@ function showAddTransaction(type) {
 }
 
 function calcTxTotals(type) {
-  if(type === 'expense') return;
+  if(['expense','asset','salary','tax'].includes(type)) return;
   const amt = parseFloat(document.getElementById('txAmount')?.value || 0);
   const vatRate = parseFloat(document.getElementById('txVatRate')?.value || 14) / 100;
   const vatAmt = amt * vatRate;
@@ -3748,13 +3802,13 @@ function calcTxTotals(type) {
 
 async function saveAccTransaction(type) {
   const resultDiv = document.getElementById('txResult');
-  const isExpense = type === 'expense';
+  const isSimple = ['expense','asset','salary','tax'].includes(type);
   const amt = parseFloat(document.getElementById('txAmount')?.value || 0);
-  if(!amt) { resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px">⚠️ أدخل القيمة</div>`; return; }
+  if(!amt) { resultDiv.innerHTML = `<div style="color:#dc2626;font-size:13px">⚠️ أدخل المبلغ</div>`; return; }
 
-  const vatRate = isExpense ? 0 : (parseFloat(document.getElementById('txVatRate')?.value || 14) / 100);
-  const vatAmt  = isExpense ? 0 : parseFloat(document.getElementById('txVatAmt')?.value || amt * vatRate);
-  const whtAmt  = isExpense ? 0 : parseFloat(document.getElementById('txWhtAmt')?.value || 0);
+  const vatRate = isSimple ? 0 : (parseFloat(document.getElementById('txVatRate')?.value || 14) / 100);
+  const vatAmt  = isSimple ? 0 : parseFloat(document.getElementById('txVatAmt')?.value || amt * vatRate);
+  const whtAmt  = isSimple ? 0 : parseFloat(document.getElementById('txWhtAmt')?.value || 0);
   const total   = amt + vatAmt;
   const net     = total - whtAmt;
 
@@ -3770,8 +3824,8 @@ async function saveAccTransaction(type) {
     vat_amount: vatAmt,
     withholding_rate: 0,
     withholding_amount: whtAmt,
-    total_amount: isExpense ? amt : total,
-    net_amount: isExpense ? amt : net,
+    total_amount: isSimple ? amt : total,
+    net_amount: isSimple ? amt : net,
     notes: document.getElementById('txNotes')?.value?.trim() || null,
   };
 
@@ -4431,17 +4485,132 @@ async function accImportExcel(file) {
   const formData = new FormData();
   formData.append('file', file);
   try {
-    const r = await fetch(`${API}/api/accounting/${_accClientId}/import/excel`, {
+    toast('⏳ جاري تحليل الملف...', 'info');
+    const r = await fetch(`${API}/api/accounting/${_accClientId}/import/excel/preview`, {
       method: 'POST',
       headers: token ? {Authorization: `Bearer ${token}`} : {},
       body: formData,
     });
     const data = await r.json();
-    if(!r.ok) throw new Error(data.detail || 'فشل الاستيراد');
-    toast(data.message || '✅ تم الاستيراد');
-    if(data.errors_count > 0) toast(`⚠️ ${data.errors_count} أخطاء — تحقق من البيانات`, 'warning');
-    accRender();
+    if(!r.ok) throw new Error(data.detail || 'فشل التحليل');
+    showImportPreview(data);
   } catch(e) { toast(e.message, 'error'); }
+}
+
+const TX_TYPE_LABELS = {
+  sale:'مبيعات', purchase:'مشتريات', expense:'مصروفات',
+  asset:'أصول ثابتة', salary:'مرتبات', tax:'ضرائب', bank_statement:'كشف بنكي'
+};
+const TX_TYPE_COLORS = {
+  sale:'#15803d', purchase:'#1a2472', expense:'#d97706',
+  asset:'#0369a1', salary:'#7c3aed', tax:'#dc2626', bank_statement:'#374151'
+};
+
+function showImportPreview(data) {
+  // Store rows globally for confirm step
+  window._importRows = data.rows || [];
+
+  const confBadge = (c) => {
+    const col = c >= 80 ? '#15803d' : c >= 50 ? '#d97706' : '#dc2626';
+    const bg  = c >= 80 ? '#dcfce7' : c >= 50 ? '#fef9c3' : '#fef2f2';
+    return `<span style="background:${bg};color:${col};padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${c}%</span>`;
+  };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '1300';
+  overlay.id = 'importPreviewOverlay';
+
+  const sheetsHtml = (data.sheets || []).map(s => `
+    <div style="background:${s.error?'#fef2f2':'white'};border:1px solid #e8edf3;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-weight:700;font-size:13px;color:#1e293b">📄 ${escH(s.sheet)}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${s.error ? `<span style="color:#dc2626;font-size:12px">❌ ${escH(s.error)}</span>` : `
+            <span style="background:#eff6ff;color:#1a2472;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${TX_TYPE_LABELS[s.tx_type]||s.tx_type}</span>
+            ${confBadge(s.confidence)}
+            <span style="font-size:11px;color:#64748b">${s.row_count} صف</span>
+          `}
+        </div>
+      </div>
+      ${!s.error ? `
+        <div style="font-size:11px;color:#64748b;margin-bottom:6px">
+          <strong>الأعمدة المكتشفة:</strong>
+          ${Object.entries(s.col_mapping||{}).filter(([k,v])=>v).map(([k,v])=>`<span style="background:#f1f5f9;border-radius:4px;padding:1px 6px;margin:1px">${k}: ${escH(String(v))}</span>`).join(' ')}
+        </div>
+        ${s.sample?.length ? `
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">التاريخ</th>
+              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">الجهة</th>
+              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">المبلغ</th>
+              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">ض ق م</th>
+              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">صافي</th>
+            </tr></thead>
+            <tbody>
+              ${s.sample.map(r=>`<tr style="border-bottom:1px solid #f1f5f9">
+                <td style="padding:4px 8px">${r.date||'—'}</td>
+                <td style="padding:4px 8px">${escH(r.partner||r.description||'—')}</td>
+                <td style="padding:4px 8px;font-weight:700">${money(r.amount)}</td>
+                <td style="padding:4px 8px;color:#7c3aed">${money(r.vat)}</td>
+                <td style="padding:4px 8px;color:#15803d">${money(r.net)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : ''}
+      ` : ''}
+    </div>
+  `).join('');
+
+  overlay.innerHTML = `<div class="modal" style="max-width:720px;max-height:90vh;display:flex;flex-direction:column">
+    <div style="padding:16px 22px;background:linear-gradient(135deg,#1a2472,#152060);border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div style="color:white;font-size:14px;font-weight:700">📎 معاينة الاستيراد — مراجعة قبل الاعتماد</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white;font-size:16px">✕</button>
+    </div>
+    <div style="padding:16px 22px;overflow-y:auto;flex:1">
+
+      <!-- ملخص -->
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#1a2472">${data.total_rows} صف جاهز للاستيراد</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px">${(data.sheets||[]).length} شيت — يرجى المراجعة ثم الضغط على "اعتماد وترحيل"</div>
+        </div>
+        <div style="font-size:11px;color:#64748b;background:white;border-radius:8px;padding:6px 10px">
+          سيتم إنشاء ${data.total_rows} قيد محاسبي تلقائياً
+        </div>
+      </div>
+
+      ${sheetsHtml}
+    </div>
+
+    <div style="padding:14px 22px;border-top:1px solid #e8edf3;display:flex;gap:10px;justify-content:flex-end;flex-shrink:0">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+      ${data.total_rows > 0 ? `<button class="btn btn-primary" id="confirmImportBtn" onclick="confirmImportExcel()">
+        ✅ اعتماد وترحيل ${data.total_rows} معاملة
+      </button>` : ''}
+    </div>
+  </div>`;
+
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+}
+
+async function confirmImportExcel() {
+  const rows = window._importRows || [];
+  if(!rows.length) return;
+  const btn = document.getElementById('confirmImportBtn');
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ جاري الترحيل...'; }
+  try {
+    const r = await api('POST', `/api/accounting/${_accClientId}/import/excel/confirm`, { rows });
+    document.getElementById('importPreviewOverlay')?.remove();
+    toast(r.message || `✅ تم استيراد ${r.total} معاملة`);
+    if(r.errors_count > 0) toast(`⚠️ ${r.errors_count} أخطاء في الاستيراد`, 'warning');
+    accRender();
+  } catch(e) {
+    toast(e.message, 'error');
+    if(btn) { btn.disabled = false; btn.textContent = `✅ اعتماد وترحيل ${rows.length} معاملة`; }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -7161,6 +7330,8 @@ window.accRender = accRender;
 window.accInstallDefaults = accInstallDefaults;
 window.accImportExcel = accImportExcel;
 window.showAddTransaction = showAddTransaction;
+window.confirmImportExcel = confirmImportExcel;
+window.showImportPreview = showImportPreview;
 window.saveAccTransaction = saveAccTransaction;
 window.deleteAccTx = deleteAccTx;
 window.calcTxTotals = calcTxTotals;
