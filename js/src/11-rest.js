@@ -4614,6 +4614,15 @@ async function confirmImportExcel() {
       window._lastImportIds = r.imported_ids;
       window._lastImportCount = r.total;
     }
+    // Auto-switch to the year of imported data
+    if(rows.length > 0) {
+      const yr = new Date(rows[0].date).getFullYear();
+      if(yr && yr !== _accYear) {
+        _accYear = yr;
+        const sel = document.getElementById('accYearSel');
+        if(sel) sel.value = String(yr);
+      }
+    }
     toast(r.message || `✅ تم استيراد ${r.total} معاملة`);
     if(r.errors_count > 0) toast(`⚠️ ${r.errors_count} أخطاء في الاستيراد`, 'warning');
     accRender();
