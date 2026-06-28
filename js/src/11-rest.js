@@ -4814,10 +4814,21 @@ async function accImportHistory() {
       </table>
     </div>
 
-    <div style="margin-top:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;font-size:12px;color:#1a2472">
-      💡 <strong>حذف عملية استيراد</strong> يحذف جميع معاملاتها وقيودها فقط، دون التأثير على أي عمليات استيراد أخرى. جميع التقارير تتحدث فوراً.
+    <div style="margin-top:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;font-size:12px;color:#1a2472;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <span>💡 <strong>حذف عملية استيراد</strong> يحذف جميع معاملاتها وقيودها فقط، دون التأثير على أي عمليات استيراد أخرى. جميع التقارير تتحدث فوراً.</span>
+      <button onclick="cleanupOrphanJEs()" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap">
+        🧹 تنظيف القيود اليتيمة
+      </button>
     </div>
   </div>`;
+}
+
+async function cleanupOrphanJEs() {
+  try {
+    const r = await api('POST', `/api/accounting/${_accClientId}/import/cleanup-orphans`);
+    toast(r.message || `✅ تم التنظيف`);
+    accRender();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 async function deleteImportBatch(batchId, filename, txCount) {
@@ -7758,6 +7769,7 @@ window.confirmImportExcel = confirmImportExcel;
 window.showImportPreview = showImportPreview;
 window.undoLastImport = undoLastImport;
 window.deleteImportBatch = deleteImportBatch;
+window.cleanupOrphanJEs = cleanupOrphanJEs;
 window.accImportInvoice = accImportInvoice;
 window.showInvoicePreview = showInvoicePreview;
 window.confirmInvoiceImport = confirmInvoiceImport;
