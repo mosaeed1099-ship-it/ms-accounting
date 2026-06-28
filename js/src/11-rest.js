@@ -4512,7 +4512,6 @@ const TX_TYPE_COLORS = {
 };
 
 function showImportPreview(data) {
-  // Store rows globally for confirm step
   window._importRows = data.rows || [];
 
   const confBadge = (c) => {
@@ -4521,79 +4520,156 @@ function showImportPreview(data) {
     return `<span style="background:${bg};color:${col};padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${c}%</span>`;
   };
 
+  const fmt = (n) => (n||0).toLocaleString('ar-EG', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  const sheetsHtml = (data.sheets || []).map(s => {
+    if(s.error) return `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px;color:#dc2626">❌ ${escH(s.sheet)}</div>
+        <div style="font-size:12px;color:#dc2626;margin-top:4px">${escH(s.error)}</div>
+      </div>`;
+
+    const totalsOk = s.totals_match !== false;
+    const reviewWarn = (s.needs_review_count||0) > 0;
+
+    // مقارنة المجاميع
+    const totalsRow = (s.sheet_total_amount > 0) ? `
+      <div style="background:${totalsOk?'#f0fdf4':'#fef2f2'};border:1px solid ${totalsOk?'#86efac':'#fecaca'};border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:11px">
+        <div style="font-weight:700;color:${totalsOk?'#15803d':'#dc2626'};margin-bottom:4px">
+          ${totalsOk ? '✅ المجاميع متطابقة' : `⚠️ فرق في المجاميع: ${fmt(s.amount_diff)} جنيه`}
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div>مبلغ الشيت: <strong>${fmt(s.sheet_total_amount)}</strong></div>
+          <div>مبلغ مُستخرج: <strong>${fmt(s.parsed_total_amount)}</strong></div>
+          ${s.sheet_total_vat > 0 ? `<div>ض.ق.م: <strong>${fmt(s.parsed_total_vat)}</strong></div>` : ''}
+          ${s.sheet_total_net > 0 ? `<div>صافي: <strong>${fmt(s.parsed_total_net)}</strong></div>` : ''}
+        </div>
+      </div>` : '';
+
+    // تحذيرات الجودة
+    const qualityWarnHtml = reviewWarn ? `
+      <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:#92400e">
+        ⚠️ <strong>${s.needs_review_count} صف يحتاج مراجعة:</strong>
+        ${(s.quality_issues||[]).slice(0,5).map(qi=>
+          `<div style="margin-top:2px;padding-right:8px">صف ${qi.row+1}: ${qi.issues.join('، ')}</div>`
+        ).join('')}
+      </div>` : '';
+
+    return `
+    <div style="background:white;border:1px solid ${!totalsOk?'#fecaca':reviewWarn?'#fde047':'#e8edf3'};border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-weight:700;font-size:13px;color:#1e293b">📄 ${escH(s.sheet)}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="background:#eff6ff;color:#1a2472;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${TX_TYPE_LABELS[s.tx_type]||s.tx_type}</span>
+          ${confBadge(s.confidence)}
+          <span style="font-size:11px;color:#64748b">${s.row_count} صف</span>
+        </div>
+      </div>
+
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">
+        <strong>الأعمدة:</strong>
+        ${Object.entries(s.col_mapping||{}).filter(([k,v])=>v).map(([k,v])=>`<span style="background:#f1f5f9;border-radius:4px;padding:1px 6px;margin:1px">${k}→${escH(String(v))}</span>`).join(' ')}
+      </div>
+
+      ${totalsRow}
+      ${qualityWarnHtml}
+
+      ${s.sample?.length ? `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="background:#f8fafc">
+            <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">التاريخ</th>
+            <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">الجهة</th>
+            <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">رقم المستند</th>
+            <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">المبلغ</th>
+            <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">ض.ق.م</th>
+            <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">صافي</th>
+            <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">حالة</th>
+          </tr></thead>
+          <tbody>
+            ${s.sample.map(r=>`<tr style="border-bottom:1px solid #f1f5f9${r.needs_review?';background:#fef9c3':''}">
+              <td style="padding:4px 8px">${r.date||'—'}</td>
+              <td style="padding:4px 8px">${escH(r.partner||r.description||'—')}</td>
+              <td style="padding:4px 8px;color:#64748b;font-size:10px">${escH(r.doc_number||'—')}</td>
+              <td style="padding:4px 8px;font-weight:700">${fmt(r.amount)}</td>
+              <td style="padding:4px 8px;color:#7c3aed">${fmt(r.vat)}</td>
+              <td style="padding:4px 8px;color:#15803d">${fmt(r.net)}</td>
+              <td style="padding:4px 8px">${r.needs_review ? `<span style="color:#d97706;font-size:10px" title="${(r.issues||[]).join(', ')}">⚠️</span>` : '<span style="color:#15803d">✓</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  // قسم التكرارات
+  const dupHtml = (data.duplicate_rows_count||0) > 0 ? `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-weight:700;font-size:13px;color:#dc2626;margin-bottom:6px">
+        🔁 ${data.duplicate_rows_count} صف موجود مسبقاً في النظام (لن يُستورد)
+      </div>
+      <div style="font-size:11px;color:#64748b">
+        ${(data.duplicate_rows||[]).slice(0,5).map(r=>`<div>${r.date} — ${escH(r.doc_number||r.partner||'—')} — ${fmt(r.amount)}</div>`).join('')}
+        ${(data.duplicate_rows_count||0) > 5 ? `<div>...و${data.duplicate_rows_count-5} أخرى</div>` : ''}
+      </div>
+    </div>` : '';
+
+  // تحذير الحجب
+  const blockHtml = data.import_blocked ? `
+    <div style="background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px 18px;margin-bottom:14px">
+      <div style="font-weight:800;font-size:14px;color:#dc2626;margin-bottom:4px">🚫 الاستيراد موقوف</div>
+      <div style="font-size:13px;color:#dc2626">${escH(data.block_reason||'')}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:6px">يُرجى مراجعة ملف Excel والتأكد من صحة الأعمدة</div>
+    </div>` : '';
+
+  const totalNewRows = data.new_rows_count || data.total_rows || 0;
+  const reviewCount  = data.total_needs_review || 0;
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.style.zIndex = '1300';
   overlay.id = 'importPreviewOverlay';
 
-  const sheetsHtml = (data.sheets || []).map(s => `
-    <div style="background:${s.error?'#fef2f2':'white'};border:1px solid #e8edf3;border-radius:10px;padding:12px 14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-weight:700;font-size:13px;color:#1e293b">📄 ${escH(s.sheet)}</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          ${s.error ? `<span style="color:#dc2626;font-size:12px">❌ ${escH(s.error)}</span>` : `
-            <span style="background:#eff6ff;color:#1a2472;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${TX_TYPE_LABELS[s.tx_type]||s.tx_type}</span>
-            ${confBadge(s.confidence)}
-            <span style="font-size:11px;color:#64748b">${s.row_count} صف</span>
-          `}
-        </div>
-      </div>
-      ${!s.error ? `
-        <div style="font-size:11px;color:#64748b;margin-bottom:6px">
-          <strong>الأعمدة المكتشفة:</strong>
-          ${Object.entries(s.col_mapping||{}).filter(([k,v])=>v).map(([k,v])=>`<span style="background:#f1f5f9;border-radius:4px;padding:1px 6px;margin:1px">${k}: ${escH(String(v))}</span>`).join(' ')}
-        </div>
-        ${s.sample?.length ? `
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <thead><tr style="background:#f8fafc">
-              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">التاريخ</th>
-              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">الجهة</th>
-              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">المبلغ</th>
-              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">ض ق م</th>
-              <th style="padding:4px 8px;text-align:right;color:#64748b;border-bottom:1px solid #e8edf3">صافي</th>
-            </tr></thead>
-            <tbody>
-              ${s.sample.map(r=>`<tr style="border-bottom:1px solid #f1f5f9">
-                <td style="padding:4px 8px">${r.date||'—'}</td>
-                <td style="padding:4px 8px">${escH(r.partner||r.description||'—')}</td>
-                <td style="padding:4px 8px;font-weight:700">${money(r.amount)}</td>
-                <td style="padding:4px 8px;color:#7c3aed">${money(r.vat)}</td>
-                <td style="padding:4px 8px;color:#15803d">${money(r.net)}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>` : ''}
-      ` : ''}
-    </div>
-  `).join('');
-
-  overlay.innerHTML = `<div class="modal" style="max-width:720px;max-height:90vh;display:flex;flex-direction:column">
+  overlay.innerHTML = `<div class="modal" style="max-width:760px;max-height:92vh;display:flex;flex-direction:column">
     <div style="padding:16px 22px;background:linear-gradient(135deg,#1a2472,#152060);border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
-      <div style="color:white;font-size:14px;font-weight:700">📎 معاينة الاستيراد — مراجعة قبل الاعتماد</div>
+      <div style="color:white;font-size:14px;font-weight:700">📊 معاينة Smart Excel Engine — مراجعة قبل الاعتماد</div>
       <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white;font-size:16px">✕</button>
     </div>
+
     <div style="padding:16px 22px;overflow-y:auto;flex:1">
 
-      <!-- ملخص -->
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="font-size:15px;font-weight:800;color:#1a2472">${data.total_rows} صف جاهز للاستيراد</div>
-          <div style="font-size:12px;color:#64748b;margin-top:2px">${(data.sheets||[]).length} شيت — يرجى المراجعة ثم الضغط على "اعتماد وترحيل"</div>
+      <!-- ملخص رئيسي -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px">
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#1a2472">${totalNewRows}</div>
+          <div style="font-size:11px;color:#64748b">صف جديد</div>
         </div>
-        <div style="font-size:11px;color:#64748b;background:white;border-radius:8px;padding:6px 10px">
-          سيتم إنشاء ${data.total_rows} قيد محاسبي تلقائياً
+        <div style="background:${(data.duplicate_rows_count||0)>0?'#fef2f2':'#f0fdf4'};border:1px solid ${(data.duplicate_rows_count||0)>0?'#fecaca':'#86efac'};border-radius:10px;padding:10px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:${(data.duplicate_rows_count||0)>0?'#dc2626':'#15803d'}">${data.duplicate_rows_count||0}</div>
+          <div style="font-size:11px;color:#64748b">تكرارات مُهملة</div>
+        </div>
+        <div style="background:${reviewCount>0?'#fef9c3':'#f0fdf4'};border:1px solid ${reviewCount>0?'#fde047':'#86efac'};border-radius:10px;padding:10px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:${reviewCount>0?'#d97706':'#15803d'}">${reviewCount}</div>
+          <div style="font-size:11px;color:#64748b">تحتاج مراجعة</div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#15803d">${totalNewRows}</div>
+          <div style="font-size:11px;color:#64748b">قيد سيُنشأ</div>
         </div>
       </div>
 
+      ${blockHtml}
+      ${dupHtml}
       ${sheetsHtml}
     </div>
 
-    <div style="padding:14px 22px;border-top:1px solid #e8edf3;display:flex;gap:10px;justify-content:flex-end;flex-shrink:0">
+    <div style="padding:14px 22px;border-top:1px solid #e8edf3;display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-shrink:0">
+      ${reviewCount > 0 && !data.import_blocked ? `<span style="font-size:11px;color:#d97706;margin-left:auto">⚠️ ${reviewCount} صف يحتاج مراجعة — يمكنك الاستيراد رغم ذلك</span>` : ''}
       <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
-      ${data.total_rows > 0 ? `<button class="btn btn-primary" id="confirmImportBtn" onclick="confirmImportExcel()">
-        ✅ اعتماد وترحيل ${data.total_rows} معاملة
+      ${totalNewRows > 0 && !data.import_blocked ? `<button class="btn btn-primary" id="confirmImportBtn" onclick="confirmImportExcel()">
+        ✅ اعتماد وترحيل ${totalNewRows} معاملة
       </button>` : ''}
+      ${data.import_blocked ? `<button class="btn btn-secondary" disabled style="opacity:0.5;cursor:not-allowed">🚫 الاستيراد موقوف</button>` : ''}
     </div>
   </div>`;
 
