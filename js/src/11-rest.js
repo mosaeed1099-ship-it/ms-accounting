@@ -3456,7 +3456,7 @@ async function openClientAccounting(clientId, clientName) {
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <select id="accYearSel" onchange="_accYear=+this.value;accRender()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:8px;padding:5px 10px;font-family:inherit;font-size:13px">
+        <select id="accYearSel" onchange="window.accSetYear(this.value)" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:8px;padding:5px 10px;font-family:inherit;font-size:13px">
           ${[2023,2024,2025,2026].map(y=>`<option value="${y}" ${y===_accYear?'selected':''}>${y}</option>`).join('')}
         </select>
         <button onclick="document.getElementById('accOverlay').remove()" style="background:rgba(255,255,255,.15);border:none;width:34px;height:34px;border-radius:8px;font-size:18px;cursor:pointer;color:white">✕</button>
@@ -7762,6 +7762,7 @@ async function deletePaper(id) {
 window.openClientAccounting = openClientAccounting;
 window.switchAccTab = switchAccTab;
 window.accRender = accRender;
+window.accSetYear = function(y){ _accYear = +y; accRender(); };
 window.accInstallDefaults = accInstallDefaults;
 window.accImportExcel = accImportExcel;
 window.showAddTransaction = showAddTransaction;
