@@ -3486,6 +3486,7 @@ async function openClientAccounting(clientId, clientName) {
         ['advances','💼','العهد والسلف'],
         ['arap','👤','عملاء / موردين'],
         ['cashflow','💧','التدفقات النقدية'],
+        ['imports','📂','سجل الاستيراد'],
       ].map(([id,icon,label])=>`
         <button id="accTab_${id}" onclick="switchAccTab('${id}')"
           style="padding:10px 14px;border:none;background:transparent;font-family:inherit;font-size:13px;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;font-weight:500;transition:all .15s">
@@ -3542,6 +3543,7 @@ async function accRender() {
       case 'advances':   content.innerHTML = await accAdvances(); break;
       case 'arap':       content.innerHTML = await accArAp(); break;
       case 'cashflow':   content.innerHTML = await accCashFlow(); break;
+      case 'imports':    content.innerHTML = await accImportHistory(); break;
     }
   } catch(e) {
     content.innerHTML = `<div style="color:#dc2626;padding:20px">❌ خطأ: ${escH(e.message)}</div>`;
@@ -3983,29 +3985,38 @@ async function accJournal() {
         <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3">رقم القيد</th>
         <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3">التاريخ</th>
         <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3">الوصف</th>
+        <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3">المصدر</th>
         <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3">مدين</th>
         <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3">دائن</th>
         <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3">الحالة</th>
-        <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;text-align:right;border-bottom:2px solid #e8edf3"></th>
+        <th style="padding:10px 12px;font-size:12px;font-weight:700;color:#64748b;border-bottom:2px solid #e8edf3"></th>
       </tr></thead>
       <tbody>
-        ${items.length === 0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8">لا توجد قيود — تُولَّد تلقائياً من المعاملات أو أضف يدوياً</td></tr>` :
-          items.map(je => `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="showJournalDetail(${je.id})" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-            <td style="padding:9px 12px;font-weight:700;color:#1a2472">${escH(je.entry_number||'')}</td>
-            <td style="padding:9px 12px">${je.date||'—'}</td>
-            <td style="padding:9px 12px;max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(je.description||'')}</td>
-            <td style="padding:9px 12px;font-weight:600">${money(je.total_debit)}</td>
-            <td style="padding:9px 12px;font-weight:600">${money(je.total_credit)}</td>
-            <td style="padding:9px 12px">
-              <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:${STATUS_COLOR[je.status]+'22'};color:${STATUS_COLOR[je.status]}">
-                ${je.is_balanced ? '' : '⚠️ '} ${STATUS[je.status]||je.status}
-              </span>
-            </td>
-            <td style="padding:9px 12px;white-space:nowrap" onclick="event.stopPropagation()">
-              ${je.status === 'draft' ? `<button onclick="postJournalEntry(${je.id})" style="background:#dcfce7;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:#15803d;font-family:inherit;margin-left:4px">ترحيل</button>` : ''}
-              <button onclick="copyJournalEntry(${je.id})" style="background:#eef1fb;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;color:#1a2472;font-family:inherit" title="نسخ القيد">📋</button>
-            </td>
-          </tr>`).join('')}
+        ${items.length === 0 ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8">لا توجد قيود — تُولَّد تلقائياً من المعاملات أو أضف يدوياً</td></tr>` :
+          items.map(je => {
+            const srcType = je.source_type || je.entry_type || 'manual';
+            const srcFile = je.source_file || '';
+            const srcLabel = srcType === 'excel_import'
+              ? `<div style="font-size:10px;font-weight:700;color:#1a2472;background:#eff6ff;border-radius:4px;padding:1px 6px;display:inline-block">📊 Excel</div>${srcFile ? `<div style="font-size:9px;color:#64748b;margin-top:1px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(srcFile)}</div>` : ''}`
+              : `<div style="font-size:10px;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 6px;display:inline-block">✏️ يدوي</div>`;
+            return `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="showJournalDetail(${je.id})" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+              <td style="padding:9px 12px;font-weight:700;color:#1a2472">${escH(je.entry_number||'')}</td>
+              <td style="padding:9px 12px">${je.date||'—'}</td>
+              <td style="padding:9px 12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(je.description||'')}</td>
+              <td style="padding:9px 12px">${srcLabel}</td>
+              <td style="padding:9px 12px;font-weight:600">${money(je.total_debit)}</td>
+              <td style="padding:9px 12px;font-weight:600">${money(je.total_credit)}</td>
+              <td style="padding:9px 12px">
+                <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:${STATUS_COLOR[je.status]+'22'};color:${STATUS_COLOR[je.status]}">
+                  ${je.is_balanced ? '' : '⚠️ '} ${STATUS[je.status]||je.status}
+                </span>
+              </td>
+              <td style="padding:9px 12px;white-space:nowrap" onclick="event.stopPropagation()">
+                ${je.status === 'draft' ? `<button onclick="postJournalEntry(${je.id})" style="background:#dcfce7;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:#15803d;font-family:inherit;margin-left:4px">ترحيل</button>` : ''}
+                <button onclick="copyJournalEntry(${je.id})" style="background:#eef1fb;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;color:#1a2472;font-family:inherit" title="نسخ القيد">📋</button>
+              </td>
+            </tr>`;
+          }).join('')}
       </tbody>
     </table>
   </div>`;
@@ -4031,6 +4042,19 @@ async function showJournalDetail(jeId) {
           ${je.reference?`<span style="font-size:12px;color:#64748b">مرجع: ${escH(je.reference)}</span>`:''}
           ${je.notes?`<span style="font-size:11px;color:#94a3b8">${escH(je.notes)}</span>`:''}
         </div>
+
+        <!-- بيانات المصدر والتتبع -->
+        ${(je.source_type||je.source_file||je.import_batch_id||je.doc_ref) ? `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px">
+          <div style="font-weight:700;color:#1a2472;margin-bottom:6px">🔍 معلومات المصدر والتتبع</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;color:#374151">
+            <div>المصدر: <strong>${je.source_type==='excel_import'?'📊 استيراد Excel':je.source_type==='manual'?'✏️ إدخال يدوي':escH(je.source_type||'—')}</strong></div>
+            ${je.source_file?`<div>الملف: <strong>${escH(je.source_file)}</strong></div>`:''}
+            ${je.import_batch_id?`<div>رقم العملية: <strong>#${je.import_batch_id}</strong></div>`:''}
+            ${je.doc_ref?`<div>رقم المستند: <strong>${escH(je.doc_ref)}</strong></div>`:''}
+          </div>
+        </div>` : ''}
+
         <div style="font-size:13px;color:#374151;margin-bottom:16px">${escH(je.description||'')}</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="background:#f8fafc">
@@ -4487,6 +4511,7 @@ async function accInstallDefaults() {
 
 async function accImportExcel(file) {
   if(!file) return;
+  window._importFilename = file.name;
   const formData = new FormData();
   formData.append('file', file);
   try {
@@ -4683,7 +4708,8 @@ async function confirmImportExcel() {
   const btn = document.getElementById('confirmImportBtn');
   if(btn) { btn.disabled = true; btn.textContent = '⏳ جاري الترحيل...'; }
   try {
-    const r = await api('POST', `/api/accounting/${_accClientId}/import/excel/confirm`, { rows });
+    const filename = window._importFilename || 'ملف Excel';
+    const r = await api('POST', `/api/accounting/${_accClientId}/import/excel/confirm`, { rows, filename });
     document.getElementById('importPreviewOverlay')?.remove();
     // Store imported IDs for undo
     if(r.imported_ids?.length) {
@@ -4699,6 +4725,7 @@ async function confirmImportExcel() {
         if(sel) sel.value = String(yr);
       }
     }
+    if(r.batch_id) window._lastBatchId = r.batch_id;
     toast(r.message || `✅ تم استيراد ${r.total} معاملة`);
     if(r.errors_count > 0) toast(`⚠️ ${r.errors_count} أخطاء في الاستيراد`, 'warning');
     accRender();
@@ -4706,6 +4733,100 @@ async function confirmImportExcel() {
     toast(e.message, 'error');
     if(btn) { btn.disabled = false; btn.textContent = `✅ اعتماد وترحيل ${rows.length} معاملة`; }
   }
+}
+
+async function accImportHistory() {
+  const data = await api('GET', `/api/accounting/${_accClientId}/import/batches`);
+  const batches = data.batches || [];
+  const fmt = (n) => (n||0).toLocaleString('ar-EG', {minimumFractionDigits:0, maximumFractionDigits:0});
+  const fmtDt = (iso) => {
+    if(!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('ar-EG') + ' ' + d.toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
+  };
+
+  if(!batches.length) return `
+    <div style="text-align:center;padding:60px;color:#64748b">
+      <div style="font-size:48px;margin-bottom:16px">📂</div>
+      <div style="font-size:15px;font-weight:600">لا توجد عمليات استيراد سابقة</div>
+      <div style="font-size:12px;margin-top:8px">ارفع ملف Excel من تبويب المبيعات أو المشتريات لتبدأ</div>
+    </div>`;
+
+  const rows = batches.map(b => {
+    const hasData = (b.total_sales||0)+(b.total_purchases||0)+(b.total_expenses||0)+(b.total_salary||0) > 0;
+    return `
+    <tr style="border-bottom:1px solid #f1f5f9;vertical-align:top">
+      <td style="padding:10px 12px">
+        <div style="font-weight:700;font-size:13px;color:#1e293b">📄 ${escH(b.filename||'ملف')}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${fmtDt(b.imported_at)}</div>
+        <div style="font-size:10px;color:#94a3b8">بواسطة: ${escH(b.imported_by||'—')}</div>
+      </td>
+      <td style="padding:10px 12px;text-align:center">
+        <div style="font-size:18px;font-weight:800;color:#1a2472">${b.tx_count||0}</div>
+        <div style="font-size:10px;color:#64748b">معاملة</div>
+      </td>
+      <td style="padding:10px 12px;text-align:center">
+        <div style="font-size:18px;font-weight:800;color:#7c3aed">${b.je_count||0}</div>
+        <div style="font-size:10px;color:#64748b">قيد</div>
+      </td>
+      <td style="padding:10px 12px;font-size:12px;color:#374151">
+        ${(b.total_sales||0)>0 ? `<div>مبيعات: <strong style="color:#15803d">${fmt(b.total_sales)}</strong></div>` : ''}
+        ${(b.total_purchases||0)>0 ? `<div>مشتريات: <strong style="color:#1a2472">${fmt(b.total_purchases)}</strong></div>` : ''}
+        ${(b.total_expenses||0)>0 ? `<div>مصروفات: <strong style="color:#d97706">${fmt(b.total_expenses)}</strong></div>` : ''}
+        ${(b.total_salary||0)>0 ? `<div>مرتبات: <strong style="color:#7c3aed">${fmt(b.total_salary)}</strong></div>` : ''}
+        ${(b.total_vat||0)>0 ? `<div>ض.ق.م: <strong style="color:#dc2626">${fmt(b.total_vat)}</strong></div>` : ''}
+        ${!hasData ? '<div style="color:#94a3b8">—</div>' : ''}
+      </td>
+      <td style="padding:10px 12px;text-align:center">
+        <span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">نشط</span>
+      </td>
+      <td style="padding:10px 12px">
+        <button onclick="deleteImportBatch(${b.id},'${escH(b.filename||'').replace(/'/g,"\\'")}',${b.tx_count||0})"
+          style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">
+          🗑 حذف الاستيراد
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div style="padding:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <div style="font-size:16px;font-weight:800;color:#1e293b">📂 سجل الاستيراد</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px">${batches.length} عملية استيراد — كل عملية مستقلة ويمكن حذفها بشكل منفصل</div>
+      </div>
+    </div>
+
+    <div style="background:white;border-radius:12px;border:1px solid #e8edf3;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#f8fafc;border-bottom:2px solid #e8edf3">
+            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#64748b;font-weight:600">الملف / التاريخ</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;color:#64748b;font-weight:600">معاملات</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;color:#64748b;font-weight:600">قيود</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#64748b;font-weight:600">المجاميع</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;color:#64748b;font-weight:600">الحالة</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;color:#64748b;font-weight:600">إجراء</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;font-size:12px;color:#1a2472">
+      💡 <strong>حذف عملية استيراد</strong> يحذف جميع معاملاتها وقيودها فقط، دون التأثير على أي عمليات استيراد أخرى. جميع التقارير تتحدث فوراً.
+    </div>
+  </div>`;
+}
+
+async function deleteImportBatch(batchId, filename, txCount) {
+  if(!await confirmDlg(`حذف عملية استيراد "${filename}" (${txCount} معاملة وجميع قيودها)؟\n\nلن يتأثر أي استيراد آخر.`)) return;
+  try {
+    const r = await api('DELETE', `/api/accounting/${_accClientId}/import/batches/${batchId}`);
+    toast(`✅ ${r.message}`);
+    accRender();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 async function undoLastImport() {
@@ -7636,6 +7757,7 @@ window.showAddTransaction = showAddTransaction;
 window.confirmImportExcel = confirmImportExcel;
 window.showImportPreview = showImportPreview;
 window.undoLastImport = undoLastImport;
+window.deleteImportBatch = deleteImportBatch;
 window.accImportInvoice = accImportInvoice;
 window.showInvoicePreview = showInvoicePreview;
 window.confirmInvoiceImport = confirmInvoiceImport;
