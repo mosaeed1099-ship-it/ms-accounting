@@ -14192,6 +14192,7 @@ async function accDashboard() {
         📎 استيراد Excel
         <input type="file" accept=".xlsx,.xls" style="display:none" onchange="accImportExcel(this.files[0])">
       </label>
+      ${window._lastImportIds?.length ? `<button onclick="undoLastImport()" style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:#dc2626;font-weight:600">🗑 تراجع عن آخر استيراد (${window._lastImportIds.length})</button>` : ''}
       ${!hasData && s.acc_count === 0 ? `<button onclick="accInstallDefaults()" class="btn btn-primary" style="font-size:13px">🏗️ تثبيت دليل الحسابات الافتراضي</button>` : ''}
     </div>
   </div>
@@ -15235,6 +15236,11 @@ async function confirmImportExcel() {
   try {
     const r = await api('POST', `/api/accounting/${_accClientId}/import/excel/confirm`, { rows });
     document.getElementById('importPreviewOverlay')?.remove();
+    // Store imported IDs for undo
+    if(r.imported_ids?.length) {
+      window._lastImportIds = r.imported_ids;
+      window._lastImportCount = r.total;
+    }
     toast(r.message || `✅ تم استيراد ${r.total} معاملة`);
     if(r.errors_count > 0) toast(`⚠️ ${r.errors_count} أخطاء في الاستيراد`, 'warning');
     accRender();
@@ -15242,6 +15248,18 @@ async function confirmImportExcel() {
     toast(e.message, 'error');
     if(btn) { btn.disabled = false; btn.textContent = `✅ اعتماد وترحيل ${rows.length} معاملة`; }
   }
+}
+
+async function undoLastImport() {
+  const ids = window._lastImportIds;
+  if(!ids?.length) return toast('لا يوجد استيراد حديث للتراجع عنه', 'warning');
+  if(!await confirmDlg(`حذف آخر استيراد (${ids.length} معاملة وقيودها)؟`)) return;
+  try {
+    const r = await api('POST', `/api/accounting/${_accClientId}/transactions/delete-batch`, { tx_ids: ids });
+    toast(`🗑 تم مسح ${r.deleted} معاملة`);
+    window._lastImportIds = null;
+    accRender();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ── AI Invoice OCR — PDF / Image Reader ───────────────────────────────────────
@@ -18159,6 +18177,7 @@ window.accImportExcel = accImportExcel;
 window.showAddTransaction = showAddTransaction;
 window.confirmImportExcel = confirmImportExcel;
 window.showImportPreview = showImportPreview;
+window.undoLastImport = undoLastImport;
 window.accImportInvoice = accImportInvoice;
 window.showInvoicePreview = showInvoicePreview;
 window.confirmInvoiceImport = confirmInvoiceImport;
