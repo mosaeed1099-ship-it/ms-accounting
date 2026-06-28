@@ -3573,7 +3573,7 @@ async function accDashboard() {
   <!-- KPI Grid -->
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px">
     ${[
-      {label:'المبيعات',        val:money(s.sales),          icon:'📈', color:'#15803d', bg:'#f0fdf4'},
+      {label:'المبيعات (شامل ض.ق.م)', val:money(s.sales_total || s.sales), icon:'📈', color:'#15803d', bg:'#f0fdf4'},
       {label:'المشتريات',       val:money(s.purchases),      icon:'📦', color:'#1a2472', bg:'#eef1fb'},
       {label:'المصروفات',       val:money(s.expenses),       icon:'💸', color:'#d97706', bg:'#fef9c3'},
       {label:'مجمل الربح',      val:money(s.gross_profit),   icon:'💰', color: s.gross_profit>=0?'#15803d':'#dc2626', bg: s.gross_profit>=0?'#f0fdf4':'#fef2f2'},
