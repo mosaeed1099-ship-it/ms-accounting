@@ -33,40 +33,46 @@ def _ensure_table(db: Session):
     global _TABLE_READY
     if _TABLE_READY:
         return
-    stmts = [
-        """CREATE TABLE IF NOT EXISTS vat_excel_analyses (
-            id           SERIAL PRIMARY KEY,
-            user_id      INTEGER,
-            created_at   TIMESTAMP DEFAULT NOW(),
-            company_name VARCHAR(300),
-            tax_number   VARCHAR(80),
-            period_label VARCHAR(80),
-            net_vat      NUMERIC(14,2) DEFAULT 0,
-            sales_net    NUMERIC(14,2) DEFAULT 0,
-            sales_vat    NUMERIC(14,2) DEFAULT 0,
-            pur_net      NUMERIC(14,2) DEFAULT 0,
-            pur_vat      NUMERIC(14,2) DEFAULT 0,
-            total_invoices INTEGER DEFAULT 0,
-            data_json    TEXT
-        )""",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS year INTEGER",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS month INTEGER",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS net_vat NUMERIC(14,2) DEFAULT 0",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS sales_net NUMERIC(14,2) DEFAULT 0",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS sales_vat NUMERIC(14,2) DEFAULT 0",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS pur_net NUMERIC(14,2) DEFAULT 0",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS pur_vat NUMERIC(14,2) DEFAULT 0",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS total_invoices INTEGER DEFAULT 0",
-        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS data_json TEXT",
-        # Remove NOT NULL from legacy columns that may exist with constraints
-        "ALTER TABLE vat_excel_analyses ALTER COLUMN filename DROP NOT NULL",
-    ]
-    for sql in stmts:
-        try:
-            db.execute(text(sql))
-            db.commit()
-        except Exception:
-            db.rollback()
+    # Check if table exists with correct schema (has data_json column)
+    try:
+        db.execute(text("SELECT data_json FROM vat_excel_analyses LIMIT 0"))
+        db.rollback()
+        _TABLE_READY = True
+        return  # Schema is correct already
+    except Exception:
+        db.rollback()
+
+    # Table missing or has old incompatible schema — drop and recreate
+    try:
+        db.execute(text("DROP TABLE IF EXISTS vat_excel_analyses"))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    try:
+        db.execute(text("""
+            CREATE TABLE vat_excel_analyses (
+                id             SERIAL PRIMARY KEY,
+                user_id        INTEGER,
+                created_at     TIMESTAMP DEFAULT NOW(),
+                company_name   VARCHAR(300),
+                tax_number     VARCHAR(80),
+                period_label   VARCHAR(80),
+                year           INTEGER,
+                month          INTEGER,
+                net_vat        NUMERIC(14,2) DEFAULT 0,
+                sales_net      NUMERIC(14,2) DEFAULT 0,
+                sales_vat      NUMERIC(14,2) DEFAULT 0,
+                pur_net        NUMERIC(14,2) DEFAULT 0,
+                pur_vat        NUMERIC(14,2) DEFAULT 0,
+                total_invoices INTEGER DEFAULT 0,
+                data_json      TEXT
+            )
+        """))
+        db.commit()
+    except Exception:
+        db.rollback()
+
     _TABLE_READY = True
 
 
