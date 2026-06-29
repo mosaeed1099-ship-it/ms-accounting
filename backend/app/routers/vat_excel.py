@@ -41,8 +41,6 @@ def _ensure_table(db: Session):
             company_name VARCHAR(300),
             tax_number   VARCHAR(80),
             period_label VARCHAR(80),
-            year         INTEGER,
-            month        INTEGER,
             net_vat      NUMERIC(14,2) DEFAULT 0,
             sales_net    NUMERIC(14,2) DEFAULT 0,
             sales_vat    NUMERIC(14,2) DEFAULT 0,
@@ -52,6 +50,15 @@ def _ensure_table(db: Session):
             data_json    TEXT
         )
     """))
+    # Migrations for columns added after initial table creation
+    for col_sql in [
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS year INTEGER",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS month INTEGER",
+    ]:
+        try:
+            db.execute(text(col_sql))
+        except Exception:
+            pass
     db.commit()
     _TABLE_READY = True
 
