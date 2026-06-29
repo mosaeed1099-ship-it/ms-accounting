@@ -14190,10 +14190,6 @@ async function accDashboard() {
         🤖 رفع فاتورة (AI)
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="accImportInvoice(this.files[0])">
       </label>
-      <label style="background:white;border:1.5px solid #e8edf3;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:#1a2472;font-weight:600">
-        📎 استيراد Excel
-        <input type="file" accept=".xlsx,.xls" style="display:none" onchange="accImportExcel(this.files[0])">
-      </label>
       ${window._lastImportIds?.length ? `<button onclick="undoLastImport()" style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:#dc2626;font-weight:600">🗑 تراجع عن آخر استيراد (${window._lastImportIds.length})</button>` : ''}
       ${!hasData && s.acc_count === 0 ? `<button onclick="accInstallDefaults()" class="btn btn-primary" style="font-size:13px">🏗️ تثبيت دليل الحسابات الافتراضي</button>` : ''}
     </div>
@@ -14253,13 +14249,43 @@ async function accTransactions(type) {
     ? ['التاريخ','الجهة / المصروف','نوع المصروف','المبلغ','ملاحظات','']
     : ['التاريخ','اسم الشركة','رقم التسجيل','رقم المستند','القيمة','ض ق م','الإجمالي','خصم وإضافة','صافي الإجمالي',''];
 
+  // ── mini import history ──
+  let batchesHtml = '';
+  try {
+    const batchData = await api('GET', `/api/accounting/${_accClientId}/import/batches?section_type=${type}`);
+    const batches = batchData.batches || [];
+    if(batches.length > 0) {
+      batchesHtml = `
+      <details style="margin-bottom:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+        <summary style="padding:10px 14px;cursor:pointer;font-size:12px;font-weight:700;color:#475569">
+          📂 سجل استيرادات ${SECTION_AR[type]||type} (${batches.length})
+        </summary>
+        <div style="padding:8px 14px 12px">
+          ${batches.map(b=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #e8edf3;font-size:11px;gap:8px">
+            <div>
+              <div style="font-weight:600;color:#1e293b">📄 ${escH(b.filename)}</div>
+              <div style="color:#64748b">${(b.imported_at||'').substring(0,10)} — ${b.tx_count} معاملة — ${b.je_count} قيد</div>
+            </div>
+            <button onclick="deleteImportBatch(${b.id})" style="background:#fee2e2;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;color:#dc2626;font-size:11px;white-space:nowrap">🗑 حذف</button>
+          </div>`).join('')}
+        </div>
+      </details>`;
+    }
+  } catch(e) {}
+
   return `
+  ${batchesHtml}
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
     <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">${typeInfo.icon} ${typeInfo.label} — ${_accYear}</h3>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <div style="background:${typeInfo.color};color:white;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700">
         إجمالي: ${money(data.totals?.amount || 0)}
       </div>
+      <label style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:#0369a1;font-weight:600;display:flex;align-items:center;gap:5px">
+        📥 استيراد
+        <input type="file" accept=".xlsx,.xls" style="display:none" onchange="accImportExcelForType('${type}', this.files[0])">
+      </label>
       <button onclick="showAddTransaction('${type}')" class="btn btn-primary" style="font-size:13px">+ إضافة</button>
     </div>
   </div>
@@ -15154,6 +15180,75 @@ async function accImportExcel(file) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+// ── Per-Section Excel Import ───────────────────────────────────────────────────
+const SECTION_AR = {sale:'المبيعات', purchase:'المشتريات', expense:'المصروفات', asset:'الأصول الثابتة', salary:'المرتبات'};
+
+async function accImportExcelForType(type, file) {
+  if(!file) return;
+  window._importFilename = file.name;
+  window._importSection  = type;
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('section', type);
+  try {
+    toast(`⏳ جاري تحليل ملف ${SECTION_AR[type]||type}...`, 'info');
+    const r = await fetch(`${API}/api/accounting/${_accClientId}/import/excel/preview`, {
+      method: 'POST',
+      headers: token ? {Authorization: `Bearer ${token}`} : {},
+      body: formData,
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.detail || 'فشل التحليل');
+    if(data.needs_sheet_selection && (data.sheet_candidates||[]).length > 1) {
+      showSheetPicker(data.sheet_candidates, data);
+    } else {
+      showImportPreview(data);
+    }
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function showSheetPicker(candidates, fullData) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '1400';
+  overlay.innerHTML = `<div class="modal" style="max-width:500px">
+    <div style="padding:16px 22px;background:linear-gradient(135deg,#1a2472,#152060);border-radius:18px 18px 0 0;color:white;font-size:14px;font-weight:700">
+      📋 وُجد أكثر من شيت صالح — اختر الشيت الذي تريد استيراده
+    </div>
+    <div style="padding:16px 22px">
+      ${candidates.map(c=>`
+        <div onclick="pickSheet('${escH(c.sheet)}', this)" style="border:2px solid #e8edf3;border-radius:10px;padding:12px 16px;margin-bottom:10px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='#1a2472'" onmouseout="if(!this.classList.contains('picked')) this.style.borderColor='#e8edf3'">
+          <div style="font-weight:700;color:#1e293b;margin-bottom:4px">📄 ${escH(c.sheet)}</div>
+          <div style="display:flex;gap:12px;font-size:12px;color:#64748b">
+            <span>ثقة: <strong>${c.confidence}%</strong></span>
+            <span>صفوف: <strong>${c.row_count}</strong></span>
+            <span>نوع: <strong>${TX_TYPE_LABELS[c.tx_type]||c.tx_type}</strong></span>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid #e8edf3;text-align:left">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
+    </div>
+  </div>`;
+  document.body.append(overlay);
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  window._pickerFullData = fullData;
+  window.pickSheet = function(sheetName, el) {
+    overlay.remove();
+    // Filter data to only the selected sheet
+    const filtered = {...window._pickerFullData};
+    filtered.rows = (filtered.rows||[]).filter(r=>r.sheet===sheetName);
+    filtered.error_rows = (filtered.error_rows||[]).filter(r=>r.sheet===sheetName);
+    filtered.sheets = (filtered.sheets||[]).filter(s=>s.sheet===sheetName || s.skipped);
+    filtered.new_rows_count   = filtered.rows.length;
+    filtered.ok_rows_count    = filtered.rows.filter(r=>r.status==='ok').length;
+    filtered.warning_rows_count = filtered.rows.filter(r=>r.status==='warning').length;
+    filtered.error_rows_count = filtered.error_rows.length;
+    showImportPreview(filtered);
+  };
+}
+
 const TX_TYPE_LABELS = {
   sale:'مبيعات', purchase:'مشتريات', expense:'مصروفات',
   asset:'أصول ثابتة', salary:'مرتبات', tax:'ضرائب', bank_statement:'كشف بنكي'
@@ -15477,7 +15572,7 @@ async function confirmImportExcel(goodOnly = false) {
   if(btn) { btn.disabled = true; btn.textContent = '⏳ جاري الترحيل...'; }
   try {
     const filename = window._importFilename || 'ملف Excel';
-    const r = await api('POST', `/api/accounting/${_accClientId}/import/excel/confirm`, { rows, filename, import_good_only: goodOnly });
+    const r = await api('POST', `/api/accounting/${_accClientId}/import/excel/confirm`, { rows, filename, import_good_only: goodOnly, section_type: window._importSection || null });
     document.getElementById('importPreviewOverlay')?.remove();
     if(r.imported_ids?.length) {
       window._lastImportIds = r.imported_ids;
@@ -15598,7 +15693,8 @@ async function cleanupOrphanJEs() {
 }
 
 async function deleteImportBatch(batchId, filename, txCount) {
-  if(!await confirmDlg(`حذف عملية استيراد "${filename}" (${txCount} معاملة وجميع قيودها)؟\n\nلن يتأثر أي استيراد آخر.`)) return;
+  const label = filename ? `"${filename}" (${txCount} معاملة وجميع قيودها)` : `Batch #${batchId}`;
+  if(!await confirmDlg(`حذف عملية الاستيراد ${label}؟\n\nلن يتأثر أي استيراد آخر.`)) return;
   try {
     const r = await api('DELETE', `/api/accounting/${_accClientId}/import/batches/${batchId}`);
     toast(`✅ ${r.message}`);
@@ -18531,6 +18627,8 @@ window.accRender = accRender;
 window.accSetYear = function(y){ _accYear = +y; accRender(); };
 window.accInstallDefaults = accInstallDefaults;
 window.accImportExcel = accImportExcel;
+window.accImportExcelForType = accImportExcelForType;
+window.showSheetPicker = showSheetPicker;
 window.showAddTransaction = showAddTransaction;
 window.confirmImportExcel = confirmImportExcel;
 window.downloadImportErrorReport = downloadImportErrorReport;
