@@ -51,6 +51,13 @@ def _ensure_table(db: Session):
         )""",
         "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS year INTEGER",
         "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS month INTEGER",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS net_vat NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS sales_net NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS sales_vat NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS pur_net NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS pur_vat NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS total_invoices INTEGER DEFAULT 0",
+        "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS data_json TEXT",
     ]
     for sql in stmts:
         try:
