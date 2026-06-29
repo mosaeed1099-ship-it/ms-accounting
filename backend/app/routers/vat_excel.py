@@ -58,6 +58,8 @@ def _ensure_table(db: Session):
         "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS pur_vat NUMERIC(14,2) DEFAULT 0",
         "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS total_invoices INTEGER DEFAULT 0",
         "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS data_json TEXT",
+        # Remove NOT NULL from legacy columns that may exist with constraints
+        "ALTER TABLE vat_excel_analyses ALTER COLUMN filename DROP NOT NULL",
     ]
     for sql in stmts:
         try:
