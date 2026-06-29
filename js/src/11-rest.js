@@ -4729,7 +4729,61 @@ function showImportPreview(data) {
 
   const totalNewRows  = data.new_rows_count  || 0;
   const totalErrRows  = data.error_rows_count || 0;
-  const reviewCount   = data.total_needs_review || 0;
+  const warnRowsCount = data.warning_rows_count || 0;
+  const dupCount      = data.duplicate_rows_count || 0;
+
+  // ── ملخص ✅/⚠/❌ الجديد ──
+  const skippedSheets = data.skipped_sheets || [];
+  const skippedRowDet = data.skipped_row_details || [];
+  const totalSkipped  = skippedSheets.length + skippedRowDet.length + dupCount;
+
+  const summaryHtml = `
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      <!-- ✅ سيتم استيراد -->
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800;font-size:15px;color:#15803d">✅ سيتم استيراد: <span style="font-size:20px">${totalNewRows}</span> فاتورة</div>
+        ${totalNewRows > 0 && !data.import_blocked ? `<button class="btn btn-primary" id="confirmImportBtn" onclick="confirmImportExcel(false)" style="flex-shrink:0">
+          استيراد الـ ${totalNewRows} فاتورة
+        </button>` : ''}
+      </div>
+
+      <!-- ⚠ تم تخطي -->
+      ${totalSkipped > 0 ? `
+      <details style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 16px">
+        <summary style="font-weight:700;font-size:13px;color:#92400e;cursor:pointer">
+          ⚠ تم تخطي: ${totalSkipped} عنصر (${skippedSheets.length} شيت، ${skippedRowDet.length} صف، ${dupCount} مكرر)
+        </summary>
+        <div style="margin-top:8px;font-size:11px">
+          ${skippedSheets.map(s=>`<div style="padding:3px 8px;border-bottom:1px solid #fde68a;color:#78350f">
+            <strong>شيت:</strong> ${escH(s.sheet)} — ${escH(s.reason||'تم تخطيه تلقائياً')}
+          </div>`).join('')}
+          ${skippedRowDet.map(r=>`<div style="padding:3px 8px;border-bottom:1px solid #fde68a;color:#78350f;display:grid;grid-template-columns:auto auto auto 1fr;gap:8px">
+            <span><strong>شيت:</strong> ${escH(r.sheet)}</span>
+            <span><strong>صف:</strong> ${r.row}</span>
+            <span>⚠ ${escH(r.issue)}</span>
+            <span style="color:#15803d">← ${escH(r.action)}</span>
+          </div>`).join('')}
+          ${dupCount > 0 ? `<div style="padding:3px 8px;color:#78350f"><strong>${dupCount} صف مكرر</strong> — موجود مسبقاً في النظام</div>` : ''}
+        </div>
+      </details>` : ''}
+
+      <!-- ❌ أخطاء قاتلة -->
+      ${totalErrRows > 0 ? `
+      <details style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 16px">
+        <summary style="font-weight:700;font-size:13px;color:#dc2626;cursor:pointer">
+          ❌ أخطاء قاتلة: ${totalErrRows} صف (لن يُستورد)
+        </summary>
+        <div style="margin-top:8px;font-size:11px">
+          ${(data.fatal_errors||[]).map(er=>(er.errors||[{reason:er.skip_reason||'خطأ غير محدد'}]).map(e=>`
+            <div style="padding:3px 8px;border-bottom:1px solid #fecaca;color:#7f1d1d;display:grid;grid-template-columns:auto auto 1fr;gap:8px">
+              <span><strong>شيت:</strong> ${escH(er.sheet||'')}</span>
+              <span><strong>صف:</strong> ${er.row_num||''}</span>
+              <span>❌ ${escH(e.reason)}</span>
+            </div>`).join('')).join('')}
+          ${totalErrRows > (data.fatal_errors||[]).length ? `<div style="padding:4px 8px;color:#64748b">...و${totalErrRows-(data.fatal_errors||[]).length} صف آخر</div>` : ''}
+        </div>
+      </details>` : ''}
+    </div>`;
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -4738,47 +4792,23 @@ function showImportPreview(data) {
 
   overlay.innerHTML = `<div class="modal" style="max-width:800px;max-height:94vh;display:flex;flex-direction:column">
     <div style="padding:16px 22px;background:linear-gradient(135deg,#1a2472,#152060);border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
-      <div style="color:white;font-size:14px;font-weight:700">📊 Smart Excel Diagnostic — تشخيص قبل الاستيراد</div>
+      <div style="color:white;font-size:14px;font-weight:700">📊 معاينة الاستيراد</div>
       <button onclick="this.closest('.modal-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;color:white;font-size:16px">✕</button>
     </div>
 
     <div style="padding:16px 22px;overflow-y:auto;flex:1">
-      <!-- ملخص رئيسي -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px">
-        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:800;color:#1a2472">${totalNewRows}</div>
-          <div style="font-size:11px;color:#64748b">صف سليم</div>
-        </div>
-        <div style="background:${totalErrRows>0?'#fef2f2':'#f0fdf4'};border:1px solid ${totalErrRows>0?'#fecaca':'#86efac'};border-radius:10px;padding:10px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:800;color:${totalErrRows>0?'#dc2626':'#15803d'}">${totalErrRows}</div>
-          <div style="font-size:11px;color:#64748b">صف بأخطاء</div>
-        </div>
-        <div style="background:${reviewCount>0?'#fef9c3':'#f0fdf4'};border:1px solid ${reviewCount>0?'#fde047':'#86efac'};border-radius:10px;padding:10px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:800;color:${reviewCount>0?'#d97706':'#15803d'}">${reviewCount}</div>
-          <div style="font-size:11px;color:#64748b">تحذيرات</div>
-        </div>
-        <div style="background:${(data.duplicate_rows_count||0)>0?'#fef9c3':'#f8fafc'};border:1px solid ${(data.duplicate_rows_count||0)>0?'#fde047':'#e8edf3'};border-radius:10px;padding:10px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:800;color:${(data.duplicate_rows_count||0)>0?'#d97706':'#475569'}">${data.duplicate_rows_count||0}</div>
-          <div style="font-size:11px;color:#64748b">تكرارات</div>
-        </div>
-      </div>
       ${blockHtml}
-      ${dupHtml}
+      ${summaryHtml}
       ${sheetsHtml}
     </div>
 
     <div style="padding:14px 22px;border-top:1px solid #e8edf3;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-shrink:0;flex-wrap:wrap">
-      ${totalErrRows > 0 ? `<button class="btn btn-secondary" onclick="downloadImportErrorReport()" style="font-size:12px">
-        ⬇️ تحميل تقرير الأخطاء
-      </button>` : ''}
+      ${totalErrRows > 0 ? `<button class="btn btn-secondary" onclick="downloadImportErrorReport()" style="font-size:12px">⬇️ تحميل تقرير الأخطاء</button>` : ''}
       <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">إلغاء</button>
-      ${totalErrRows > 0 && totalNewRows > 0 && !data.import_blocked ? `<button class="btn" style="background:#d97706;color:white;border:none;font-size:12px" id="confirmGoodOnlyBtn" onclick="confirmImportExcel(true)">
-        ✅ استيراد السليم فقط (${totalNewRows})
-      </button>` : ''}
-      ${totalNewRows > 0 && !data.import_blocked ? `<button class="btn btn-primary" id="confirmImportBtn" onclick="confirmImportExcel(false)">
-        ✅ اعتماد وترحيل ${totalNewRows} معاملة
-      </button>` : ''}
       ${data.import_blocked ? `<button class="btn btn-secondary" disabled style="opacity:0.5;cursor:not-allowed">🚫 الاستيراد موقوف</button>` : ''}
+      ${totalNewRows > 0 && !data.import_blocked ? `<button class="btn btn-primary" onclick="confirmImportExcel(false)">
+        استيراد الـ ${totalNewRows} فاتورة
+      </button>` : ''}
     </div>
   </div>`;
 
