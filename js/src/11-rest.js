@@ -4575,14 +4575,25 @@ function showImportPreview(data) {
     const borderCol  = errCount > 0 ? '#fecaca' : warnCount > 0 ? '#fde047' : '#e8edf3';
 
     // تعيين الأعمدة بالتفصيل
+    const FIELD_AR = {date:'التاريخ',amount:'المبلغ',vat:'ض.ق.م',partner:'الجهة',doc:'المستند',net:'الصافي',wht:'خصم',desc:'البيان'};
+    const lowConfFields = Object.entries(s.col_mapping_detail||{}).filter(([f,d])=>d.needs_review && ['date','amount'].includes(f));
+    const mappingWarning = s.any_low_confidence && lowConfFields.length > 0
+      ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:#92400e">
+           ⚠️ <strong>ثقة منخفضة في تعيين الأعمدة</strong> — يُنصح بمراجعة: ${lowConfFields.map(([f])=>FIELD_AR[f]||f).join('، ')}
+         </div>` : '';
     const colMapHtml = `
+      ${mappingWarning}
       <div style="margin-bottom:8px">
         <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px">تعيين الأعمدة المكتشفة:</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px">
           ${Object.entries(s.col_mapping_detail||{}).map(([field, d]) => {
-            const FIELD_AR = {date:'التاريخ',amount:'المبلغ',vat:'ض.ق.م',partner:'الجهة',doc:'المستند',net:'الصافي',wht:'خصم',desc:'البيان'};
-            if(!d.found) return `<span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:5px;padding:1px 7px;font-size:10px">${FIELD_AR[field]||field}: غير موجود</span>`;
-            return `<span style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:5px;padding:1px 7px;font-size:10px">${FIELD_AR[field]||field}: ${escH(d.column_name)}</span>`;
+            if(!d.found) return `<span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:5px;padding:1px 7px;font-size:10px" title="لم يُكتشف">${FIELD_AR[field]||field}: غير موجود</span>`;
+            const conf = d.confidence||0;
+            const bg = conf>=80?'#f0fdf4':conf>=50?'#fffbeb':'#fff7ed';
+            const border = conf>=80?'#86efac':conf>=50?'#fcd34d':'#fdba74';
+            const color = conf>=80?'#15803d':conf>=50?'#92400e':'#c2410c';
+            const method = d.method==='exact_name'?'✓ مطابقة تامة':d.method==='combined'?'✓✓ مطابقة مع محتوى':d.method==='partial_name'?'↗ جزئي':d.method==='value_pattern'?'⟳ من المحتوى':'';
+            return `<span style="background:${bg};color:${color};border:1px solid ${border};border-radius:5px;padding:1px 7px;font-size:10px" title="${method} — ثقة ${conf}%">${FIELD_AR[field]||field}: ${escH(d.column_name)} <small>${conf}%</small></span>`;
           }).join('')}
         </div>
       </div>`;
