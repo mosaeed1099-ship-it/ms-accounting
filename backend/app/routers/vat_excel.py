@@ -672,11 +672,13 @@ def declaration(
         wb.save(buf)
         buf.seek(0)
 
+        from urllib.parse import quote
         safe_period = (data.get("period_label") or "declaration").replace(" ", "_").replace("/", "_")
+        encoded_name = quote(f"vat_declaration_{safe_period}.xlsx")
         return StreamingResponse(
             buf,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="vat_declaration_{safe_period}.xlsx"'},
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}"},
         )
 
     except Exception as e:
