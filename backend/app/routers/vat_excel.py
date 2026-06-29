@@ -33,14 +33,24 @@ def _ensure_table(db: Session):
     global _TABLE_READY
     if _TABLE_READY:
         return
-    # Check if table exists with correct schema (has data_json column)
+    # Check if table has correct schema: data_json present, summary absent
+    has_data_json = False
+    has_summary   = False
     try:
-        db.execute(text("SELECT data_json FROM vat_excel_analyses LIMIT 0"))
+        rows = db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'vat_excel_analyses'
+        """)).fetchall()
+        cols = {r[0] for r in rows}
+        has_data_json = "data_json" in cols
+        has_summary   = "summary" in cols
         db.rollback()
-        _TABLE_READY = True
-        return  # Schema is correct already
     except Exception:
         db.rollback()
+
+    if has_data_json and not has_summary:
+        _TABLE_READY = True
+        return  # Schema is correct already
 
     # Table missing or has old incompatible schema — drop and recreate
     try:
