@@ -15303,8 +15303,12 @@ function showImportPreview(data) {
       ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:#92400e">
            ⚠️ <strong>ثقة منخفضة في تعيين الأعمدة</strong> — يُنصح بمراجعة: ${lowConfFields.map(([f])=>FIELD_AR[f]||f).join('، ')}
          </div>` : '';
+    const overrideWarning = s.section_type_overridden
+      ? `<div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:7px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:#1e40af">
+           ℹ️ <strong>تجاوز نوع مكتشف</strong> — النظام اكتشف هذا الشيت كنوع مختلف لكن القسم المحدد هو المصدر الحقيقي، تم الاستيراد حسب القسم.
+         </div>` : '';
     const colMapHtml = `
-      ${mappingWarning}
+      ${overrideWarning}${mappingWarning}
       <div style="margin-bottom:8px">
         <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px">تعيين الأعمدة المكتشفة:</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px">
