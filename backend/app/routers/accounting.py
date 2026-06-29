@@ -10,7 +10,7 @@ Endpoints:
   /api/accounting/{client_id}/reports/vat       — ملخص ض ق م
   /api/accounting/{client_id}/import/excel      — استيراد Excel
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from pydantic import BaseModel
@@ -46,6 +46,7 @@ def _run_batch_migrations(db: Session):
             "ALTER TABLE acc_journal_entries ADD COLUMN IF NOT EXISTS source_file VARCHAR(255)",
             "ALTER TABLE acc_journal_entries ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) DEFAULT 'manual'",
             "ALTER TABLE acc_journal_entries ADD COLUMN IF NOT EXISTS doc_ref VARCHAR(100)",
+            "ALTER TABLE acc_import_batches ADD COLUMN IF NOT EXISTS section_type VARCHAR(50)",
         ]
         for sql in migrations:
             try:
@@ -1755,24 +1756,39 @@ def _parse_excel_rows(df, mapping: dict, tx_type: str, sheet_name: str) -> tuple
         raw_amount_val = val("amount")
         raw_vat_val    = val("vat")
 
-        # ── date ──
+        # ── date: warning only — fallback to today if missing/invalid ──
         tx_date = _smart_parse_date(raw_date_val)
         if not tx_date:
+            from datetime import date as _date
+            tx_date = _date.today().strftime("%Y-%m-%d")
             if raw_date_val is None or (isinstance(raw_date_val, float) and pd.isna(raw_date_val)):
-                errors.append({"field": "date", "reason": "عمود التاريخ فارغ", "sheet_value": None, "parsed_value": None})
+                warnings.append({"field": "date", "reason": "التاريخ فارغ — استُخدم تاريخ اليوم",
+                                  "sheet_value": None, "action": "تم استيراده بتاريخ اليوم"})
             else:
-                errors.append({"field": "date", "reason": f"تاريخ غير مفهوم", "sheet_value": str(raw_date_val), "parsed_value": None})
+                warnings.append({"field": "date", "reason": f"تاريخ غير مفهوم ({raw_date_val}) — استُخدم تاريخ اليوم",
+                                  "sheet_value": str(raw_date_val), "action": "تم استيراده بتاريخ اليوم"})
 
-        # ── amount ──
+        # ── amount: FATAL only if NO amount column exists at all ──
         amount = _smart_parse_number(raw_amount_val)
         if mapping.get("amount") is None:
-            errors.append({"field": "amount", "reason": "لم يُكتشف عمود المبلغ — تحقق من تعيين الأعمدة", "sheet_value": None, "parsed_value": 0})
-            amount = None
+            # Try fallback to net column
+            net_fallback = _smart_parse_number(val("net"))
+            if net_fallback and net_fallback > 0:
+                amount = net_fallback
+                warnings.append({"field": "amount", "reason": "عمود المبلغ غير موجود — استُخدم عمود الإجمالي بديلاً",
+                                  "sheet_value": None, "action": f"مبلغ = {amount}"})
+            else:
+                errors.append({"field": "amount", "reason": "لا يوجد عمود مبلغ في الشيت",
+                                "sheet_value": None, "parsed_value": 0})
+                amount = None
         elif amount is None:
-            errors.append({"field": "amount", "reason": "المبلغ فارغ أو نص غير رقمي", "sheet_value": str(raw_amount_val), "parsed_value": 0})
+            warnings.append({"field": "amount", "reason": "المبلغ فارغ في هذا الصف",
+                              "sheet_value": str(raw_amount_val) if raw_amount_val is not None else None,
+                              "action": "تم استيراده بمبلغ صفر"})
+            amount = 0.0
         elif amount <= 0:
-            errors.append({"field": "amount", "reason": f"المبلغ صفر أو سالب ({amount})", "sheet_value": str(raw_amount_val), "parsed_value": amount})
-            amount = None
+            warnings.append({"field": "amount", "reason": f"المبلغ صفر أو سالب ({amount})",
+                              "sheet_value": str(raw_amount_val), "action": "تم استيراده كما هو"})
 
         # ── vat (warning only) ──
         vat = _smart_parse_number(raw_vat_val) or 0.0
@@ -1835,13 +1851,17 @@ def _parse_excel_rows(df, mapping: dict, tx_type: str, sheet_name: str) -> tuple
             "warnings":     warnings,
         }
 
+        # FATAL = no amount column at all → error_row (cannot import)
+        # Everything else (bad date, empty cell, zero amount, missing partner) → warning → good_row
         if errors:
             row_dict["status"] = "error"
+            row_dict["skip_reason"] = errors[0]["reason"]
             error_rows.append(row_dict)
         elif warnings:
             row_dict["status"] = "warning"
-            row_dict["issues"] = [w["reason"] for w in warnings]
-            row_dict["needs_review"] = True
+            row_dict["issues"]  = [w["reason"] for w in warnings]
+            row_dict["actions"] = [w.get("action","") for w in warnings]
+            row_dict["needs_review"] = False  # warnings don't block import
             good_rows.append(row_dict)
         else:
             row_dict["status"] = "ok"
@@ -1868,15 +1888,19 @@ class ImportConfirmRequest(BaseModel):
     rows: List[ImportConfirmRow]
     filename: str = "ملف Excel"
     import_good_only: bool = False
+    section_type: Optional[str] = None  # sale|purchase|expense|asset|salary
 
 @router.post("/{client_id}/import/excel/preview")
 async def import_excel_preview(
     client_id: int,
     file: UploadFile = File(...),
+    section: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Smart Excel Engine v2 — معاينة كاملة مع فحص جودة + مطابقة مجاميع + كشف تكرار."""
+    """Smart Excel Engine v2 — معاينة كاملة مع فحص جودة + مطابقة مجاميع + كشف تكرار.
+    section: sale|purchase|expense|asset|salary — إن أُرسل يُقيّد الشيتات لهذا القسم فقط.
+    """
     import io
     try:
         import pandas as pd
@@ -1929,6 +1953,27 @@ async def import_excel_preview(
             field_conf = get_field_confidences(cols, df.head(20))
             col_conf = _confidence_score(mapping, tx_type)
             confidence = min(int((type_conf + col_conf) / 2), 95)
+
+            # ── فلترة حسب القسم المطلوب ──
+            SECTION_TX_MAP = {
+                "sale":     ["sale"],
+                "purchase": ["purchase"],
+                "expense":  ["expense"],
+                "asset":    ["asset"],
+                "salary":   ["salary"],
+            }
+            if section and tx_type not in SECTION_TX_MAP.get(section, [tx_type]):
+                SECTION_AR = {"sale":"مبيعات","purchase":"مشتريات","expense":"مصروفات","asset":"أصول","salary":"مرتبات"}
+                sheets_result.append({
+                    "sheet": sheet_name, "skipped": True,
+                    "skip_reason": f"هذا الشيت ({tx_type}) لا ينتمي لقسم {SECTION_AR.get(section, section)} — تم تخطيه",
+                    "raw_rows_count": len(df), "ok_rows_count": 0, "warning_rows_count": 0,
+                    "error_rows_count": 0, "confidence": confidence, "totals_match": True,
+                    "needs_review_count": 0, "diff_analysis": None, "col_mapping_detail": {},
+                    "error_rows": [], "sample": [], "columns": cols[:10],
+                    "col_mapping": {}, "tx_type": tx_type,
+                })
+                continue
 
             # تخطي الشيتات التي ليست بيانات فعلية (تقارير، ملخصات)
             # شرط التخطي: لا يوجد عمود تاريخ أو المبلغ — هذه شيتات تحليلية
@@ -2116,10 +2161,40 @@ async def import_excel_preview(
         import_blocked = True
         block_reason   = "جميع الصفوف تحتوي أخطاء — لا يوجد صف صالح للاستيراد"
 
+    # Build skipped_details: rows with warnings + skipped sheets
+    warning_rows = [r for r in new_rows if r.get("status") == "warning"]
+    ok_rows      = [r for r in new_rows if r.get("status") == "ok"]
+    skipped_sheets = [s for s in sheets_result if s.get("skipped")]
+
+    # Skipped row details (date fallback, empty amount, etc.)
+    skipped_row_details = []
+    for r in warning_rows[:50]:
+        for issue in (r.get("issues") or []):
+            skipped_row_details.append({
+                "sheet": r.get("sheet",""), "row": r.get("row_num",""),
+                "issue": issue,
+                "action": (r.get("actions") or [issue])[0] if r.get("actions") else "تم استيراده مع التحذير",
+            })
+
+    # ── تحقق من حالة الشيتات الصالحة للقسم المطلوب ──
+    importable_sheets = [s for s in sheets_result if not s.get("skipped") and not s.get("error")]
+    needs_sheet_selection = False
+    sheet_candidates = []
+    if section and len(importable_sheets) > 1:
+        needs_sheet_selection = True
+        sheet_candidates = [
+            {"sheet": s["sheet"], "confidence": s["confidence"],
+             "row_count": s["ok_rows_count"] + s["warning_rows_count"],
+             "tx_type": s["tx_type"]}
+            for s in importable_sheets
+        ]
+
     return {
         "sheets":               sheets_result,
         "total_rows":           len(unique_good),
         "new_rows_count":       len(new_rows),
+        "ok_rows_count":        len(ok_rows),
+        "warning_rows_count":   len(warning_rows),
         "duplicate_rows_count": len(duplicate_rows),
         "error_rows_count":     len(all_error_rows),
         "rows":                 new_rows,
@@ -2129,8 +2204,14 @@ async def import_excel_preview(
         "any_totals_mismatch":  any_totals_mismatch,
         "import_blocked":       import_blocked,
         "block_reason":         block_reason,
-        "message":              f"تم تحليل {len(sheets_result)} شيت — {len(new_rows)} صف سليم، {len(all_error_rows)} صف بأخطاء" +
-                                (f"، {len(duplicate_rows)} مكرر" if duplicate_rows else ""),
+        "section":              section,
+        "needs_sheet_selection": needs_sheet_selection,
+        "sheet_candidates":     sheet_candidates,
+        "importable_count":     len(new_rows),
+        "skipped_sheets":       [{"sheet": s["sheet"], "reason": s.get("skip_reason","")} for s in skipped_sheets],
+        "skipped_row_details":  skipped_row_details,
+        "fatal_errors":         all_error_rows[:20],
+        "message":              f"سيتم استيراد {len(new_rows)} صف من {len(importable_sheets)} شيت",
     }
 
 
@@ -2154,6 +2235,11 @@ async def import_excel_confirm(
         source_type="excel_import",
         imported_by=current_user.id,
     )
+    # section_type — يُخزن القسم الذي استُورد من خلاله
+    try:
+        batch.section_type = data.section_type
+    except Exception:
+        pass
     db.add(batch); db.flush()
     batch_id = batch.id
 
@@ -2255,14 +2341,20 @@ async def delete_transactions_batch(
 @router.get("/{client_id}/import/batches")
 async def list_import_batches(
     client_id: int,
+    section_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """سجل عمليات الاستيراد."""
+    """سجل عمليات الاستيراد. يقبل ?section_type=sale|purchase|... للفلترة."""
     ensure_batch_migrations(db)
-    batches = db.query(AccImportBatch)\
-        .filter(AccImportBatch.client_id == client_id, AccImportBatch.status == "active")\
-        .order_by(AccImportBatch.imported_at.desc()).all()
+    q = db.query(AccImportBatch)\
+        .filter(AccImportBatch.client_id == client_id, AccImportBatch.status == "active")
+    if section_type:
+        try:
+            q = q.filter(AccImportBatch.section_type == section_type)
+        except Exception:
+            pass
+    batches = q.order_by(AccImportBatch.imported_at.desc()).all()
 
     from app.models.user import User as UserModel
     users = {u.id: getattr(u, 'name', getattr(u, 'full_name', str(u.id)))
@@ -2285,6 +2377,7 @@ async def list_import_batches(
             "total_vat":       b.total_vat or 0,
             "total_net":       b.total_net or 0,
             "status":          b.status,
+            "section_type":    getattr(b, 'section_type', None) or "—",
         })
     return {"batches": result, "total": len(result)}
 
