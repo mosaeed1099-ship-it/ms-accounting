@@ -33,8 +33,8 @@ def _ensure_table(db: Session):
     global _TABLE_READY
     if _TABLE_READY:
         return
-    db.execute(text("""
-        CREATE TABLE IF NOT EXISTS vat_excel_analyses (
+    stmts = [
+        """CREATE TABLE IF NOT EXISTS vat_excel_analyses (
             id           SERIAL PRIMARY KEY,
             user_id      INTEGER,
             created_at   TIMESTAMP DEFAULT NOW(),
@@ -48,18 +48,16 @@ def _ensure_table(db: Session):
             pur_vat      NUMERIC(14,2) DEFAULT 0,
             total_invoices INTEGER DEFAULT 0,
             data_json    TEXT
-        )
-    """))
-    # Migrations for columns added after initial table creation
-    for col_sql in [
+        )""",
         "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS year INTEGER",
         "ALTER TABLE vat_excel_analyses ADD COLUMN IF NOT EXISTS month INTEGER",
-    ]:
+    ]
+    for sql in stmts:
         try:
-            db.execute(text(col_sql))
+            db.execute(text(sql))
+            db.commit()
         except Exception:
-            pass
-    db.commit()
+            db.rollback()
     _TABLE_READY = True
 
 
