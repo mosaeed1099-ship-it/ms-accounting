@@ -306,6 +306,19 @@ def _detect_value_pattern(values: list) -> str:
     return 'mixed'
 
 
+def _is_serial_index_column(values: list) -> bool:
+    """True if column is a row counter (1,2,3,...,N) — must not be mistaken for an amount field."""
+    non_null = [v for v in values if v is not None and str(v).strip()
+                and str(v).strip().lower() not in ('nan', 'none', 'nat')]
+    if len(non_null) < 3:
+        return False
+    try:
+        nums = [float(str(v).strip()) for v in non_null]
+    except Exception:
+        return False
+    return all(n == i + 1 for i, n in enumerate(nums))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 4: Universal Column Mapper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -359,11 +372,14 @@ def map_columns_universal(cols: list, df_sample) -> dict:
 
     # Analyze value patterns for each column
     col_value_patterns = {}
+    serial_index_cols = set()
     for i, col in enumerate(cols):
         try:
             col_vals = [df_sample.iloc[r, i] for r in range(min(20, len(df_sample)))
                         if i < df_sample.shape[1]]
             col_value_patterns[i] = _detect_value_pattern(col_vals)
+            if _is_serial_index_column(col_vals):
+                serial_index_cols.add(i)
         except Exception:
             col_value_patterns[i] = 'unknown'
 
@@ -420,8 +436,8 @@ def map_columns_universal(cols: list, df_sample) -> dict:
                 elif vp not in ('unknown', 'mixed', 'empty') and not vp_match:
                     conf -= 15
 
-            elif vp_match and vp != 'unknown':
-                # Value pattern match only (no name match)
+            elif vp_match and vp != 'unknown' and i not in serial_index_cols:
+                # Value pattern match only (no name match) — exclude row-serial columns (1,2,3,...)
                 conf = 45
                 method = "value_pattern"
 

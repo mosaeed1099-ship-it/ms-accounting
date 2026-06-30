@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # Cache-bust: 2026-06-29
-ARG CACHEBUST=2026-06-29-section-form-fix
+ARG CACHEBUST=2026-06-30-fix-serial-col-wht
 
 WORKDIR /app
 
