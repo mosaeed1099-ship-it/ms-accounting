@@ -235,9 +235,9 @@ async function showInvoiceModal(id=null, preClientId=null) {
     window._invItems=items;
     renderItems();
 
-    document.getElementById('addItemBtn').onclick=()=>{items.push({description:'',quantity:1,unit_price:0,tax_percent:14});renderItems()};
+    overlay.querySelector('#addItemBtn').onclick=()=>{items.push({description:'',quantity:1,unit_price:0,tax_percent:14});renderItems()};
 
-    document.getElementById('saveInvBtn').onclick=async()=>{
+    overlay.querySelector('#saveInvBtn').onclick=async()=>{
       const btn=document.getElementById('saveInvBtn');
       btn.disabled=true; btn.textContent='جاري الحفظ...';
       try {
