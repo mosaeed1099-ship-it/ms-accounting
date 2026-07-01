@@ -6746,11 +6746,11 @@ async function _renderMonthlyView(el) {
   el.innerHTML = `
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
     <label style="font-weight:700;font-size:13px;color:#374151">📊 الشهر:</label>
-    <select id="settlMonthSel" onchange="_settlMonthView=+this.value;_refreshMonthlyView()"
+    <select id="settlMonthSel" onchange="_stlSetMonthView(+this.value)"
       style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:white">
       ${monthNames.map((m,i)=>`<option value="${i+1}" ${i+1===_settlMonthView?'selected':''}>${m}</option>`).join('')}
     </select>
-    <select id="settlYearSel" onchange="_settlYearView=+this.value;_refreshMonthlyView()"
+    <select id="settlYearSel" onchange="_stlSetYearView(+this.value)"
       style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:white">
       ${[2023,2024,2025,2026].map(y=>`<option ${y===_settlYearView?'selected':''}>${y}</option>`).join('')}
     </select>
@@ -6857,24 +6857,17 @@ async function openEmployeeSettlements(empName) {
 async function renderEmpSettlements() {
   const _callMonth = _settleMonth; // capture at call time
   const _callYear  = _settleYear;
-  console.log('[STL] renderEmpSettlements called — month:', _callMonth, 'year:', _callYear, 'emp:', _settleEmp?.name);
   const main = document.getElementById('main');
-  if (!main) { console.error('[STL] main element NOT FOUND'); return; }
+  if (!main) return;
   try {
     const url = `/api/settlements/employees/${encodeURIComponent(_settleEmp.name)}?month=${_callMonth}&year=${_callYear}`;
-    console.log('[STL] API call →', url);
     const detail = await api('GET', url, null, {useCache: false});
-    console.log('[STL] API response — settlements count:', detail?.settlements?.length, '| month requested:', _callMonth, '| current _settleMonth:', _settleMonth);
 
     // Stale-render guard: if _settleMonth/_settleYear changed while we awaited, discard this render
-    if (_callMonth !== _settleMonth || _callYear !== _settleYear) {
-      console.warn('[STL] stale render discarded — requested:', _callMonth, _callYear, '| current:', _settleMonth, _settleYear);
-      return;
-    }
+    if (_callMonth !== _settleMonth || _callYear !== _settleYear) return;
 
     const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
     const settlements = detail.settlements || [];
-    console.log('[STL] rendering month:', _callMonth, '— settlements:', settlements.length);
     const report = {
       total_custody_added: settlements.reduce((s,x)=>s+(x.custody_added||0),0),
       total_spent:         settlements.reduce((s,x)=>s+(x.total_spent||0),0),
@@ -7842,7 +7835,7 @@ async function renderGovernmentPapers() {
 
     <!-- بحث وفلترة -->
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      <input value="${escH(_papersSearch)}" oninput="_papersSearch=this.value;renderGovernmentPapers()"
+      <input value="${escH(_papersSearch)}" oninput="_stlSetPapersSearch(this.value)"
         class="input" placeholder="🔍 بحث باسم العميل أو نوع الورقة..." style="max-width:280px">
       ${filterTabs.map(f=>`
       <button onclick="setPapersStatus('${f.id}')"
@@ -8083,8 +8076,14 @@ window.renderSettlementsList = renderSettlementsList;
 window.openEmployeeSettlements = openEmployeeSettlements;
 window.renderEmpSettlements = renderEmpSettlements;
 // module-scope setters — inline onchange can't write let vars in type="module" scripts
-window._stlSetMonth = function(m) { _settleMonth = m; renderEmpSettlements(); };
-window._stlSetYear  = function(y) { _settleYear  = y; renderEmpSettlements(); };
+window._stlSetMonth       = function(m) { _settleMonth = m; renderEmpSettlements(); };
+window._stlSetYear        = function(y) { _settleYear  = y; renderEmpSettlements(); };
+window._stlSetMonthView   = function(m) { _settlMonthView = m; _refreshMonthlyView(); };
+window._stlSetYearView    = function(y) { _settlYearView  = y; _refreshMonthlyView(); };
+window._stlSetPapersSearch= function(v) { _papersSearch = v; renderGovernmentPapers(); };
+window._stlSetStmtYear    = function(y) { _stmtYear = y; loadStatements(); };
+window._stlSetTsDateFrom  = function(v) { _tsDateFrom = v; };
+window._stlSetTsDateTo    = function(v) { _tsDateTo = v; };
 window.showAddEmployee = showAddEmployee;
 window.saveNewEmployee = saveNewEmployee;
 window.showCustodyTopup = showCustodyTopup;
@@ -9135,7 +9134,7 @@ function renderStatements(summary) {
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;align-items:center;gap:10px">
       <label style="font-size:13px;font-weight:600;color:#374151">السنة:</label>
-      <select onchange="_stmtYear=+this.value;loadStatements()" class="input" style="width:100px">
+      <select onchange="_stlSetStmtYear(+this.value)" class="input" style="width:100px">
         ${[new Date().getFullYear(),new Date().getFullYear()-1,new Date().getFullYear()-2].map(y=>`<option ${_stmtYear===y?'selected':''}>${y}</option>`).join('')}
       </select>
     </div>
@@ -9359,9 +9358,9 @@ function renderTimesheet(totalHours, stats) {
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <label style="font-size:13px;font-weight:600;color:#374151">من:</label>
-      <input type="date" class="input" style="width:150px" value="${_tsDateFrom}" oninput="_tsDateFrom=this.value"/>
+      <input type="date" class="input" style="width:150px" value="${_tsDateFrom}" oninput="_stlSetTsDateFrom(this.value)"/>
       <label style="font-size:13px;font-weight:600;color:#374151">إلى:</label>
-      <input type="date" class="input" style="width:150px" value="${_tsDateTo}" oninput="_tsDateTo=this.value"/>
+      <input type="date" class="input" style="width:150px" value="${_tsDateTo}" oninput="_stlSetTsDateTo(this.value)"/>
       <button class="btn btn-secondary" onclick="loadTimesheet()">🔍 بحث</button>
     </div>
     <button class="btn btn-primary" onclick="showAddTimeEntry()">+ تسجيل ساعات</button>

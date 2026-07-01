@@ -4286,7 +4286,7 @@ function renderTaskFolders() {
       <p style="font-size:13px;color:#64748b;margin:4px 0 0">${tasksData.length} مهمة — ${emps.filter(e=>e.pending.length>0).length} موظف لديه مهام قيد التنفيذ</p>
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="_taskViewMode='daily';renderDailySheet()"
+      <button onclick="_taskSetViewMode('daily')"
         style="padding:8px 16px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">📋 اليومية</button>
       <button onclick="showTaskModal()" class="btn btn-primary" style="font-size:13px">➕ مهمة جديدة</button>
     </div>
@@ -4392,7 +4392,7 @@ function renderEmployeeTasks() {
   main.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:12px">
-      <button onclick="_taskEmpFilter=null;loadTasks()"
+      <button onclick="_taskClearEmpFilter()"
         style="background:#f1f5f9;border:none;border-radius:10px;padding:8px 14px;cursor:pointer;font-size:13px;color:#475569">← رجوع</button>
       <div>
         <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0">👷 مهام ${escH(emp.name)}</h2>
@@ -4443,7 +4443,7 @@ function renderKanban() {
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button onclick="_taskViewMode='daily';renderDailySheet()"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">📋 اليومية</button>
-      <button onclick="_taskViewMode='folders';_taskEmpFilter=null;renderTaskFolders()"
+      <button onclick="_taskSetViewFolders()"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
       ${cols.map(c=>{const n=tasksData.filter(t=>t.status===c.id).length;return`<span style="font-size:12px;background:${c.bg};color:${c.color};padding:4px 12px;border-radius:8px;font-weight:700;border:1.5px solid ${c.color}22">${c.label} (${n})</span>`}).join('')}
     </div>
@@ -4639,6 +4639,9 @@ window.showKanban=()=>loadTasks(false);
 window.showFolders=()=>loadTasks(false);
 window._taskClientFilter='';
 window.filterTasksByClient=()=>{};
+window._taskSetViewMode  = function(m) { _taskViewMode = m; renderDailySheet(); };
+window._taskClearEmpFilter = function() { _taskEmpFilter = null; loadTasks(); };
+window._taskSetViewFolders = function() { _taskViewMode = 'folders'; _taskEmpFilter = null; renderTaskFolders(); };
 
 // ── DOCUMENTS ──────────────────────────────────────
 // ── DOCUMENTS ──────────────────────────────────────
@@ -4761,7 +4764,7 @@ function _renderDocRoot() {
 
   <!-- Search -->
   <div style="margin-bottom:14px">
-    <input class="input" style="max-width:280px" placeholder="🔍 بحث باسم الشركة أو الملف..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;_renderDocRoot()"/>
+    <input class="input" style="max-width:280px" placeholder="🔍 بحث باسم الشركة أو الملف..." value="${escH(docSearchQ)}" oninput="_docSetSearch(this.value,'root')"/>
   </div>
 
   <!-- Company Folders Grid -->
@@ -4848,15 +4851,15 @@ function _renderDocClientFolder(clientId) {
   main.innerHTML = `
   <!-- Breadcrumb -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:13px">
-    <button onclick="_docOpenClientId=null;_renderDocRoot()" style="background:none;border:none;color:#1a2472;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;padding:0">📂 الأرشيف</button>
+    <button onclick="_docGoRoot()" style="background:none;border:none;color:#1a2472;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;padding:0">📂 الأرشيف</button>
     <span style="color:#94a3b8">›</span>
     <span style="font-weight:700;color:#1e293b">📁 ${escH(clientName)}</span>
   </div>
 
   <!-- Toolbar -->
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-    <input class="input" style="width:220px;font-size:12px" placeholder="🔍 بحث في ملفات هذه الشركة..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;_renderDocClientFolder(${clientId===null?'null':clientId})"/>
-    <select class="input" style="width:160px;font-size:12px" onchange="docCatFilter=this.value;_renderDocClientFolder(${clientId===null?'null':clientId})">
+    <input class="input" style="width:220px;font-size:12px" placeholder="🔍 بحث في ملفات هذه الشركة..." value="${escH(docSearchQ)}" oninput="_docSetSearch(this.value,${clientId===null?'null':clientId})"/>
+    <select class="input" style="width:160px;font-size:12px" onchange="_docSetCatFilter(this.value,${clientId===null?'null':clientId})">
       <option value="">كل التصنيفات</option>
       ${Object.entries(DOC_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${docCatFilter===k?'selected':''}>${DOC_CAT_ICON[k]||'📁'} ${v}</option>`).join('')}
     </select>
@@ -5139,6 +5142,9 @@ window.runDriveImport=runDriveImport;
 window.driveSelectAll=driveSelectAll;
 window.updateDriveImportBtn=updateDriveImportBtn;
 window.driveShowStep=driveShowStep;
+window._docGoRoot       = function() { _docOpenClientId = null; _renderDocRoot(); };
+window._docSetSearch    = function(v, ctx) { docSearchQ = v; if (ctx === 'root') _renderDocRoot(); else _renderDocClientFolder(ctx); };
+window._docSetCatFilter = function(v, ctx) { docCatFilter = v; _renderDocClientFolder(ctx); };
 
 async function showUploadModal(preClientId=null) {
   let clients=[];
@@ -17373,11 +17379,11 @@ async function _renderMonthlyView(el) {
   el.innerHTML = `
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
     <label style="font-weight:700;font-size:13px;color:#374151">📊 الشهر:</label>
-    <select id="settlMonthSel" onchange="_settlMonthView=+this.value;_refreshMonthlyView()"
+    <select id="settlMonthSel" onchange="_stlSetMonthView(+this.value)"
       style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:white">
       ${monthNames.map((m,i)=>`<option value="${i+1}" ${i+1===_settlMonthView?'selected':''}>${m}</option>`).join('')}
     </select>
-    <select id="settlYearSel" onchange="_settlYearView=+this.value;_refreshMonthlyView()"
+    <select id="settlYearSel" onchange="_stlSetYearView(+this.value)"
       style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:white">
       ${[2023,2024,2025,2026].map(y=>`<option ${y===_settlYearView?'selected':''}>${y}</option>`).join('')}
     </select>
@@ -17484,24 +17490,17 @@ async function openEmployeeSettlements(empName) {
 async function renderEmpSettlements() {
   const _callMonth = _settleMonth; // capture at call time
   const _callYear  = _settleYear;
-  console.log('[STL] renderEmpSettlements called — month:', _callMonth, 'year:', _callYear, 'emp:', _settleEmp?.name);
   const main = document.getElementById('main');
-  if (!main) { console.error('[STL] main element NOT FOUND'); return; }
+  if (!main) return;
   try {
     const url = `/api/settlements/employees/${encodeURIComponent(_settleEmp.name)}?month=${_callMonth}&year=${_callYear}`;
-    console.log('[STL] API call →', url);
     const detail = await api('GET', url, null, {useCache: false});
-    console.log('[STL] API response — settlements count:', detail?.settlements?.length, '| month requested:', _callMonth, '| current _settleMonth:', _settleMonth);
 
     // Stale-render guard: if _settleMonth/_settleYear changed while we awaited, discard this render
-    if (_callMonth !== _settleMonth || _callYear !== _settleYear) {
-      console.warn('[STL] stale render discarded — requested:', _callMonth, _callYear, '| current:', _settleMonth, _settleYear);
-      return;
-    }
+    if (_callMonth !== _settleMonth || _callYear !== _settleYear) return;
 
     const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
     const settlements = detail.settlements || [];
-    console.log('[STL] rendering month:', _callMonth, '— settlements:', settlements.length);
     const report = {
       total_custody_added: settlements.reduce((s,x)=>s+(x.custody_added||0),0),
       total_spent:         settlements.reduce((s,x)=>s+(x.total_spent||0),0),
@@ -18469,7 +18468,7 @@ async function renderGovernmentPapers() {
 
     <!-- بحث وفلترة -->
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      <input value="${escH(_papersSearch)}" oninput="_papersSearch=this.value;renderGovernmentPapers()"
+      <input value="${escH(_papersSearch)}" oninput="_stlSetPapersSearch(this.value)"
         class="input" placeholder="🔍 بحث باسم العميل أو نوع الورقة..." style="max-width:280px">
       ${filterTabs.map(f=>`
       <button onclick="setPapersStatus('${f.id}')"
@@ -18710,8 +18709,14 @@ window.renderSettlementsList = renderSettlementsList;
 window.openEmployeeSettlements = openEmployeeSettlements;
 window.renderEmpSettlements = renderEmpSettlements;
 // module-scope setters — inline onchange can't write let vars in type="module" scripts
-window._stlSetMonth = function(m) { _settleMonth = m; renderEmpSettlements(); };
-window._stlSetYear  = function(y) { _settleYear  = y; renderEmpSettlements(); };
+window._stlSetMonth       = function(m) { _settleMonth = m; renderEmpSettlements(); };
+window._stlSetYear        = function(y) { _settleYear  = y; renderEmpSettlements(); };
+window._stlSetMonthView   = function(m) { _settlMonthView = m; _refreshMonthlyView(); };
+window._stlSetYearView    = function(y) { _settlYearView  = y; _refreshMonthlyView(); };
+window._stlSetPapersSearch= function(v) { _papersSearch = v; renderGovernmentPapers(); };
+window._stlSetStmtYear    = function(y) { _stmtYear = y; loadStatements(); };
+window._stlSetTsDateFrom  = function(v) { _tsDateFrom = v; };
+window._stlSetTsDateTo    = function(v) { _tsDateTo = v; };
 window.showAddEmployee = showAddEmployee;
 window.saveNewEmployee = saveNewEmployee;
 window.showCustodyTopup = showCustodyTopup;
@@ -19762,7 +19767,7 @@ function renderStatements(summary) {
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;align-items:center;gap:10px">
       <label style="font-size:13px;font-weight:600;color:#374151">السنة:</label>
-      <select onchange="_stmtYear=+this.value;loadStatements()" class="input" style="width:100px">
+      <select onchange="_stlSetStmtYear(+this.value)" class="input" style="width:100px">
         ${[new Date().getFullYear(),new Date().getFullYear()-1,new Date().getFullYear()-2].map(y=>`<option ${_stmtYear===y?'selected':''}>${y}</option>`).join('')}
       </select>
     </div>
@@ -19986,9 +19991,9 @@ function renderTimesheet(totalHours, stats) {
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <label style="font-size:13px;font-weight:600;color:#374151">من:</label>
-      <input type="date" class="input" style="width:150px" value="${_tsDateFrom}" oninput="_tsDateFrom=this.value"/>
+      <input type="date" class="input" style="width:150px" value="${_tsDateFrom}" oninput="_stlSetTsDateFrom(this.value)"/>
       <label style="font-size:13px;font-weight:600;color:#374151">إلى:</label>
-      <input type="date" class="input" style="width:150px" value="${_tsDateTo}" oninput="_tsDateTo=this.value"/>
+      <input type="date" class="input" style="width:150px" value="${_tsDateTo}" oninput="_stlSetTsDateTo(this.value)"/>
       <button class="btn btn-secondary" onclick="loadTimesheet()">🔍 بحث</button>
     </div>
     <button class="btn btn-primary" onclick="showAddTimeEntry()">+ تسجيل ساعات</button>

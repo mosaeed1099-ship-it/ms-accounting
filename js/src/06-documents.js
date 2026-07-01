@@ -115,7 +115,7 @@ function _renderDocRoot() {
 
   <!-- Search -->
   <div style="margin-bottom:14px">
-    <input class="input" style="max-width:280px" placeholder="🔍 بحث باسم الشركة أو الملف..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;_renderDocRoot()"/>
+    <input class="input" style="max-width:280px" placeholder="🔍 بحث باسم الشركة أو الملف..." value="${escH(docSearchQ)}" oninput="_docSetSearch(this.value,'root')"/>
   </div>
 
   <!-- Company Folders Grid -->
@@ -202,15 +202,15 @@ function _renderDocClientFolder(clientId) {
   main.innerHTML = `
   <!-- Breadcrumb -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:13px">
-    <button onclick="_docOpenClientId=null;_renderDocRoot()" style="background:none;border:none;color:#1a2472;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;padding:0">📂 الأرشيف</button>
+    <button onclick="_docGoRoot()" style="background:none;border:none;color:#1a2472;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;padding:0">📂 الأرشيف</button>
     <span style="color:#94a3b8">›</span>
     <span style="font-weight:700;color:#1e293b">📁 ${escH(clientName)}</span>
   </div>
 
   <!-- Toolbar -->
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-    <input class="input" style="width:220px;font-size:12px" placeholder="🔍 بحث في ملفات هذه الشركة..." value="${escH(docSearchQ)}" oninput="docSearchQ=this.value;_renderDocClientFolder(${clientId===null?'null':clientId})"/>
-    <select class="input" style="width:160px;font-size:12px" onchange="docCatFilter=this.value;_renderDocClientFolder(${clientId===null?'null':clientId})">
+    <input class="input" style="width:220px;font-size:12px" placeholder="🔍 بحث في ملفات هذه الشركة..." value="${escH(docSearchQ)}" oninput="_docSetSearch(this.value,${clientId===null?'null':clientId})"/>
+    <select class="input" style="width:160px;font-size:12px" onchange="_docSetCatFilter(this.value,${clientId===null?'null':clientId})">
       <option value="">كل التصنيفات</option>
       ${Object.entries(DOC_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${docCatFilter===k?'selected':''}>${DOC_CAT_ICON[k]||'📁'} ${v}</option>`).join('')}
     </select>
@@ -493,6 +493,9 @@ window.runDriveImport=runDriveImport;
 window.driveSelectAll=driveSelectAll;
 window.updateDriveImportBtn=updateDriveImportBtn;
 window.driveShowStep=driveShowStep;
+window._docGoRoot       = function() { _docOpenClientId = null; _renderDocRoot(); };
+window._docSetSearch    = function(v, ctx) { docSearchQ = v; if (ctx === 'root') _renderDocRoot(); else _renderDocClientFolder(ctx); };
+window._docSetCatFilter = function(v, ctx) { docCatFilter = v; _renderDocClientFolder(ctx); };
 
 async function showUploadModal(preClientId=null) {
   let clients=[];

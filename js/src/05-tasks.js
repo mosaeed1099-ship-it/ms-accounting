@@ -456,7 +456,7 @@ function renderTaskFolders() {
       <p style="font-size:13px;color:#64748b;margin:4px 0 0">${tasksData.length} مهمة — ${emps.filter(e=>e.pending.length>0).length} موظف لديه مهام قيد التنفيذ</p>
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="_taskViewMode='daily';renderDailySheet()"
+      <button onclick="_taskSetViewMode('daily')"
         style="padding:8px 16px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">📋 اليومية</button>
       <button onclick="showTaskModal()" class="btn btn-primary" style="font-size:13px">➕ مهمة جديدة</button>
     </div>
@@ -562,7 +562,7 @@ function renderEmployeeTasks() {
   main.innerHTML = `
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:12px">
-      <button onclick="_taskEmpFilter=null;loadTasks()"
+      <button onclick="_taskClearEmpFilter()"
         style="background:#f1f5f9;border:none;border-radius:10px;padding:8px 14px;cursor:pointer;font-size:13px;color:#475569">← رجوع</button>
       <div>
         <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0">👷 مهام ${escH(emp.name)}</h2>
@@ -613,7 +613,7 @@ function renderKanban() {
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button onclick="_taskViewMode='daily';renderDailySheet()"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">📋 اليومية</button>
-      <button onclick="_taskViewMode='folders';_taskEmpFilter=null;renderTaskFolders()"
+      <button onclick="_taskSetViewFolders()"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>
       ${cols.map(c=>{const n=tasksData.filter(t=>t.status===c.id).length;return`<span style="font-size:12px;background:${c.bg};color:${c.color};padding:4px 12px;border-radius:8px;font-weight:700;border:1.5px solid ${c.color}22">${c.label} (${n})</span>`}).join('')}
     </div>
@@ -809,6 +809,9 @@ window.showKanban=()=>loadTasks(false);
 window.showFolders=()=>loadTasks(false);
 window._taskClientFilter='';
 window.filterTasksByClient=()=>{};
+window._taskSetViewMode  = function(m) { _taskViewMode = m; renderDailySheet(); };
+window._taskClearEmpFilter = function() { _taskEmpFilter = null; loadTasks(); };
+window._taskSetViewFolders = function() { _taskViewMode = 'folders'; _taskEmpFilter = null; renderTaskFolders(); };
 
 // ── DOCUMENTS ──────────────────────────────────────
 // ── DOCUMENTS ──────────────────────────────────────
