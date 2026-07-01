@@ -611,7 +611,7 @@ function renderKanban() {
   main.innerHTML=`
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button onclick="_taskViewMode='daily';renderDailySheet()"
+      <button onclick="_taskSetViewMode('daily')"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">📋 اليومية</button>
       <button onclick="_taskSetViewFolders()"
         style="padding:7px 14px;background:white;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#475569">👥 الفولدرات</button>

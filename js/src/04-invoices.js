@@ -219,10 +219,10 @@ async function showInvoiceModal(id=null, preClientId=null) {
         const row=document.createElement('div');
         row.style='display:grid;grid-template-columns:2fr 80px 100px 40px;gap:8px;margin-bottom:8px;align-items:center';
         row.innerHTML=`
-          <input class="input" value="${item.description}" placeholder="وصف البند" oninput="items[${i}].description=this.value"/>
-          <input class="input" type="number" value="${item.quantity}" placeholder="الكمية" min="0.1" step="0.1" oninput="items[${i}].quantity=parseFloat(this.value)||0;renderItemsInner()"/>
-          <input class="input" type="number" value="${item.unit_price}" placeholder="السعر" oninput="items[${i}].unit_price=parseFloat(this.value)||0;renderItemsInner()"/>
-          <button onclick="items.splice(${i},1);renderItemsInner()" style="background:#fee2e2;border:none;border-radius:8px;padding:7px;cursor:pointer;color:#dc2626;font-size:14px">${items.length>1?'✕':''}</button>`;
+          <input class="input" value="${item.description}" placeholder="وصف البند" oninput="_invItems[${i}].description=this.value"/>
+          <input class="input" type="number" value="${item.quantity}" placeholder="الكمية" min="0.1" step="0.1" oninput="_invItems[${i}].quantity=parseFloat(this.value)||0;renderItemsInner()"/>
+          <input class="input" type="number" value="${item.unit_price}" placeholder="السعر" oninput="_invItems[${i}].unit_price=parseFloat(this.value)||0;renderItemsInner()"/>
+          <button onclick="_invItems.splice(${i},1);renderItemsInner()" style="background:#fee2e2;border:none;border-radius:8px;padding:7px;cursor:pointer;color:#dc2626;font-size:14px">${items.length>1?'✕':''}</button>`;
         cont.append(row);
         sub+=item.quantity*item.unit_price;
       });
@@ -232,6 +232,7 @@ async function showInvoiceModal(id=null, preClientId=null) {
       document.getElementById('grandTotal').textContent=money(sub+tax);
     }
     window.renderItemsInner=renderItems;
+    window._invItems=items;
     renderItems();
 
     document.getElementById('addItemBtn').onclick=()=>{items.push({description:'',quantity:1,unit_price:0,tax_percent:14});renderItems()};
