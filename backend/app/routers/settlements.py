@@ -209,13 +209,22 @@ def employee_detail(
     q = db.query(EmployeeSettlement).filter(
         EmployeeSettlement.employee_name == employee_name
     )
-    if month: q = q.filter(EmployeeSettlement.month == month)
-    if year:  q = q.filter(EmployeeSettlement.year  == year)
+    # استخدم نطاق التاريخ بدل أعمدة month/year لضمان رجوع التسويات القديمة
+    if month and year:
+        first_day = date(year, month, 1)
+        last_day  = date(year, month, monthrange(year, month)[1])
+        q = q.filter(EmployeeSettlement.date >= first_day, EmployeeSettlement.date <= last_day)
+    elif year:
+        q = q.filter(EmployeeSettlement.date >= date(year, 1, 1), EmployeeSettlement.date <= date(year, 12, 31))
     settlements = q.order_by(EmployeeSettlement.date.desc()).all()
 
     tq = db.query(CustodyTopupLog).filter(CustodyTopupLog.employee_name == employee_name)
-    if month: tq = tq.filter(CustodyTopupLog.month == month)
-    if year:  tq = tq.filter(CustodyTopupLog.year  == year)
+    if month and year:
+        first_day = date(year, month, 1)
+        last_day  = date(year, month, monthrange(year, month)[1])
+        tq = tq.filter(CustodyTopupLog.topup_date >= first_day, CustodyTopupLog.topup_date <= last_day)
+    elif year:
+        tq = tq.filter(CustodyTopupLog.topup_date >= date(year, 1, 1), CustodyTopupLog.topup_date <= date(year, 12, 31))
     topups = tq.order_by(CustodyTopupLog.topup_date.desc()).all()
 
     return {
@@ -347,9 +356,11 @@ def monthly_report_route(
     current_user: User = Depends(get_current_user),
 ):
     """تقرير شهري لكل التسويات."""
+    first_day = date(year, month, 1)
+    last_day  = date(year, month, monthrange(year, month)[1])
     q = db.query(EmployeeSettlement).filter(
-        EmployeeSettlement.month == month,
-        EmployeeSettlement.year  == year,
+        EmployeeSettlement.date >= first_day,
+        EmployeeSettlement.date <= last_day,
     )
     if employee_name:
         q = q.filter(EmployeeSettlement.employee_name == employee_name)
