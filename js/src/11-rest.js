@@ -6903,11 +6903,11 @@ async function renderEmpSettlements() {
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <select onchange="_settleMonth=+this.value;renderEmpSettlements()"
+        <select onchange="_stlSetMonth(+this.value)"
           style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:white">
           ${monthNames.map((m,i)=>`<option value="${i+1}" ${i+1===_callMonth?'selected':''}>${m}</option>`).join('')}
         </select>
-        <select onchange="_settleYear=+this.value;renderEmpSettlements()"
+        <select onchange="_stlSetYear(+this.value)"
           style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:white">
           ${[2023,2024,2025,2026].map(y=>`<option ${y===_callYear?'selected':''}>${y}</option>`).join('')}
         </select>
@@ -8082,6 +8082,9 @@ window.loadSettlements = loadSettlements;
 window.renderSettlementsList = renderSettlementsList;
 window.openEmployeeSettlements = openEmployeeSettlements;
 window.renderEmpSettlements = renderEmpSettlements;
+// module-scope setters — inline onchange can't write let vars in type="module" scripts
+window._stlSetMonth = function(m) { _settleMonth = m; renderEmpSettlements(); };
+window._stlSetYear  = function(y) { _settleYear  = y; renderEmpSettlements(); };
 window.showAddEmployee = showAddEmployee;
 window.saveNewEmployee = saveNewEmployee;
 window.showCustodyTopup = showCustodyTopup;
