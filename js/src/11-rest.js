@@ -6857,7 +6857,7 @@ async function openEmployeeSettlements(empName) {
 async function renderEmpSettlements() {
   const main = document.getElementById('main');
   try {
-    const detail = await api('GET', `/api/settlements/employees/${encodeURIComponent(_settleEmp.name)}?month=${_settleMonth}&year=${_settleYear}`);
+    const detail = await api('GET', `/api/settlements/employees/${encodeURIComponent(_settleEmp.name)}?month=${_settleMonth}&year=${_settleYear}`, null, {useCache: false});
 
     const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
     const settlements = detail.settlements || [];
