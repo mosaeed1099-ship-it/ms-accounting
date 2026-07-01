@@ -6499,8 +6499,10 @@ async function loadSettlements(silent=false) {
 
 let _settlView = 'employees'; // 'employees' | 'daily' | 'monthly'
 let _settlDailyDate = new Date().toISOString().split('T')[0];
-let _settlMonthView = new Date().getMonth() + 1;
-let _settlYearView  = new Date().getFullYear();
+// افتراضي: الشهر السابق (مش الحالي) عشان يُسهّل مراجعة تسويات الشهر اللي فات
+const _prevMonthDate = new Date(); _prevMonthDate.setMonth(_prevMonthDate.getMonth() - 1);
+let _settlMonthView = _prevMonthDate.getMonth() + 1;
+let _settlYearView  = _prevMonthDate.getFullYear();
 
 function renderSettlementsList(employees) {
   const main = document.getElementById('main');
@@ -6846,9 +6848,9 @@ async function openEmployeeSettlements(empName) {
   const main = document.getElementById('main');
   main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
 
-  const now = new Date();
-  _settleMonth = now.getMonth() + 1;
-  _settleYear  = now.getFullYear();
+  const _prev = new Date(); _prev.setMonth(_prev.getMonth() - 1);
+  _settleMonth = _prev.getMonth() + 1;
+  _settleYear  = _prev.getFullYear();
   await renderEmpSettlements();
 }
 
