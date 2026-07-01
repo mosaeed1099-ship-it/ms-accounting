@@ -90,7 +90,29 @@ OUTPUT_LINES=$(wc -l < "$OUTPUT")
 echo "  Output: frontend/index.html ($OUTPUT_LINES lines)"
 echo ""
 
-# 5. Quick sanity checks
+# 5. Module-scope inline handler guard
+# Catches: onXXX="varName=value" where varName directly assigns a module-scope variable
+# Known dangerous patterns that must use window.setter instead
+echo "▶ Module-scope inline handler guard..."
+# Pattern: on*="_varName=value" — underscore-prefixed var directly assigned in inline handler
+# Safe window setters are excluded by name prefix (_stlSet, _taskSet, _taskClear, _docSet, _docGo, _invItems)
+MODULE_SCOPE_VIOLATIONS=$(grep -nE \
+  'on(change|click|input|submit|keyup|keydown)="[^"]*_[a-zA-Z][a-zA-Z0-9_]*=[^=(]' \
+  "$SRC_DIR"/{01-infrastructure,02-dashboard,02-monthly-fees,03-clients,03-tail,04-invoices,05-tasks,06-documents,07-vat,08-crm,09-formation,10-obligations,11-rest}.js \
+  2>/dev/null \
+  | grep -vE '(_stlSet|_taskSet|_taskClear|_docSet|_docGo|_invItems|window\._|oblDays)' \
+  || true)
+
+if [[ -n "$MODULE_SCOPE_VIOLATIONS" ]]; then
+  echo "  ❌ Inline event handler writes module variable directly:"
+  echo "$MODULE_SCOPE_VIOLATIONS" | head -10
+  exit 1
+else
+  echo "  ✅ No direct module-variable assignments in inline handlers"
+fi
+echo ""
+
+# 6. Quick sanity checks
 echo "▶ Sanity checks..."
 errors=0
 
