@@ -147,7 +147,7 @@ async function aspHandleFileUpload(input, serviceId, inputTypeId, clientId) {
     fd.append('input_type', inputTypeId);
 
     const token = localStorage.getItem('ms_token');
-    const resp = await fetch(window.API + `/api/accounting/${clientId}/asp/import`, {
+    const resp = await fetch(API + `/api/accounting/${clientId}/asp/import`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: fd,
