@@ -22273,72 +22273,52 @@ function _aspBuildNav(clientId) {
 }
 
 // ── Main Entry ─────────────────────────────────────────────────────────────────
-function _aspSet(html) { const m = document.getElementById('main'); if(m){ m.className='page'; m.innerHTML=html; } }
-
 async function loadAccountingPlatform() {
-  const _dbg = s => { const m=document.getElementById('main'); if(m) m.innerHTML=`<div style="padding:20px;font-family:monospace;font-size:.85rem;line-height:2;direction:ltr">${s}</div>`; };
+  const main = document.getElementById('main');
+  if (!main) return;
+  main.className = 'page';
+  main.innerHTML = '<div style="padding:28px;text-align:center;color:#6b7280;font-size:.95rem">⏳ جاري تحميل مركز الخدمات...</div>';
+
+  let clients = [];
   try {
-    _dbg('① entered loadAccountingPlatform');
+    const raw = await api('GET', '/api/clients');
+    clients = !raw ? [] : Array.isArray(raw) ? raw : (raw.items || []);
+  } catch(e) { clients = []; }
 
-    let clients = [], rawResult, fetchErr;
-    const t0 = Date.now();
-    _dbg(`② before await api() — token=${!!localStorage.getItem('ms_token')} — url=${API}/api/clients`);
-    try {
-      const timeout = new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT 12s')),12000));
-      rawResult = await Promise.race([api('GET','/api/clients'), timeout]);
-      const ms = Date.now()-t0;
-      _dbg(`③ api() returned after ${ms}ms — type=${Array.isArray(rawResult)?'Array':'Object'} — keys=${Object.keys(rawResult||{}).join(',')}`);
-      clients = Array.isArray(rawResult) ? rawResult : (rawResult?.items || []);
-      _dbg(`④ clients.length=${clients.length}`);
-    } catch(e) {
-      fetchErr = e;
-      _dbg(`③ ❌ api() FAILED after ${Date.now()-t0}ms — ${e.name}: ${e.message}`);
-      clients = [];
-    }
+  if (!clients.length) {
+    main.innerHTML = '<div style="padding:36px;text-align:center;color:#6b7280">لا يوجد عملاء مسجلون</div>';
+    return;
+  }
 
-    if (!clients.length) {
-      if (!fetchErr) _dbg('⑤ clients empty (0 records) — no error from api');
-      return;
-    }
+  _aspClientId = clients[0].id;
+  _aspActiveId = null;
+  const opts = clients.map(c => `<option value="${c.id}">${_h(c.name)}</option>`).join('');
 
-    _dbg(`⑤ building nav — clientId=${clients[0].id}`);
-    _aspClientId = clients[0].id;
-    _aspActiveId = null;
-    const opts = clients.map(c=>`<option value="${c.id}">${_h(c.name)}</option>`).join('');
-    const navHtml = _aspBuildNav(_aspClientId);
-    _dbg(`⑥ nav built (${navHtml.length} chars) — calling _aspSet with full HTML`);
-
-    _aspSet(`
-      ${_aspStyles}
-      <div style="padding:0 0 20px">
-      <div id="asp-frame">
-        <div id="asp-topbar">
-          <span style="font-weight:700;font-size:1rem">🏛️ مركز الخدمات المحاسبية</span>
-          <span style="color:#9ca3af;font-size:.9rem">|</span>
-          <label style="font-size:.88rem;color:#6b7280;font-weight:500">العميل:</label>
-          <select id="asp-client-sel" onchange="aspSwitchClient(this.value)"
-            style="padding:6px 12px;border-radius:7px;border:1px solid var(--border,#e5e7eb);background:var(--card-bg,#fff);font-size:.9rem;min-width:160px">
-            ${opts}
-          </select>
-        </div>
-        <div id="asp-body">
-          <div id="asp-nav">${navHtml}</div>
-          <div id="asp-ws">
-            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#9ca3af;gap:12px">
-              <div style="font-size:3rem">🏛️</div>
-              <div style="font-size:1rem;font-weight:500">اختر خدمة من القائمة</div>
-              <div style="font-size:.85rem">مركز خدماتك المحاسبية في مكان واحد</div>
-            </div>
+  main.innerHTML = `
+    ${_aspStyles}
+    <div style="padding:0 0 20px">
+    <div id="asp-frame">
+      <div id="asp-topbar">
+        <span style="font-weight:700;font-size:1rem">🏛️ مركز الخدمات المحاسبية</span>
+        <span style="color:#9ca3af;font-size:.9rem">|</span>
+        <label style="font-size:.88rem;color:#6b7280;font-weight:500">العميل:</label>
+        <select id="asp-client-sel" onchange="aspSwitchClient(this.value)"
+          style="padding:6px 12px;border-radius:7px;border:1px solid var(--border,#e5e7eb);background:var(--card-bg,#fff);font-size:.9rem;min-width:160px">
+          ${opts}
+        </select>
+      </div>
+      <div id="asp-body">
+        <div id="asp-nav">${_aspBuildNav(_aspClientId)}</div>
+        <div id="asp-ws">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#9ca3af;gap:12px">
+            <div style="font-size:3rem">🏛️</div>
+            <div style="font-size:1rem;font-weight:500">اختر خدمة من القائمة</div>
+            <div style="font-size:.85rem">مركز خدماتك المحاسبية في مكان واحد</div>
           </div>
         </div>
       </div>
-      </div>`);
-  } catch(err) {
-    const _m = document.getElementById('main');
-    if(_m) _m.innerHTML=`<div style="padding:24px;color:#dc2626;font-family:monospace;font-size:.85rem;direction:ltr">
-      OUTER CATCH: ${err.name}: ${err.message}<br><br>${err.stack||''}
+    </div>
     </div>`;
-  }
 }
 
 function aspSwitchClient(clientId) {
