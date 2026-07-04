@@ -157,23 +157,47 @@ function _aspBuildNav(clientId) {
 function _aspSet(html) { const m = document.getElementById('main'); if(m){ m.className='page'; m.innerHTML=html; } }
 
 async function loadAccountingPlatform() {
+  // ── TRACE MODE ────────────────────────────────────────────────────────────────
+  const _trace = [];
+  const _tr = (step, detail='') => {
+    _trace.push(`✅ ${step}${detail?' — '+detail:''}`);
+    const m = document.getElementById('main');
+    if (m) m.innerHTML = `<div style="padding:20px;font-family:monospace;font-size:.82rem;line-height:1.8">
+      <b>🔍 ASP Runtime Trace</b><br><br>${_trace.map(l=>`<div>${l}</div>`).join('')}
+    </div>`;
+  };
+  // ─────────────────────────────────────────────────────────────────────────────
   try {
-    _aspSet('<div style="padding:28px;text-align:center;color:#6b7280">⏳ تحميل...</div>');
+    _tr('STEP 1: loadAccountingPlatform() دخل');
+
     let clients = [];
     try {
+      _tr('STEP 2: api(/api/clients) — قبل الاستدعاء');
       const raw = await api('GET', '/api/clients') || [];
+      _tr('STEP 3: api(/api/clients) — رجعت', `type=${Array.isArray(raw)?'Array':'Object'}, keys=${Object.keys(raw||{}).join(',')}`);
       clients = Array.isArray(raw) ? raw : (raw.items || []);
-    } catch(e) { clients = []; }
+      _tr('STEP 4: clients parsed', `count=${clients.length}`);
+    } catch(e) {
+      _tr(`STEP 2-4: ❌ EXCEPTION في api()`, e.message);
+      clients = [];
+    }
 
     if (!clients.length) {
+      _tr('STEP 5: clients.length=0 — خروج مبكر');
       _aspSet('<div style="padding:36px;text-align:center;color:#6b7280">لا يوجد عملاء</div>');
       return;
     }
 
+    _tr('STEP 5: clients OK — بناء opts', `first client id=${clients[0].id}`);
     _aspClientId = clients[0].id;
     _aspActiveId = null;
     const opts = clients.map(c => `<option value="${c.id}">${_h(c.name)}</option>`).join('');
 
+    _tr('STEP 6: _aspBuildNav() — قبل');
+    const navHtml = _aspBuildNav(_aspClientId);
+    _tr('STEP 7: _aspBuildNav() — رجعت', `length=${navHtml.length}`);
+
+    _tr('STEP 8: _aspSet(full HTML) — قبل');
     _aspSet(`
       ${_aspStyles}
       <div style="padding:0 0 20px">
@@ -188,7 +212,7 @@ async function loadAccountingPlatform() {
           </select>
         </div>
         <div id="asp-body">
-          <div id="asp-nav">${_aspBuildNav(_aspClientId)}</div>
+          <div id="asp-nav">${navHtml}</div>
           <div id="asp-ws">
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#9ca3af;gap:12px">
               <div style="font-size:3rem">🏛️</div>
@@ -199,10 +223,13 @@ async function loadAccountingPlatform() {
         </div>
       </div>
       </div>`);
+    // STEP 9 won't show on screen (main was just replaced) — that's expected ✅
   } catch(err) {
     const _m = document.getElementById('main');
     if(_m) _m.innerHTML = `<div style="padding:24px;color:#dc2626;font-family:monospace;white-space:pre-wrap;font-size:.85rem">
-      ❌ خطأ في تحميل المنصة:<br><br>${err.message}<br><br>${err.stack||''}
+      ❌ EXCEPTION في loadAccountingPlatform<br><br>
+      Trace حتى الآن:<br>${_trace.map(l=>`${l}<br>`).join('')}<br>
+      <b>Error:</b> ${err.message}<br><br>${err.stack||''}
     </div>`;
   }
 }
