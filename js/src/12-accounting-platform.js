@@ -154,9 +154,11 @@ function _aspBuildNav(clientId) {
 }
 
 // ── Main Entry ─────────────────────────────────────────────────────────────────
+function _aspSet(html) { const m = document.getElementById('main'); if(m){ m.className='page'; m.innerHTML=html; } }
+
 async function loadAccountingPlatform() {
   try {
-    setPageContent('<div style="padding:28px;text-align:center;color:#6b7280">⏳ تحميل...</div>');
+    _aspSet('<div style="padding:28px;text-align:center;color:#6b7280">⏳ تحميل...</div>');
     let clients = [];
     try {
       const raw = await api('GET', '/api/clients') || [];
@@ -164,7 +166,7 @@ async function loadAccountingPlatform() {
     } catch(e) { clients = []; }
 
     if (!clients.length) {
-      setPageContent('<div style="padding:36px;text-align:center;color:#6b7280">لا يوجد عملاء</div>');
+      _aspSet('<div style="padding:36px;text-align:center;color:#6b7280">لا يوجد عملاء</div>');
       return;
     }
 
@@ -172,7 +174,7 @@ async function loadAccountingPlatform() {
     _aspActiveId = null;
     const opts = clients.map(c => `<option value="${c.id}">${_h(c.name)}</option>`).join('');
 
-    setPageContent(`
+    _aspSet(`
       ${_aspStyles}
       <div style="padding:0 0 20px">
       <div id="asp-frame">
@@ -198,9 +200,10 @@ async function loadAccountingPlatform() {
       </div>
       </div>`);
   } catch(err) {
-    setPageContent(`<div style="padding:24px;color:#dc2626;font-family:monospace;white-space:pre-wrap;font-size:.85rem">
+    const _m = document.getElementById('main');
+    if(_m) _m.innerHTML = `<div style="padding:24px;color:#dc2626;font-family:monospace;white-space:pre-wrap;font-size:.85rem">
       ❌ خطأ في تحميل المنصة:<br><br>${err.message}<br><br>${err.stack||''}
-    </div>`);
+    </div>`;
   }
 }
 
