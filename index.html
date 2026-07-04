@@ -22274,47 +22274,53 @@ function _aspBuildNav(clientId) {
 
 // ── Main Entry ─────────────────────────────────────────────────────────────────
 async function loadAccountingPlatform() {
-  setPageContent('<div style="padding:28px;text-align:center;color:#6b7280">⏳ تحميل...</div>');
-  let clients = [];
   try {
-    const raw = await api('GET', '/api/clients') || [];
-    clients = Array.isArray(raw) ? raw : (raw.items || []);
-  } catch(e) { clients = []; }
+    setPageContent('<div style="padding:28px;text-align:center;color:#6b7280">⏳ تحميل...</div>');
+    let clients = [];
+    try {
+      const raw = await api('GET', '/api/clients') || [];
+      clients = Array.isArray(raw) ? raw : (raw.items || []);
+    } catch(e) { clients = []; }
 
-  if (!clients.length) {
-    setPageContent('<div style="padding:36px;text-align:center;color:#6b7280">لا يوجد عملاء</div>');
-    return;
-  }
+    if (!clients.length) {
+      setPageContent('<div style="padding:36px;text-align:center;color:#6b7280">لا يوجد عملاء</div>');
+      return;
+    }
 
-  _aspClientId = clients[0].id;
-  _aspActiveId = null;
-  const opts = clients.map(c => `<option value="${c.id}">${_h(c.name)}</option>`).join('');
+    _aspClientId = clients[0].id;
+    _aspActiveId = null;
+    const opts = clients.map(c => `<option value="${c.id}">${_h(c.name)}</option>`).join('');
 
-  setPageContent(`
-    ${_aspStyles}
-    <div style="padding:0 0 20px">
-    <div id="asp-frame">
-      <div id="asp-topbar">
-        <span style="font-weight:700;font-size:1rem">🏛️ مركز الخدمات المحاسبية</span>
-        <span style="color:#9ca3af;font-size:.9rem">|</span>
-        <label style="font-size:.88rem;color:#6b7280;font-weight:500">العميل:</label>
-        <select id="asp-client-sel" onchange="aspSwitchClient(this.value)"
-          style="padding:6px 12px;border-radius:7px;border:1px solid var(--border,#e5e7eb);background:var(--card-bg,#fff);font-size:.9rem;min-width:160px">
-          ${opts}
-        </select>
-      </div>
-      <div id="asp-body">
-        <div id="asp-nav">${_aspBuildNav(_aspClientId)}</div>
-        <div id="asp-ws">
-          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#9ca3af;gap:12px">
-            <div style="font-size:3rem">🏛️</div>
-            <div style="font-size:1rem;font-weight:500">اختر خدمة من القائمة</div>
-            <div style="font-size:.85rem">مركز خدماتك المحاسبية في مكان واحد</div>
+    setPageContent(`
+      ${_aspStyles}
+      <div style="padding:0 0 20px">
+      <div id="asp-frame">
+        <div id="asp-topbar">
+          <span style="font-weight:700;font-size:1rem">🏛️ مركز الخدمات المحاسبية</span>
+          <span style="color:#9ca3af;font-size:.9rem">|</span>
+          <label style="font-size:.88rem;color:#6b7280;font-weight:500">العميل:</label>
+          <select id="asp-client-sel" onchange="aspSwitchClient(this.value)"
+            style="padding:6px 12px;border-radius:7px;border:1px solid var(--border,#e5e7eb);background:var(--card-bg,#fff);font-size:.9rem;min-width:160px">
+            ${opts}
+          </select>
+        </div>
+        <div id="asp-body">
+          <div id="asp-nav">${_aspBuildNav(_aspClientId)}</div>
+          <div id="asp-ws">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#9ca3af;gap:12px">
+              <div style="font-size:3rem">🏛️</div>
+              <div style="font-size:1rem;font-weight:500">اختر خدمة من القائمة</div>
+              <div style="font-size:.85rem">مركز خدماتك المحاسبية في مكان واحد</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      </div>`);
+  } catch(err) {
+    setPageContent(`<div style="padding:24px;color:#dc2626;font-family:monospace;white-space:pre-wrap;font-size:.85rem">
+      ❌ خطأ في تحميل المنصة:<br><br>${err.message}<br><br>${err.stack||''}
     </div>`);
+  }
 }
 
 function aspSwitchClient(clientId) {
