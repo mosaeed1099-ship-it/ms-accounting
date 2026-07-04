@@ -377,7 +377,7 @@ async function loadAccountingPlatform() {
   setPageContent('<div style="padding:24px;text-align:center;color:#6b7280">⏳ تحميل...</div>');
 
   let clients = [];
-  try { clients = await api('GET', '/api/clients') || []; } catch (e) { clients = []; }
+  try { const raw = await api('GET', '/api/clients') || []; clients = Array.isArray(raw) ? raw : (raw.items || []); } catch (e) { clients = []; }
 
   if (!clients.length) {
     setPageContent('<div style="padding:32px;text-align:center;color:#6b7280">لا يوجد عملاء</div>');
