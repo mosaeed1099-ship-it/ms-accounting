@@ -157,47 +157,38 @@ function _aspBuildNav(clientId) {
 function _aspSet(html) { const m = document.getElementById('main'); if(m){ m.className='page'; m.innerHTML=html; } }
 
 async function loadAccountingPlatform() {
-  // ── TRACE MODE ────────────────────────────────────────────────────────────────
-  const _trace = [];
-  const _tr = (step, detail='') => {
-    _trace.push(`✅ ${step}${detail?' — '+detail:''}`);
-    const m = document.getElementById('main');
-    if (m) m.innerHTML = `<div style="padding:20px;font-family:monospace;font-size:.82rem;line-height:1.8">
-      <b>🔍 ASP Runtime Trace</b><br><br>${_trace.map(l=>`<div>${l}</div>`).join('')}
-    </div>`;
-  };
-  // ─────────────────────────────────────────────────────────────────────────────
+  const _dbg = s => { const m=document.getElementById('main'); if(m) m.innerHTML=`<div style="padding:20px;font-family:monospace;font-size:.85rem;line-height:2;direction:ltr">${s}</div>`; };
   try {
-    _tr('STEP 1: loadAccountingPlatform() دخل');
+    _dbg('① entered loadAccountingPlatform');
 
-    let clients = [];
+    let clients = [], rawResult, fetchErr;
+    const t0 = Date.now();
+    _dbg(`② before await api() — token=${!!localStorage.getItem('ms_token')} — url=${API}/api/clients`);
     try {
-      _tr('STEP 2: api(/api/clients) — قبل الاستدعاء');
-      const raw = await api('GET', '/api/clients') || [];
-      _tr('STEP 3: api(/api/clients) — رجعت', `type=${Array.isArray(raw)?'Array':'Object'}, keys=${Object.keys(raw||{}).join(',')}`);
-      clients = Array.isArray(raw) ? raw : (raw.items || []);
-      _tr('STEP 4: clients parsed', `count=${clients.length}`);
+      const timeout = new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT 12s')),12000));
+      rawResult = await Promise.race([api('GET','/api/clients'), timeout]);
+      const ms = Date.now()-t0;
+      _dbg(`③ api() returned after ${ms}ms — type=${Array.isArray(rawResult)?'Array':'Object'} — keys=${Object.keys(rawResult||{}).join(',')}`);
+      clients = Array.isArray(rawResult) ? rawResult : (rawResult?.items || []);
+      _dbg(`④ clients.length=${clients.length}`);
     } catch(e) {
-      _tr(`STEP 2-4: ❌ EXCEPTION في api()`, e.message);
+      fetchErr = e;
+      _dbg(`③ ❌ api() FAILED after ${Date.now()-t0}ms — ${e.name}: ${e.message}`);
       clients = [];
     }
 
     if (!clients.length) {
-      _tr('STEP 5: clients.length=0 — خروج مبكر');
-      _aspSet('<div style="padding:36px;text-align:center;color:#6b7280">لا يوجد عملاء</div>');
+      if (!fetchErr) _dbg('⑤ clients empty (0 records) — no error from api');
       return;
     }
 
-    _tr('STEP 5: clients OK — بناء opts', `first client id=${clients[0].id}`);
+    _dbg(`⑤ building nav — clientId=${clients[0].id}`);
     _aspClientId = clients[0].id;
     _aspActiveId = null;
-    const opts = clients.map(c => `<option value="${c.id}">${_h(c.name)}</option>`).join('');
-
-    _tr('STEP 6: _aspBuildNav() — قبل');
+    const opts = clients.map(c=>`<option value="${c.id}">${_h(c.name)}</option>`).join('');
     const navHtml = _aspBuildNav(_aspClientId);
-    _tr('STEP 7: _aspBuildNav() — رجعت', `length=${navHtml.length}`);
+    _dbg(`⑥ nav built (${navHtml.length} chars) — calling _aspSet with full HTML`);
 
-    _tr('STEP 8: _aspSet(full HTML) — قبل');
     _aspSet(`
       ${_aspStyles}
       <div style="padding:0 0 20px">
@@ -223,13 +214,10 @@ async function loadAccountingPlatform() {
         </div>
       </div>
       </div>`);
-    // STEP 9 won't show on screen (main was just replaced) — that's expected ✅
   } catch(err) {
     const _m = document.getElementById('main');
-    if(_m) _m.innerHTML = `<div style="padding:24px;color:#dc2626;font-family:monospace;white-space:pre-wrap;font-size:.85rem">
-      ❌ EXCEPTION في loadAccountingPlatform<br><br>
-      Trace حتى الآن:<br>${_trace.map(l=>`${l}<br>`).join('')}<br>
-      <b>Error:</b> ${err.message}<br><br>${err.stack||''}
+    if(_m) _m.innerHTML=`<div style="padding:24px;color:#dc2626;font-family:monospace;font-size:.85rem;direction:ltr">
+      OUTER CATCH: ${err.name}: ${err.message}<br><br>${err.stack||''}
     </div>`;
   }
 }
