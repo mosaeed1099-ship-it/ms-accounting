@@ -22533,9 +22533,20 @@ function renderASPPage(clientId) {
 }
 
 function setPageContent(html) {
-  const el = document.getElementById('content') || document.getElementById('main-content');
+  const el = document.getElementById('main') || document.getElementById('content') || document.getElementById('main-content');
   if (el) el.innerHTML = html;
 }
+
+// Expose functions called from inline HTML handlers to global scope
+window.aspSwitchClient     = aspSwitchClient;
+window.aspOpenService      = aspOpenService;
+window.aspShowImport       = aspShowImport;
+window.aspHandleFileUpload = aspHandleFileUpload;
+window.aspLoadBatches      = aspLoadBatches;
+window.aspViewBatchReport  = aspViewBatchReport;
+window.aspDeleteBatch      = aspDeleteBatch;
+window.aspGenerateSnapshot = aspGenerateSnapshot;
+window.loadAccountingPlatform = loadAccountingPlatform;
 // SECTION: المدفوعات الشهرية — Monthly Fees
 // ─────────────────────────────────────────────────────────────────────────────
 
