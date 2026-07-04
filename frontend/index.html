@@ -22119,8 +22119,8 @@ async function fcRenderGrid(el) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MF_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-let mfCurrentYear = 2026;
-let mfCurrentMonth = 5; // مايو — آخر شهر فيه بيانات
+let mfCurrentYear  = new Date().getFullYear();
+let mfCurrentMonth = new Date().getMonth() + 1; // يتحدث تلقائياً مع بداية كل شهر
 
 async function loadMonthlyFees() {
   const main = document.getElementById('main');
@@ -22141,6 +22141,17 @@ async function renderMFPage() {
     api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
     api('GET', '/api/monthly-fees/clients?page_size=200').catch(()=>[]),
   ]);
+  // لو الشهر الحالي فارغ → ولّد السجلات تلقائياً (ترحيل من الشهر السابق)
+  if (Array.isArray(records) && records.length === 0 && Array.isArray(mfClients) && mfClients.length > 0) {
+    await api('POST', `/api/monthly-fees/records/generate?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null);
+    const [newDash, newRecords] = await Promise.all([
+      api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
+      api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
+    ]);
+    _mfAllRecords = newRecords;
+    window._mfLastDash = newDash;
+    return mfRenderPage(newDash, newRecords);
+  }
   _mfAllRecords = records;
   window._mfLastDash = dash;
   // Build phone map from mf_clients
