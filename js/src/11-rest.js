@@ -6848,9 +6848,9 @@ async function openEmployeeSettlements(empName) {
   const main = document.getElementById('main');
   main.innerHTML='<div style="display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>';
 
-  const _prev = new Date(); _prev.setMonth(_prev.getMonth() - 1);
-  _settleMonth = _prev.getMonth() + 1;
-  _settleYear  = _prev.getFullYear();
+  const _now = new Date();
+  _settleMonth = _now.getMonth() + 1;
+  _settleYear  = _now.getFullYear();
   await renderEmpSettlements();
 }
 
