@@ -24,8 +24,8 @@ async function renderMFPage() {
     api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
     api('GET', '/api/monthly-fees/clients?page_size=200').catch(()=>[]),
   ]);
-  // لو الشهر الحالي فارغ أو ناقص → ولّد السجلات تلقائياً (ترحيل من الشهر السابق)
-  if (Array.isArray(records) && Array.isArray(mfClients) && mfClients.length > 0 && records.length < mfClients.length) {
+  // لو الشهر الحالي فارغ تماماً → ولّد السجلات تلقائياً (ترحيل من الشهر السابق)
+  if (Array.isArray(records) && records.length === 0 && Array.isArray(mfClients) && mfClients.length > 0) {
     await api('POST', `/api/monthly-fees/records/generate?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null);
     const [newDash, newRecords] = await Promise.all([
       api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
@@ -156,7 +156,10 @@ function mfRenderPage(dash, records) {
       <div style="font-size:13px;color:#64748b;margin-top:2px">تتبع الأتعاب الشهرية — بناءً على منطق الأتعاب المؤجلة</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      ${currentUser?.role==='admin'?`<button onclick="mfAddClientModal()" style="padding:7px 14px;background:#3b82f6;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ إضافة شركة</button>`:''}
+      ${currentUser?.role==='admin'?`
+        <button onclick="mfAddClientModal()" style="padding:7px 14px;background:#3b82f6;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ إضافة شركة</button>
+        <button onclick="mfGenerateRecords()" id="mfGenBtn" style="padding:7px 14px;background:#8b5cf6;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit" title="ترحيل الأرصدة وإنشاء سجلات الشهر الحالي للعملاء الجدد">🔄 ترحيل الأرصدة</button>
+      `:''}
       <select id="mfYear" class="input" style="width:90px" onchange="mfFilterChange()">
         ${[2025,2026,2027].map(y=>`<option value="${y}" ${y===mfCurrentYear?'selected':''}>${y}</option>`).join('')}
       </select>
@@ -291,6 +294,17 @@ function mfRenderPage(dash, records) {
     </div>
   </div>`;
 }
+
+window.mfGenerateRecords = async function() {
+  const btn = document.getElementById('mfGenBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الترحيل...'; }
+  const res = await api('POST', `/api/monthly-fees/records/generate?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null);
+  if (res) {
+    const msg = `تم إنشاء ${res.created||0} سجل جديد، تخطي ${res.skipped||0} موجود مسبقاً`;
+    alert(msg);
+  }
+  renderMFPage();
+};
 
 window.mfSetFilter = function(f) {
   mfTableFilter = f;
