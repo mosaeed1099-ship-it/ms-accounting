@@ -24,8 +24,8 @@ async function renderMFPage() {
     api('GET', `/api/monthly-fees/records?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>[]),
     api('GET', '/api/monthly-fees/clients?page_size=200').catch(()=>[]),
   ]);
-  // لو الشهر الحالي فارغ → ولّد السجلات تلقائياً (ترحيل من الشهر السابق)
-  if (Array.isArray(records) && records.length === 0 && Array.isArray(mfClients) && mfClients.length > 0) {
+  // لو الشهر الحالي فارغ أو ناقص → ولّد السجلات تلقائياً (ترحيل من الشهر السابق)
+  if (Array.isArray(records) && Array.isArray(mfClients) && mfClients.length > 0 && records.length < mfClients.length) {
     await api('POST', `/api/monthly-fees/records/generate?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null);
     const [newDash, newRecords] = await Promise.all([
       api('GET', `/api/monthly-fees/dashboard?year=${mfCurrentYear}&month=${mfCurrentMonth}`).catch(()=>null),
