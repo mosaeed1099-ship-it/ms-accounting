@@ -6657,10 +6657,11 @@ async function _refreshDailyView() {
   el.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
   try {
     _AC.invalidate('/api/settlements/daily');
-    const data = await api('GET', `/api/settlements/daily?date_str=${_settlDailyDate}`);
+    const _effectiveDate = window._settlDailyDate || _settlDailyDate;
+    const data = await api('GET', `/api/settlements/daily?date_str=${_effectiveDate}`);
     const settlements = data.settlements || [];
-    const [y,m,d] = _settlDailyDate.split('-');
-    const dayLabel = new Date(_settlDailyDate+'T12:00:00').toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    const [y,m,d] = _effectiveDate.split('-');
+    const dayLabel = new Date(_effectiveDate+'T12:00:00').toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
     if (settlements.length === 0) {
       el.innerHTML = `

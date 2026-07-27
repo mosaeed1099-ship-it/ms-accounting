@@ -72,7 +72,7 @@ async function renderDailyRevenuesPage() {
         + '</div>';
 
     el.innerHTML = header
-      + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px">'
+      + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:600px">'
       + '<thead><tr style="background:#f8fafc;font-weight:600;color:#374151">'
       + '<th style="padding:10px 12px;text-align:right">التاريخ</th>'
       + '<th style="padding:10px 12px;text-align:right">العميل</th>'

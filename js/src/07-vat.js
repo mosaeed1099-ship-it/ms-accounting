@@ -2379,15 +2379,18 @@ async function loadReports() {
  * يتعامل مع: 01x... / 1x... / 201x... / +201x...
  */
 function toWAPhone(raw) {
-  let d = (raw || '').replace(/\D/g, ''); // احذف كل حرف غير رقمي
+  let d = (raw || '').replace(/\D/g, '');
   if (!d) return null;
-  // إذا كان الرقم يبدأ بـ 20 وطوله 12 → صحيح مباشرة
+  // احذف بريفكس 00 الدولي
+  if (d.startsWith('00')) d = d.slice(2);
+  // مصري كامل: 20XXXXXXXXXX (12 رقم)
   if (d.startsWith('20') && d.length === 12) return d;
-  // إذا بدأ بـ 0 وطوله 11 → 01XXXXXXXXX → نحذف الصفر ونضيف 20
+  // مصري محلي: 01XXXXXXXXX (11 رقم)
   if (d.startsWith('0') && d.length === 11) return '20' + d.slice(1);
-  // إذا بدأ بـ 1 وطوله 10 → 1XXXXXXXXX → نضيف 20 مباشرة
+  // مصري قصير: 1XXXXXXXXX (10 أرقام)
   if (d.startsWith('1') && d.length === 10) return '20' + d;
-  // أي حالة أخرى → احذف الأصفار الأولى وأضف 20
+  // رقم دولي (≥11 رقم بكود دولة غير 20) → اتركه كما هو
+  if (d.length >= 11) return d;
   return '20' + d.replace(/^0+/, '');
 }
 const LEAD_STATUS_COLORS={new:'#6b7280',interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};

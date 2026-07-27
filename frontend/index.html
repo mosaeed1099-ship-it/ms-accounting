@@ -7634,15 +7634,18 @@ async function loadReports() {
  * يتعامل مع: 01x... / 1x... / 201x... / +201x...
  */
 function toWAPhone(raw) {
-  let d = (raw || '').replace(/\D/g, ''); // احذف كل حرف غير رقمي
+  let d = (raw || '').replace(/\D/g, '');
   if (!d) return null;
-  // إذا كان الرقم يبدأ بـ 20 وطوله 12 → صحيح مباشرة
+  // احذف بريفكس 00 الدولي
+  if (d.startsWith('00')) d = d.slice(2);
+  // مصري كامل: 20XXXXXXXXXX (12 رقم)
   if (d.startsWith('20') && d.length === 12) return d;
-  // إذا بدأ بـ 0 وطوله 11 → 01XXXXXXXXX → نحذف الصفر ونضيف 20
+  // مصري محلي: 01XXXXXXXXX (11 رقم)
   if (d.startsWith('0') && d.length === 11) return '20' + d.slice(1);
-  // إذا بدأ بـ 1 وطوله 10 → 1XXXXXXXXX → نضيف 20 مباشرة
+  // مصري قصير: 1XXXXXXXXX (10 أرقام)
   if (d.startsWith('1') && d.length === 10) return '20' + d;
-  // أي حالة أخرى → احذف الأصفار الأولى وأضف 20
+  // رقم دولي (≥11 رقم بكود دولة غير 20) → اتركه كما هو
+  if (d.length >= 11) return d;
   return '20' + d.replace(/^0+/, '');
 }
 const LEAD_STATUS_COLORS={new:'#6b7280',interested:'#15803d',not_answered:'#6b7280',call_later:'#d97706',quotation_sent:'#f97316',under_establishment:'#06b6d4',lost:'#ef4444'};
@@ -17293,10 +17296,11 @@ async function _refreshDailyView() {
   el.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
   try {
     _AC.invalidate('/api/settlements/daily');
-    const data = await api('GET', `/api/settlements/daily?date_str=${_settlDailyDate}`);
+    const _effectiveDate = window._settlDailyDate || _settlDailyDate;
+    const data = await api('GET', `/api/settlements/daily?date_str=${_effectiveDate}`);
     const settlements = data.settlements || [];
-    const [y,m,d] = _settlDailyDate.split('-');
-    const dayLabel = new Date(_settlDailyDate+'T12:00:00').toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    const [y,m,d] = _effectiveDate.split('-');
+    const dayLabel = new Date(_effectiveDate+'T12:00:00').toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
     if (settlements.length === 0) {
       el.innerHTML = `
@@ -23844,7 +23848,7 @@ async function renderDailyRevenuesPage() {
         + '</div>';
 
     el.innerHTML = header
-      + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px">'
+      + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:600px">'
       + '<thead><tr style="background:#f8fafc;font-weight:600;color:#374151">'
       + '<th style="padding:10px 12px;text-align:right">التاريخ</th>'
       + '<th style="padding:10px 12px;text-align:right">العميل</th>'
