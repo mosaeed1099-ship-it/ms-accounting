@@ -22,7 +22,12 @@ async function loadTasks(silent=false) {
     // start auto-refresh every 60s when on tasks page
     if(!_tasksAutoRefresh) {
       _tasksAutoRefresh=setInterval(()=>{
-        if(currentPage==='tasks') loadTasks(true);
+        if(currentPage==='tasks') {
+          // لا تعمل refresh لو المستخدم بيكتب في حقل مهمة جديدة
+          const a=document.activeElement;
+          if(a&&a.id&&(a.id.startsWith('newt_')||a.id.startsWith('empnotes_'))) return;
+          loadTasks(true);
+        }
       },60000);
     }
   } catch(e){toast(e.message,'error');}
@@ -190,9 +195,10 @@ function renderDailySheet() {
       </div>
       ${completedSection}
       <div style="padding:8px 12px;background:var(--color-background-secondary);border-top:0.5px dashed var(--color-border-tertiary);display:flex;align-items:center;gap:8px">
-        <input id="newt_${u.id}" class="input" placeholder="اكتب مهمة جديدة واضغط Enter..."
+        <input id="newt_${u.id}" class="input" placeholder="اكتب مهمة جديدة واضغط Enter أو انتظر للحفظ التلقائي..."
           style="flex:1;font-size:11px;padding:6px 10px"
-          onkeydown="if(event.key==='Enter')window._addEmpTask(${u.id})"/>
+          oninput="window._taskNewInput(${u.id})"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();clearTimeout(_taskNewDebounce[${u.id}]);window._addEmpTask(${u.id});}"/>
         <button onclick="window._addEmpTask(${u.id})" style="background:#1a2472;color:white;border:none;border-radius:7px;padding:6px 12px;font-size:11px;cursor:pointer;font-family:inherit">+ إضافة</button>
       </div>
       <div style="padding:6px 12px 8px;background:var(--color-background-secondary);display:flex;align-items:center;gap:6px;border-top:0.5px solid var(--color-border-tertiary)">
@@ -238,11 +244,27 @@ window._markDone = async function(id) {
   } catch(e){toast(e.message,'error');}
 };
 
+// debounce timers للحفظ التلقائي لكل موظف
+const _taskNewDebounce={};
+
+window._taskNewInput = function(uid) {
+  clearTimeout(_taskNewDebounce[uid]);
+  const inp=document.getElementById('newt_'+uid);
+  if(!inp||!inp.value.trim()) return;
+  _taskNewDebounce[uid]=setTimeout(()=>{
+    // تحقق إن الـ input لا يزال يحتوي على نص قبل الحفظ
+    const el=document.getElementById('newt_'+uid);
+    if(el&&el.value.trim()) window._addEmpTask(uid);
+  },500);
+};
+
 window._addEmpTask = async function(uid) {
+  clearTimeout(_taskNewDebounce[uid]);
   const inp=document.getElementById('newt_'+uid);
   if(!inp||!inp.value.trim()) return;
   const txt=inp.value.trim();
   inp.value='';
+  inp.focus(); // حافظ على الـ focus فوراً قبل أي re-render
 
   // Optimistic: add task locally right now, don't wait for server
   const tempId = 'tmp_' + Date.now();
@@ -254,16 +276,19 @@ window._addEmpTask = async function(uid) {
   };
   tasksData.push(tempTask);
   renderDailySheet();
-  setTimeout(()=>{const el=document.getElementById('newt_'+uid);if(el)el.focus();},50);
+  // استعد الـ focus بعد re-render مباشرةً
+  requestAnimationFrame(()=>{const el=document.getElementById('newt_'+uid);if(el)el.focus();});
 
   // Then sync with server in background
   try {
     const res=await api('POST','/api/tasks',{title:txt,assigned_to:uid,status:'todo',priority:'medium',category:'other'},{useCache:false});
-    // Replace temp with real task
+    // Replace temp with real task in memory فقط بدون re-render لو المستخدم بيكتب
     const idx=tasksData.findIndex(t=>t.id===tempId);
     if(idx>=0) tasksData[idx]={...tempTask,...res,id:res.id,_optimistic:false};
     _AC.invalidate('/api/tasks');
-    renderDailySheet();
+    // re-render بس لو مش بيكتب في حقل مهمة
+    const a=document.activeElement;
+    if(!a||!a.id||!a.id.startsWith('newt_')) renderDailySheet();
   } catch(e){
     // Rollback
     tasksData=tasksData.filter(t=>t.id!==tempId);
