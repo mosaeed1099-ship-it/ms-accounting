@@ -365,6 +365,23 @@ async def get_whatsapp_settings(current_user: User = Depends(get_current_user)):
     }
 
 
+@router.get("/whatsapp-state")
+async def whatsapp_instance_state(current_user: User = Depends(get_current_user)):
+    """Check actual GreenAPI instance authorization state."""
+    import os, httpx
+    instance_id = os.getenv("GREENAPI_INSTANCE_ID", "")
+    token       = os.getenv("GREENAPI_TOKEN", "")
+    if not instance_id or not token:
+        return {"state": "not_configured"}
+    try:
+        url = f"https://api.green-api.com/waInstance{instance_id}/getStateInstance/{token}"
+        r = httpx.get(url, timeout=8)
+        data = r.json()
+        return {"state": data.get("stateInstance", "unknown"), "raw": data}
+    except Exception as e:
+        return {"state": "error", "error": str(e)}
+
+
 @router.post("/whatsapp-test")
 async def test_whatsapp(
     req: WhatsAppTestRequest,
