@@ -12,13 +12,17 @@ from app.core.deps import get_current_user
 from app.models.user import User
 
 def _send_wa_bg(phone: str, fn, *args):
-    """Run WhatsApp notification in a daemon background thread — never blocks the request."""
+    """Run WhatsApp notification in a daemon background thread with its own DB session."""
+    from app.database import SessionLocal
     def _run():
+        db = SessionLocal()
         try:
-            fn(*args)
+            fn(*args, db=db)
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"[WA-BG] {e}")
+        finally:
+            db.close()
     t = threading.Thread(target=_run, daemon=True)
     t.start()
 

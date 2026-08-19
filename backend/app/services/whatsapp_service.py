@@ -56,7 +56,11 @@ def send_whatsapp(phone: str, message: str) -> bool:
     try:
         r = httpx.post(url, json={"chatId": chat_id, "message": message}, timeout=10)
         r.raise_for_status()
-        logger.info(f"[WA] ✅ Sent to {chat_id}")
+        data = r.json()
+        if "idMessage" not in data:
+            logger.warning(f"[WA] ❌ GreenAPI rejected: {data}")
+            return False
+        logger.info(f"[WA] ✅ Sent to {chat_id}, id={data['idMessage']}")
         return True
     except Exception as e:
         logger.warning(f"[WA] ❌ Failed: {e}")
@@ -89,7 +93,7 @@ def _task_base(task) -> str:
     return "\n".join(lines)
 
 
-def notify_task_created(task, phone: str, assigned_by: str) -> bool:
+def notify_task_created(task, phone: str, assigned_by: str, db=None) -> bool:
     msg = (
         f"🔔 *مهمة جديدة*\n"
         f"{_task_base(task)}\n"
@@ -97,10 +101,14 @@ def notify_task_created(task, phone: str, assigned_by: str) -> bool:
         f"─────────────────\n"
         f"MS Accounting"
     )
+    if db is not None:
+        result = send_and_log(db, phone, msg, recipient=getattr(task, 'assigned_to_name', ''),
+                              task_id=task.id, sent_by=assigned_by)
+        return result["success"]
     return send_whatsapp(phone, msg)
 
 
-def notify_task_status_changed(task, changed_by: str, old_status: str, phone: str) -> bool:
+def notify_task_status_changed(task, changed_by: str, old_status: str, phone: str, db=None) -> bool:
     new_s = task.status.value if hasattr(task.status, "value") else str(task.status)
     msg = (
         f"🔄 *تحديث مهمة*\n"
@@ -110,10 +118,14 @@ def notify_task_status_changed(task, changed_by: str, old_status: str, phone: st
         f"─────────────────\n"
         f"MS Accounting"
     )
+    if db is not None:
+        result = send_and_log(db, phone, msg, recipient=getattr(task, 'assigned_to_name', ''),
+                              task_id=task.id, sent_by=changed_by)
+        return result["success"]
     return send_whatsapp(phone, msg)
 
 
-def notify_task_done(task, closed_by: str, phone: str) -> bool:
+def notify_task_done(task, closed_by: str, phone: str, db=None) -> bool:
     msg = (
         f"✅ *مهمة مكتملة*\n"
         f"{_task_base(task)}\n"
@@ -121,6 +133,10 @@ def notify_task_done(task, closed_by: str, phone: str) -> bool:
         f"─────────────────\n"
         f"MS Accounting"
     )
+    if db is not None:
+        result = send_and_log(db, phone, msg, recipient=getattr(task, 'assigned_to_name', ''),
+                              task_id=task.id, sent_by=closed_by)
+        return result["success"]
     return send_whatsapp(phone, msg)
 
 
