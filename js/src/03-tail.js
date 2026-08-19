@@ -65,6 +65,7 @@ async function renderDailyRevenuesPage() {
         + '<button onclick="window._drLoad()" style="padding:6px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit">عرض</button>'
         + '<span style="margin-right:auto;font-weight:700;color:#059669">الإجمالي: '+total+' ج.م</span>'
         + '<span style="color:#6b7280;font-size:13px">('+items.length+' إيراد)</span>'
+        + '<button onclick="window._drAddRevenue()" style="padding:6px 16px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:700">+ إضافة إيراد</button>'
         + '</div>'
       : '<div style="padding:12px 20px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px">'
         + '📅 ' + now.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'})
@@ -89,6 +90,12 @@ async function renderDailyRevenuesPage() {
     selYear = parseInt(document.getElementById('dr-year').value);
     selMonth = parseInt(document.getElementById('dr-month').value);
     load();
+  };
+
+  window._drAddRevenue = function() {
+    if (typeof window.showAddRevenueModal !== 'function') return;
+    window._drAfterSave = true;
+    window.showAddRevenueModal();
   };
 
   await load();

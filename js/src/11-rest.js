@@ -7272,8 +7272,8 @@ function _stlOpenModal(existingData={}) {
   ov.className = 'modal-overlay';
   ov.id = 'stlModalOv';
   ov.innerHTML = `
-  <div class="modal" style="max-width:780px;width:98%;padding:0">
-    <div style="background:linear-gradient(135deg,#0d1540,#1a2472);padding:14px 20px;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between">
+  <div class="modal" style="max-width:780px;width:98%;padding:0;display:flex;flex-direction:column;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#0d1540,#1a2472);padding:14px 20px;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div>
         <div style="color:white;font-size:15px;font-weight:800">📋 طلب تسوية عهدة</div>
         <div style="color:rgba(255,255,255,.65);font-size:11px">ا. ${escH(_settleEmp.name)}</div>
@@ -7286,7 +7286,7 @@ function _stlOpenModal(existingData={}) {
       </div>
     </div>
 
-    <div style="padding:14px 18px;overflow-y:auto;max-height:calc(92vh - 140px)">
+    <div style="padding:14px 18px;overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch">
       <!-- الرصيد السابق + تمويل العهدة -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
         <div style="background:#eef1fb;border-radius:10px;padding:10px 14px;border:1.5px solid #b3c4e8">
@@ -7363,7 +7363,7 @@ function _stlOpenModal(existingData={}) {
     </div>
 
     <!-- أزرار -->
-    <div style="padding:12px 18px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+    <div style="padding:12px 18px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0">
       <button onclick="document.getElementById('stlModalOv').remove()" style="padding:8px 18px;background:#f1f5f9;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">إلغاء</button>
       ${isEdit
         ? `<button onclick="saveEditSettlement(${existingData.id})" class="btn btn-primary">💾 حفظ التعديل</button>`
@@ -10936,7 +10936,12 @@ window.saveOwnerRevenue = async function(id) {
   else   await api('POST', '/api/office/revenues', body);
   document.getElementById('addRevModal')?.remove();
   toast('تم الحفظ');
-  await renderOwnerRevenues(document.getElementById('ownerContent'));
+  if (window._drAfterSave) {
+    window._drAfterSave = false;
+    if (typeof window._drLoad === 'function') window._drLoad();
+  } else {
+    await renderOwnerRevenues(document.getElementById('ownerContent'));
+  }
 };
 
 window.editOwnerRevenue = async function(id) {

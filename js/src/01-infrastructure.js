@@ -112,6 +112,11 @@ function _rtHandleEvent(event) {
 
   // Refresh the page if user is currently viewing it
   if (cfg && cfg.pages.includes(currentPage)) {
+    // Guard: never interrupt user mid-typing in task inputs
+    if (entity === 'tasks') {
+      const a = document.activeElement;
+      if (a && a.id && (a.id.startsWith('newt_') || a.id.startsWith('empnotes_'))) return;
+    }
     _silentRefresh = true;
     Promise.resolve(cfg.fn()).finally(() => { _silentRefresh = false; });
   }
