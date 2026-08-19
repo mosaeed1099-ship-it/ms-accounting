@@ -23,9 +23,9 @@ async function loadTasks(silent=false) {
     if(!_tasksAutoRefresh) {
       _tasksAutoRefresh=setInterval(()=>{
         if(currentPage==='tasks') {
-          // لا تعمل refresh لو المستخدم بيكتب في حقل مهمة جديدة
           const a=document.activeElement;
           if(a&&a.id&&(a.id.startsWith('newt_')||a.id.startsWith('empnotes_'))) return;
+          if(tasksData.some(t=>t._optimistic)) return;
           loadTasks(true);
         }
       },60000);
