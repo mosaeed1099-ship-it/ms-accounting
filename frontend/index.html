@@ -4137,9 +4137,44 @@ window._addEmpTask = async function(uid) {
       if(tds[8]) tds[8].style.cssText=xl2('text-align:center;width:6%'),tds[8].innerHTML=`<button onclick="deleteTask(${res.id},null)" style="background:#fce8e6;border:1px solid #f5c6c2;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#c00">🗑️</button>`;
     }
   } catch(e){
-    tasksData=tasksData.filter(t=>t.id!==tempId);
-    document.getElementById('optrow_'+tempId)?.remove();
+    // لا تمسح المهمة — خليها تفضل مع زرار إعادة المحاولة
+    const trFail=document.getElementById('optrow_'+tempId);
+    if(trFail){
+      trFail.style.background='#fff5f5';
+      trFail.style.opacity='1';
+      const td=trFail.querySelector('td:nth-child(2)');
+      if(td) td.innerHTML=`<span style="color:#dc2626;font-size:11px">⚠️ ${escH(txt)}</span>
+        <button onclick="window._retryTask('${tempId}',${uid},this)" style="margin-right:8px;background:#dc2626;color:white;border:none;border-radius:4px;padding:2px 10px;font-size:10px;cursor:pointer;font-family:inherit">↻ إعادة المحاولة</button>`;
+    }
     toast('فشل حفظ المهمة — '+e.message,'error');
+  }
+};
+
+window._retryTask = async function(tempId, uid, btn) {
+  const tr=document.getElementById('optrow_'+tempId);
+  if(!tr) return;
+  const td=tr.querySelector('td:nth-child(2)');
+  const txt=td?.querySelector('span')?.textContent?.replace(/^⚠️\s*/,'');
+  if(!txt) return;
+  if(btn){btn.disabled=true;btn.textContent='⏳';}
+  try {
+    const res=await api('POST','/api/tasks',{title:txt,assigned_to:uid,status:'todo',priority:'medium',category:'other'},{useCache:false});
+    const idx=tasksData.findIndex(t=>t.id===tempId);
+    if(idx>=0) tasksData[idx]={...tasksData[idx],...res,id:res.id,_optimistic:false};
+    _AC.invalidate('/api/tasks');
+    tr.id='taskrow_'+res.id;
+    tr.style.background='';
+    const B='1px solid #c6c6c6';
+    const xl=(e='')=>`border:${B};padding:5px 8px;${e}`;
+    if(td) td.innerHTML=`<span style="color:#1a1a1a;font-size:11.5px">${escH(txt)}</span>`;
+    const tds=tr.querySelectorAll('td');
+    if(tds[5]) tds[5].innerHTML=`<div onclick="window._markDone(${res.id})" style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all .12s;background:white;border:1.5px solid #999;color:transparent">✓</div>`;
+    if(tds[7]) tds[7].innerHTML=`<button onclick="showTaskModal(${res.id})" style="background:#e8f0fe;border:1px solid #aac4ff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#1a2472">✏️</button>`;
+    if(tds[8]) tds[8].innerHTML=`<button onclick="deleteTask(${res.id},null)" style="background:#fce8e6;border:1px solid #f5c6c2;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#c00">🗑️</button>`;
+    toast('✅ تم حفظ المهمة');
+  } catch(e){
+    if(btn){btn.disabled=false;btn.textContent='↻ إعادة المحاولة';}
+    toast('فشل مجدداً — '+e.message,'error');
   }
 };
 
