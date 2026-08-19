@@ -4026,8 +4026,8 @@ function renderDailySheet() {
             <th style="${xlH('text-align:center;width:6%')}">تعديل</th>
             <th style="${xlH('text-align:center;width:6%')}">حذف</th>
           </tr></thead>
-          <tbody>
-            ${pendingT.length===0?`<tr><td colspan="9" style="text-align:center;padding:12px;font-size:11px;color:#15803d;font-weight:600;border:${XL_BORDER}">🎉 جميع المهام مكتملة</td></tr>`:''}
+          <tbody id="ptbody_${u.id}">
+            ${pendingT.length===0?`<tr id="empty_${u.id}"><td colspan="9" style="text-align:center;padding:12px;font-size:11px;color:#15803d;font-weight:600;border:${XL_BORDER}">🎉 جميع المهام مكتملة</td></tr>`:''}
             ${rows}
           </tbody>
         </table>
@@ -4087,35 +4087,58 @@ window._addEmpTask = async function(uid) {
   if(!inp||!inp.value.trim()) return;
   const txt=inp.value.trim();
   inp.value='';
-  inp.focus(); // حافظ على الـ focus فوراً قبل أي re-render
+  inp.focus(); // الـ focus لا يتفقد أبداً — مفيش renderDailySheet هنا
 
-  // Optimistic: add task locally right now, don't wait for server
-  const tempId = 'tmp_' + Date.now();
-  const tempTask = {
-    id: tempId, title: txt, assigned_to: uid, status: 'todo',
-    priority: 'medium', category: 'other',
-    created_at: new Date().toISOString(), due_date: null,
-    carry_over_days: 0, client_name: null, _optimistic: true
-  };
+  const tempId='tmp_'+Date.now();
+  const tempTask={id:tempId,title:txt,assigned_to:uid,status:'todo',priority:'medium',category:'other',
+    created_at:new Date().toISOString(),due_date:null,carry_over_days:0,client_name:null,_optimistic:true};
   tasksData.push(tempTask);
-  renderDailySheet();
-  // استعد الـ focus بعد re-render مباشرةً
-  requestAnimationFrame(()=>{const el=document.getElementById('newt_'+uid);if(el)el.focus();});
 
-  // Then sync with server in background
+  // حقن الـ row مباشرةً في الـ DOM بدون rebuild — الـ input يفضل شغال
+  const tbody=document.getElementById('ptbody_'+uid);
+  if(tbody){
+    document.getElementById('empty_'+uid)?.remove();
+    const rowN=tbody.querySelectorAll('tr').length+1;
+    const B='1px solid #c6c6c6';
+    const xl=(e='')=>`border:${B};padding:5px 8px;${e}`;
+    const tr=document.createElement('tr');
+    tr.id='optrow_'+tempId;
+    tr.style.cssText='background:#eef6ff;opacity:.75';
+    tr.innerHTML=
+      `<td style="${xl('text-align:center;font-size:10px;color:#555;width:3%')}">${rowN}</td>`+
+      `<td style="${xl('width:36%')}"><span style="font-size:11.5px;color:#1a2472">⏳ ${escH(txt)}</span></td>`+
+      `<td style="${xl('text-align:center;font-size:10px;color:#aaa;width:8%')}">—</td>`+
+      `<td style="${xl('text-align:center;font-size:10px;color:#aaa;width:9%')}">—</td>`+
+      `<td style="${xl('text-align:center;width:12%')}"></td>`+
+      `<td style="${xl('text-align:center;width:6%')}"></td>`+
+      `<td style="${xl('text-align:center;width:8%')}"></td>`+
+      `<td style="${xl('text-align:center;width:6%')}"></td>`+
+      `<td style="${xl('text-align:center;width:6%')}"></td>`;
+    tbody.appendChild(tr);
+  }
+
   try {
     const res=await api('POST','/api/tasks',{title:txt,assigned_to:uid,status:'todo',priority:'medium',category:'other'},{useCache:false});
-    // Replace temp with real task in memory فقط بدون re-render لو المستخدم بيكتب
     const idx=tasksData.findIndex(t=>t.id===tempId);
     if(idx>=0) tasksData[idx]={...tempTask,...res,id:res.id,_optimistic:false};
     _AC.invalidate('/api/tasks');
-    // re-render بس لو مش بيكتب في حقل مهمة
-    const a=document.activeElement;
-    if(!a||!a.id||!a.id.startsWith('newt_')) renderDailySheet();
+    // حدّث الـ row الـ optimistic بالـ id الحقيقي والأزرار
+    const tr=document.getElementById('optrow_'+tempId);
+    if(tr){
+      tr.id='taskrow_'+res.id;
+      tr.style.background='';
+      tr.style.opacity='1';
+      const tds=tr.querySelectorAll('td');
+      const B2='1px solid #c6c6c6';
+      const xl2=(e='')=>`border:${B2};padding:5px 8px;${e}`;
+      if(tds[1]) tds[1].innerHTML=`<span style="color:#1a1a1a;font-size:11.5px">${escH(txt)}</span>`;
+      if(tds[5]) tds[5].innerHTML=`<div onclick="window._markDone(${res.id})" style="width:20px;height:20px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all .12s;background:white;border:1.5px solid #999;color:transparent">✓</div>`;
+      if(tds[7]) tds[7].style.cssText=xl2('text-align:center;width:6%'),tds[7].innerHTML=`<button onclick="showTaskModal(${res.id})" style="background:#e8f0fe;border:1px solid #aac4ff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#1a2472">✏️</button>`;
+      if(tds[8]) tds[8].style.cssText=xl2('text-align:center;width:6%'),tds[8].innerHTML=`<button onclick="deleteTask(${res.id},null)" style="background:#fce8e6;border:1px solid #f5c6c2;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#c00">🗑️</button>`;
+    }
   } catch(e){
-    // Rollback
     tasksData=tasksData.filter(t=>t.id!==tempId);
-    renderDailySheet();
+    document.getElementById('optrow_'+tempId)?.remove();
     toast('فشل حفظ المهمة — '+e.message,'error');
   }
 };
