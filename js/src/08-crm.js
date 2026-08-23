@@ -1393,25 +1393,24 @@ let _fmSearch = '';
 let _fmView = 'pipeline'; // 'pipeline' | 'list'
 
 // ── Export Leads to Excel (CSV with UTF-8 BOM) ───────────────────────────────
-function exportLeadsExcel() {
-  if (!leadsData || !leadsData.length) { toast('لا توجد بيانات للتصدير','error'); return; }
+window.exportLeadsExcel = function() {
+  const data = typeof leadsData !== 'undefined' ? leadsData : [];
+  if (!data.length) { toast('لا توجد بيانات للتصدير','error'); return; }
   const headers = ['تاريخ التسجيل','اسم العميل','الهاتف','البريد الإلكتروني','الشكل القانوني','الرسوم','الحالة','المصدر','ملاحظات'];
-  const rows = leadsData.map(l => {
+  const rows = data.map(l => {
     const date = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB') : '';
-    const status = LEAD_STATUS_LABEL[l.status] || l.status || '';
+    const status = (typeof LEAD_STATUS_LABEL!=='undefined' && LEAD_STATUS_LABEL[l.status]) || l.status || '';
     const fees = l.quote_total_fees != null ? l.quote_total_fees : '';
-    const source = l.lead_source || '';
     const notes = (l.notes || l.quote_notes || '').replace(/\n/g,' ');
-    return [date, l.name||'', l.phone||'', l.email||'', l.quote_legal_entity||'', fees, status, source, notes];
+    return [date, l.name||'', l.phone||'', l.email||'', l.quote_legal_entity||'', fees, status, l.lead_source||'', notes];
   });
   const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
-  const bom = '﻿';
-  const blob = new Blob([bom + csv], {type:'text/csv;charset=utf-8'});
+  const blob = new Blob(['﻿' + csv], {type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `عملاء_محتملون_${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`✅ تم تصدير ${leadsData.length} عميل`,'success');
-}
+  toast(`✅ تم تصدير ${data.length} عميل`,'success');
+};
 
