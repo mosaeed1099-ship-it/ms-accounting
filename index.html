@@ -7843,6 +7843,7 @@ function renderLeads(stats) {
       </select>
       <span style="font-size:13px;color:#94a3b8;font-weight:500">${leadsData.length} عميل — <span style="color:#1a2472;font-weight:700">${LEADS_DATE_LABELS[leadsDateFilter]||'مخصص'}</span></span>
     </div>
+    <button onclick="exportLeadsExcel()" style="background:#15803d;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:6px">⬇ تصدير Excel</button>
     <button class="btn btn-primary" onclick="addLeadRow()">+ إضافة صف</button>
   </div>
   <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.05)">
@@ -9153,6 +9154,29 @@ let _fmStats = null;
 let _fmStageFilter = '';
 let _fmSearch = '';
 let _fmView = 'pipeline'; // 'pipeline' | 'list'
+
+// ── Export Leads to Excel (CSV with UTF-8 BOM) ───────────────────────────────
+function exportLeadsExcel() {
+  if (!leadsData || !leadsData.length) { toast('لا توجد بيانات للتصدير','error'); return; }
+  const headers = ['تاريخ التسجيل','اسم العميل','الهاتف','البريد الإلكتروني','الشكل القانوني','الرسوم','الحالة','المصدر','ملاحظات'];
+  const rows = leadsData.map(l => {
+    const date = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB') : '';
+    const status = LEAD_STATUS_LABEL[l.status] || l.status || '';
+    const fees = l.quote_total_fees != null ? l.quote_total_fees : '';
+    const source = l.lead_source || '';
+    const notes = (l.notes || l.quote_notes || '').replace(/\n/g,' ');
+    return [date, l.name||'', l.phone||'', l.email||'', l.quote_legal_entity||'', fees, status, source, notes];
+  });
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const bom = '﻿';
+  const blob = new Blob([bom + csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `عملاء_محتملون_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`✅ تم تصدير ${leadsData.length} عميل`,'success');
+}
 
 async function loadEstablishment(silent=false) {
   try {
