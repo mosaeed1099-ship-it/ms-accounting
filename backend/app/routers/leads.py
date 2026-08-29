@@ -288,6 +288,40 @@ def create_lead(body: LeadCreate, db: Session = Depends(get_db), current_user: U
     return lead_to_dict(lead)
 
 
+@router.get("/debug/status-changes")
+def debug_status_changes(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    old_status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Admin: show leads whose status changed in a date range — helps diagnose disappearing leads."""
+    from datetime import datetime as _dt
+    q = db.query(LeadActivity).filter(LeadActivity.action == "status_change")
+    if date_from:
+        q = q.filter(LeadActivity.created_at >= _dt.fromisoformat(date_from))
+    if date_to:
+        q = q.filter(LeadActivity.created_at <= _dt.fromisoformat(date_to + "T23:59:59"))
+    if old_status:
+        q = q.filter(LeadActivity.old_value == old_status)
+    acts = q.order_by(LeadActivity.created_at.desc()).limit(500).all()
+    result = []
+    for a in acts:
+        lead = db.query(Lead).filter(Lead.id == a.lead_id).first()
+        result.append({
+            "lead_id": a.lead_id,
+            "lead_name": lead.name if lead else "—",
+            "lead_phone": lead.phone if lead else "—",
+            "current_status": lead.status if lead else "deleted",
+            "old_status": a.old_value,
+            "new_status": a.new_value,
+            "changed_at": a.created_at.isoformat() if a.created_at else None,
+            "description": a.description,
+        })
+    return {"count": len(result), "changes": result}
+
+
 @router.get("/{lead_id}")
 def get_lead(lead_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -623,40 +657,6 @@ def delete_lead(lead_id: int, db: Session = Depends(get_db), current_user: User 
     db.delete(lead)
     db.commit()
     return {"message": "تم حذف Lead بنجاح"}
-
-
-@router.get("/debug/status-changes")
-def debug_status_changes(
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    old_status: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Admin: show leads whose status changed in a date range — helps diagnose disappearing leads."""
-    from datetime import datetime as _dt
-    q = db.query(LeadActivity).filter(LeadActivity.action == "status_change")
-    if date_from:
-        q = q.filter(LeadActivity.created_at >= _dt.fromisoformat(date_from))
-    if date_to:
-        q = q.filter(LeadActivity.created_at <= _dt.fromisoformat(date_to + "T23:59:59"))
-    if old_status:
-        q = q.filter(LeadActivity.old_value == old_status)
-    acts = q.order_by(LeadActivity.created_at.desc()).limit(500).all()
-    result = []
-    for a in acts:
-        lead = db.query(Lead).filter(Lead.id == a.lead_id).first()
-        result.append({
-            "lead_id": a.lead_id,
-            "lead_name": lead.name if lead else "—",
-            "lead_phone": lead.phone if lead else "—",
-            "current_status": lead.status if lead else "deleted",
-            "old_status": a.old_value,
-            "new_status": a.new_value,
-            "changed_at": a.created_at.isoformat() if a.created_at else None,
-            "description": a.description,
-        })
-    return {"count": len(result), "changes": result}
 
 
 @router.post("/{lead_id}/activities")
