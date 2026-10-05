@@ -17362,10 +17362,13 @@ function _renderEmployeesGrid(el, employees) {
           style="flex:1;padding:8px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
           ✏️ تعديل
         </button>
+      </div>
+      <!-- إجراء هدّام — مفصول عن أزرار التشغيل اليومي عمداً -->
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;text-align:left">
         <button onclick="resetEmployeeBalance('${escH(emp.employee_name)}')"
-          title="تصفير الرصيد وحذف جميع التسويات"
-          style="padding:8px 10px;background:#fef2f2;color:#dc2626;border:1.5px solid #fecaca;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer">
-          🔄 تصفير
+          title="حذف كل تسويات الموظف نهائياً — يطلب كتابة اسمه للتأكيد"
+          style="padding:6px 10px;background:transparent;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">
+          🗑️ حذف كل التسويات
         </button>
       </div>
     </div>`}).join('')}
@@ -18265,14 +18268,83 @@ function printSettlement(s) {
   w.document.close();
 }
 
+/**
+ * حارس الحذف: يقرأ العدد الحقيقي من الخادم، ثم يطلب كتابة اسم الموظف بالكامل.
+ * السبب: الزر القديم كان ضغطة واحدة بتأكيد عام، ومسح 58 تسوية لعمر شعبان
+ * في 2026-10-05 بلا أي نسخة يمكن الرجوع إليها.
+ */
+function confirmTypedName(empName, count, totalSpent) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = v => { if (done) return; done = true; overlay.remove(); resolve(v); };
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+    <div class="modal" style="max-width:440px">
+      <div style="background:linear-gradient(135deg,#991b1b,#dc2626);border-radius:14px 14px 0 0;padding:16px 20px">
+        <div style="color:white;font-weight:800;font-size:15px">🗑️ حذف كل تسويات ${escH(empName)}</div>
+        <div style="color:rgba(255,255,255,.8);font-size:11px;margin-top:3px">إجراء نهائي — لا يمكن التراجع عنه</div>
+      </div>
+      <div style="padding:20px">
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:16px">
+          <div style="font-size:13px;color:#991b1b;font-weight:700;margin-bottom:8px">سيُحذف نهائياً:</div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#7f1d1d;margin-bottom:4px">
+            <span>عدد التسويات</span><strong>${count} تسوية</strong></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#7f1d1d">
+            <span>إجمالي الصرف المسجّل فيها</span><strong>${money(totalSpent)}</strong></div>
+        </div>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#92400e;line-height:1.6">
+          ⚠️ تفاصيل الصرف (البنود والعملاء والتواريخ) ستختفي ولن تُسترجع.
+          سجلات العهدة لن تتأثر.
+        </div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">
+          للتأكيد اكتب اسم الموظف بالكامل: <strong style="color:#111827">${escH(empName)}</strong>
+        </label>
+        <input id="__delNameInput" class="input" autocomplete="off" placeholder="اكتب الاسم هنا"
+          style="margin-bottom:16px;text-align:center;font-weight:700"/>
+        <div style="display:flex;gap:10px">
+          <button id="__delCancel" class="btn" style="flex:1">إلغاء</button>
+          <button id="__delGo" class="btn" disabled
+            style="flex:1;background:#fecaca;color:#7f1d1d;border:none;cursor:not-allowed;font-weight:700">🗑️ حذف</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    const norm = s => (s || '').trim().replace(/\s+/g, ' ');
+    const input = overlay.querySelector('#__delNameInput');
+    const go    = overlay.querySelector('#__delGo');
+    input.oninput = () => {
+      const ok = norm(input.value) === norm(empName);
+      go.disabled = !ok;
+      go.style.cssText = `flex:1;border:none;font-weight:700;${ok
+        ? 'background:#dc2626;color:white;cursor:pointer'
+        : 'background:#fecaca;color:#7f1d1d;cursor:not-allowed'}`;
+    };
+    go.onclick     = () => { if (!go.disabled) finish(true); };
+    overlay.querySelector('#__delCancel').onclick = () => finish(false);
+    overlay.onclick = e => { if (e.target === overlay) finish(false); };
+    setTimeout(() => input.focus(), 100);
+  });
+}
+
 async function resetEmployeeBalance(empName) {
-  if (!await confirmDlg(
-    `سيتم حذف جميع تسويات "${empName}" وتصفير الرصيد.\nسيبقى اسم الموظف موجوداً.`,
-    'تصفير رصيد الموظف', 'تصفير', true
-  )) return;
+  // اقرأ العدد الحقيقي من الخادم — لا تعتمد على ما هو معروض في الشاشة
+  let count = 0, totalSpent = 0;
+  try {
+    const d = await api('GET', `/api/settlements/employees/${encodeURIComponent(empName)}`);
+    const list = d.settlements || [];
+    count = list.length;
+    totalSpent = list.reduce((a, s) => a + (s.total_spent || 0), 0);
+  } catch (e) { toast('تعذّر قراءة تسويات الموظف — لم يُحذف شيء', 'error'); return; }
+
+  if (count === 0) { toast('لا توجد تسويات لحذفها', 'error'); return; }
+  if (!await confirmTypedName(empName, count, totalSpent)) return;
+
   try {
     await api('POST', `/api/settlements/employees/${encodeURIComponent(empName)}/reset`);
-    toast(`تم تصفير رصيد ${empName} ✅`);
+    toast(`تم حذف ${count} تسوية لـ${empName} ✅`);
     _AC.invalidate('/api/settlements');
     // بعد التصفير مباشرة: اسأل عن الرصيد المرحل من الشهر السابق
     showSetOpeningBalance(empName);
