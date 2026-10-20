@@ -13,9 +13,13 @@ class EmployeeCustody(Base):
 
     id               = Column(Integer, primary_key=True, index=True)
     employee_name    = Column(String(200), unique=True, nullable=False, index=True)
+    # ⚠️ الثلاثة التالية **مشتقّة** من الحركات (_rebuild_chain) — لا تُكتب يدوياً أبداً
     current_balance  = Column(Float, default=0)   # الرصيد الحالي في العهدة
     total_given      = Column(Float, default=0)   # إجمالي العهد المُعطاة منذ البداية
     total_spent      = Column(Float, default=0)   # إجمالي ما صُرف منذ البداية
+    # الرصيد المرحّل من قبل دخول النظام — المدخل الوحيد الذي يُكتب يدوياً.
+    # بلا default: NULL تعني «لم يُضبط بعد» فيعرف الترحيل أنه لم يمرّ على هذا الصف.
+    opening_seed     = Column(Float)
     last_settlement_date = Column(Date)
     notes            = Column(Text)
     created_at       = Column(DateTime, default=datetime.utcnow)
@@ -43,8 +47,10 @@ class EmployeeSettlement(Base):
     total_spent      = Column(Float, default=0)   # إجمالي الصرف اليوم (مجموع البنود)
 
     # حركة العهدة
-    opening_balance  = Column(Float, default=0)   # رصيد العهدة أول اليوم (من أمس)
     custody_added    = Column(Float, default=0)   # عهدة جديدة أُضيفت اليوم
+    returned_amount  = Column(Float, default=0)   # رد العهدة — ما أعاده الموظف للخزنة
+    # ⚠️ الافتتاحي والختامي **مشتقّان** (_rebuild_chain) ومخزَّنان للطباعة فقط
+    opening_balance  = Column(Float, default=0)   # رصيد العهدة أول اليوم (من أمس)
     closing_balance  = Column(Float, default=0)   # المتبقي في نهاية اليوم
 
     notes            = Column(Text)

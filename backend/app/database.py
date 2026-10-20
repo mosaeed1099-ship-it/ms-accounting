@@ -177,6 +177,8 @@ def _run_migrations_pg():
         # These tables are created by create_all; safety columns below
         "ALTER TABLE employee_settlements ADD COLUMN IF NOT EXISTS reason TEXT",
         "ALTER TABLE employee_settlements ADD COLUMN IF NOT EXISTS expense_items TEXT DEFAULT '[]'",
+        "ALTER TABLE employee_settlements ADD COLUMN IF NOT EXISTS returned_amount FLOAT DEFAULT 0",
+        "ALTER TABLE employee_custody_balances ADD COLUMN IF NOT EXISTS opening_seed FLOAT",
         "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE",
         "ALTER TABLE government_papers ADD COLUMN IF NOT EXISTS has_copy BOOLEAN DEFAULT FALSE",
         # ── Payroll / HR ──────────────────────────────────────────────────────

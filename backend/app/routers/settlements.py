@@ -34,11 +34,13 @@ class SettlementIn(BaseModel):
     reason:         Optional[str] = None
     expense_items:  List[ExpenseItem] = []
     custody_added:  float = 0
+    returned_amount: float = 0      # رد العهدة — ما أعاده الموظف للخزنة
     notes:          Optional[str] = None
 
 class CustodyTopUp(BaseModel):
     employee_name: str
     amount:        float
+    topup_date:    Optional[str] = None   # YYYY-MM-DD — افتراضها اليوم
     notes:         Optional[str] = None
 
 class AppointmentIn(BaseModel):
@@ -77,6 +79,89 @@ def _get_or_create_custody(name: str, db: Session) -> EmployeeCustody:
     return c
 
 
+# ════════════════════════════════════════════════════════════════════
+# محرّك سلسلة العهدة — الرصيد يُشتقّ من الحركات ولا يُخزَّن كمصدر للحقيقة
+# ════════════════════════════════════════════════════════════════════
+# القاعدة: افتتاحيُّ كل تسوية = ختاميُّ الحركة التي تسبقها زمنياً.
+# أي رقم رصيد مخزَّن (closing_balance / current_balance) نسخةٌ للطباعة
+# والعرض السريع، تُعاد كتابتها من الحركات بعد كل تعديل — فلا تنكسر السلسلة
+# حين تُسجَّل تسوية بتاريخ قديم أو يُحذف سطر من المنتصف.
+
+def _events(name: str, db: Session) -> list:
+    """كل حركات العهدة مرتَّبة زمنياً — التمويل يسبق الصرف في نفس اليوم."""
+    sets = db.query(EmployeeSettlement).filter(
+        EmployeeSettlement.employee_name == name).all()
+    tops = db.query(CustodyTopupLog).filter(
+        CustodyTopupLog.employee_name == name).all()
+    rows = ([("topup", t.topup_date, t.id, t) for t in tops] +
+            [("settlement", s.date, s.id, s) for s in sets])
+    rows.sort(key=lambda r: (r[1] or date.min, 0 if r[0] == "topup" else 1, r[2] or 0))
+    return rows
+
+
+def _walk(name: str, db: Session, seed: Optional[float] = None):
+    """يمرّ على الحركات ويحسب افتتاحي/ختامي كلٍّ منها دون أن يكتب شيئاً."""
+    custody = _get_or_create_custody(name, db)
+    running = round(custody.opening_seed or 0, 2) if seed is None else round(seed, 2)
+    out = []
+    for kind, d, _id, row in _events(name, db):
+        opening = running
+        if kind == "topup":
+            running = round(opening + (row.amount or 0), 2)
+        else:
+            running = round(opening + (row.custody_added or 0)
+                            - (row.total_spent or 0) - (row.returned_amount or 0), 2)
+        out.append({"kind": kind, "date": d, "row": row,
+                    "opening": opening, "closing": running})
+    return custody, out
+
+
+def _rebuild_chain(name: str, db: Session, commit: bool = True):
+    """يعيد اشتقاق السلسلة كلها ويكتبها على المستندات ورصيد الموظف."""
+    custody = _get_or_create_custody(name, db)
+    changed = False
+
+    # ترحيل لمرة واحدة: الرصيد قبل هذا الإصلاح كان **مخزَّناً** لا مشتقّاً، وما
+    # سبق دخول النظام من رصيد لم يكن له أثر في الحركات. احفظ الفارق بذرةً مرة
+    # واحدة (opening_seed = NULL يعني «لم يُضبط») حتى لا يتبخّر رصيد أحد.
+    if custody.opening_seed is None:
+        _, probe = _walk(name, db, seed=0.0)
+        tail = probe[-1]["closing"] if probe else 0.0
+        custody.opening_seed = round((custody.current_balance or 0) - tail, 2)
+        changed = True
+
+    custody, walk = _walk(name, db)
+    given = round(custody.opening_seed or 0, 2)
+    spent = returned = 0.0
+    last_date = None
+
+    for ev in walk:
+        row = ev["row"]
+        if ev["kind"] == "topup":
+            given = round(given + (row.amount or 0), 2)
+            continue
+        if row.opening_balance != ev["opening"]:
+            row.opening_balance = ev["opening"]; changed = True
+        if row.closing_balance != ev["closing"]:
+            row.closing_balance = ev["closing"]; changed = True
+        given    = round(given + (row.custody_added or 0), 2)
+        spent    = round(spent + (row.total_spent or 0), 2)
+        returned = round(returned + (row.returned_amount or 0), 2)
+        if ev["date"] and (last_date is None or ev["date"] > last_date):
+            last_date = ev["date"]
+
+    balance = walk[-1]["closing"] if walk else round(custody.opening_seed or 0, 2)
+    for field, value in (("current_balance", balance), ("total_given", given),
+                         ("total_spent", spent), ("last_settlement_date", last_date)):
+        if getattr(custody, field) != value:
+            setattr(custody, field, value); changed = True
+    if changed:
+        custody.updated_at = datetime.utcnow()
+        if commit:
+            db.commit()
+    return custody, {"walk": walk, "total_returned": returned, "changed": changed}
+
+
 @router.get("/employees")
 def list_employees(
     db: Session = Depends(get_db),
@@ -84,6 +169,9 @@ def list_employees(
 ):
     """قائمة الموظفين مع رصيد عهدتهم الحالي."""
     custodies = db.query(EmployeeCustody).order_by(EmployeeCustody.employee_name).all()
+    for c in custodies:                       # اشتقاق قبل العرض — يداوي أي سلسلة قديمة
+        _rebuild_chain(c.employee_name, db, commit=False)
+    db.commit()
     result = []
     for c in custodies:
         last = (db.query(EmployeeSettlement)
@@ -114,11 +202,12 @@ def add_employee(
         raise HTTPException(400, "الموظف موجود بالفعل")
     c = EmployeeCustody(
         employee_name   = payload.employee_name.strip(),
-        current_balance = payload.amount,
-        total_given     = payload.amount,
+        opening_seed    = round(payload.amount, 2),   # بذرة السلسلة — الباقي مشتقّ
         notes           = payload.notes,
     )
     db.add(c)
+    db.flush()
+    _rebuild_chain(c.employee_name, db, commit=False)
     db.commit()
     return {"message": f"✅ تمت إضافة {c.employee_name} بعهدة {payload.amount:.2f} ج.م."}
 
@@ -133,11 +222,10 @@ def delete_topup(
     t = db.query(CustodyTopupLog).filter(CustodyTopupLog.id == topup_id).first()
     if not t:
         raise HTTPException(404, "السجل غير موجود")
-    c = _get_or_create_custody(t.employee_name, db)
-    c.current_balance -= t.amount
-    c.total_given     -= t.amount
-    c.updated_at       = datetime.utcnow()
+    name = t.employee_name
     db.delete(t)
+    db.flush()
+    c, _ = _rebuild_chain(name, db, commit=False)
     db.commit()
     return {"message": "✅ تم حذف سجل العهدة وتصحيح الرصيد", "new_balance": c.current_balance}
 
@@ -149,21 +237,27 @@ def topup_custody(
     current_user: User = Depends(get_current_user),
 ):
     """إضافة عهدة إضافية لموظف."""
-    c = _get_or_create_custody(payload.employee_name.strip(), db)
-    c.current_balance += payload.amount
-    c.total_given     += payload.amount
-    c.updated_at       = datetime.utcnow()
-    today = date.today()
-    log = CustodyTopupLog(
-        employee_name = payload.employee_name.strip(),
+    name = payload.employee_name.strip()
+    _get_or_create_custody(name, db)
+    if payload.topup_date:
+        try:
+            d = datetime.strptime(payload.topup_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "تاريخ غير صحيح")
+    else:
+        d = date.today()
+    entry = CustodyTopupLog(
+        employee_name = name,
         amount        = payload.amount,
-        topup_date    = today,
-        month         = today.month,
-        year          = today.year,
+        topup_date    = d,
+        month         = d.month,
+        year          = d.year,
         notes         = payload.notes,
         created_by    = current_user.id,
     )
-    db.add(log)
+    db.add(entry)
+    db.flush()
+    c, _ = _rebuild_chain(name, db, commit=False)
     db.commit()
     return {
         "message":         f"✅ تمت إضافة {payload.amount:.2f} ج.م. للعهدة",
@@ -186,6 +280,10 @@ def reset_employee(
     db.query(EmployeeSettlement).filter(
         EmployeeSettlement.employee_name == employee_name
     ).delete(synchronize_session=False)
+    db.query(CustodyTopupLog).filter(
+        CustodyTopupLog.employee_name == employee_name
+    ).delete(synchronize_session=False)
+    custody.opening_seed         = 0
     custody.current_balance      = 0
     custody.total_given          = 0
     custody.total_spent          = 0
@@ -204,11 +302,12 @@ def employee_detail(
     current_user: User = Depends(get_current_user),
 ):
     """تفاصيل موظف + سجل تسوياته."""
-    custody = _get_or_create_custody(employee_name, db)
+    custody, info = _rebuild_chain(employee_name, db)
 
     q = db.query(EmployeeSettlement).filter(
         EmployeeSettlement.employee_name == employee_name
     )
+    first_day = last_day = None
     # استخدم نطاق التاريخ بدل أعمدة month/year لضمان رجوع التسويات القديمة
     if month and year:
         first_day = date(year, month, 1)
@@ -220,18 +319,36 @@ def employee_detail(
 
     tq = db.query(CustodyTopupLog).filter(CustodyTopupLog.employee_name == employee_name)
     if month and year:
-        first_day = date(year, month, 1)
-        last_day  = date(year, month, monthrange(year, month)[1])
         tq = tq.filter(CustodyTopupLog.topup_date >= first_day, CustodyTopupLog.topup_date <= last_day)
     elif year:
         tq = tq.filter(CustodyTopupLog.topup_date >= date(year, 1, 1), CustodyTopupLog.topup_date <= date(year, 12, 31))
     topups = tq.order_by(CustodyTopupLog.topup_date.desc()).all()
 
+    # افتتاحي الفترة وختاميها من السلسلة نفسها — لا من «آخر تسوية في الشهر»
+    # (التمويل الذي يلي آخر تسوية كان يسقط من الرصيد المعروض)
+    period_open = period_close = round(custody.opening_seed or 0, 2)
+    in_period = False
+    for ev in info["walk"]:
+        d = ev["date"]
+        inside = (first_day <= d <= last_day) if (month and year) else (
+            (date(year, 1, 1) <= d <= date(year, 12, 31)) if year else True)
+        if inside:
+            if not in_period:
+                period_open = ev["opening"]
+                in_period = True
+            period_close = ev["closing"]
+        elif not in_period:
+            period_open = period_close = ev["closing"]
+
     return {
         "employee_name":   custody.employee_name,
         "current_balance": custody.current_balance,
+        "opening_seed":    custody.opening_seed or 0,
         "total_given":     custody.total_given,
         "total_spent":     custody.total_spent,
+        "total_returned":  info["total_returned"],
+        "period_opening":  period_open,
+        "period_closing":  period_close,
         "last_settlement": str(custody.last_settlement_date) if custody.last_settlement_date else None,
         "settlements": [_s_dict(s) for s in settlements],
         "custody_topups": [
@@ -259,8 +376,6 @@ def add_settlement(
     items      = [{"description": i.description, "amount": round(i.amount, 2),
                    "client_name": i.client_name or "", "expense_date": i.expense_date or ""} for i in payload.expense_items]
     total_spent = round(sum(i["amount"] for i in items), 2)
-    opening     = custody.current_balance
-    closing     = round(opening + payload.custody_added - total_spent, 2)
 
     s = EmployeeSettlement(
         employee_name   = name,
@@ -270,21 +385,16 @@ def add_settlement(
         reason          = payload.reason,
         expense_items   = json.dumps(items, ensure_ascii=False),
         total_spent     = total_spent,
-        opening_balance = round(opening, 2),
-        custody_added   = payload.custody_added,
-        closing_balance = closing,
+        custody_added   = round(payload.custody_added, 2),
+        returned_amount = round(payload.returned_amount, 2),
         notes           = payload.notes,
         created_by      = current_user.id,
     )
     db.add(s)
+    db.flush()
 
-    # update custody balance
-    custody.current_balance  = round(closing, 2)
-    custody.total_given     += payload.custody_added
-    custody.total_spent     += total_spent
-    custody.last_settlement_date = d
-    custody.updated_at       = datetime.utcnow()
-
+    # الافتتاحي والختامي من السلسلة — لا من الرصيد الحالي، فقد تكون التسوية بتاريخ قديم
+    _rebuild_chain(name, db, commit=False)
     db.commit()
     db.refresh(s)
     return {
@@ -299,22 +409,48 @@ def add_settlement(
 def set_employee_balance(
     employee_name: str,
     payload: CustodyTopUp,
+    mode: str = "adjust",          # seed = رصيد مرحّل · adjust = تصحيح بالفرق
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """ضبط رصيد العهدة لقيمة محددة (للرصيد الافتتاحي / المرحّل)."""
+    """ضبط الرصيد — بذرةً مرحّلة (seed) أو حركة تصحيح بالفرق (adjust).
+
+    `seed`   = الرصيد المرحّل من قبل دخول النظام؛ يسبق كل الحركات.
+    `adjust` = تصحيح الرصيد الحالي اليوم؛ يُسجَّل **حركةً بالفرق** فلا يُمحى
+               تاريخ ما أُعطي وما صُرف (الكتابة فوق total_given كانت تُسقط
+               كل التمويلات السابقة فيظهر الموظف دائناً وهو مدين).
+    """
+    if mode not in ("seed", "adjust"):
+        raise HTTPException(400, "mode لازم يكون seed أو adjust")
     custody = db.query(EmployeeCustody).filter(
         EmployeeCustody.employee_name == employee_name
     ).first()
     if not custody:
         raise HTTPException(404, "الموظف غير موجود")
-    custody.current_balance = round(payload.amount, 2)
-    custody.total_given     = round(payload.amount, 2)   # reset total_given to the new opening
-    custody.total_spent     = 0
-    custody.updated_at      = datetime.utcnow()
+
+    target = round(payload.amount, 2)
+    if mode == "seed":
+        custody.opening_seed = target
+    else:
+        _, info = _rebuild_chain(employee_name, db, commit=False)
+        delta = round(target - custody.current_balance, 2)
+        if delta:
+            today = date.today()
+            db.add(CustodyTopupLog(
+                employee_name = employee_name,
+                amount        = delta,
+                topup_date    = today,
+                month         = today.month,
+                year          = today.year,
+                notes         = payload.notes or "تصحيح رصيد العهدة",
+                created_by    = current_user.id,
+            ))
+    db.flush()
+    _rebuild_chain(employee_name, db, commit=False)
     db.commit()
+    label = "الرصيد المرحّل" if mode == "seed" else "رصيد العهدة"
     return {
-        "message":     f"✅ تم ضبط الرصيد الافتتاحي لـ {employee_name}: {payload.amount:.2f} ج.م.",
+        "message":     f"✅ تم ضبط {label} لـ {employee_name}: {custody.current_balance:.2f} ج.م.",
         "new_balance": custody.current_balance,
     }
 
@@ -411,41 +547,25 @@ def update_settlement(
     except ValueError:
         raise HTTPException(400, "تاريخ غير صحيح")
 
-    custody = _get_or_create_custody(s.employee_name, db)
-
-    # 1) ارجع الأثر القديم على العهدة
-    custody.current_balance += s.total_spent
-    custody.current_balance -= (s.custody_added or 0)
-    custody.total_spent     -= (s.total_spent or 0)
-    custody.total_given     -= (s.custody_added or 0)
-
-    # 2) احسب القيم الجديدة
     items       = [{"description": i.description, "amount": round(i.amount, 2),
                     "client_name": i.client_name or "", "expense_date": i.expense_date or ""} for i in payload.expense_items]
     total_spent = round(sum(i["amount"] for i in items), 2)
-    opening     = round(custody.current_balance, 2)
-    closing     = round(opening + payload.custody_added - total_spent, 2)
 
-    # 3) حدّث السجل
     s.date            = d
     s.month           = d.month
     s.year            = d.year
     s.reason          = payload.reason
     s.expense_items   = json.dumps(items, ensure_ascii=False)
     s.total_spent     = total_spent
-    s.opening_balance = opening
-    s.custody_added   = payload.custody_added
-    s.closing_balance = closing
+    s.custody_added   = round(payload.custody_added, 2)
+    s.returned_amount = round(payload.returned_amount, 2)
     s.notes           = payload.notes
     s.updated_at      = datetime.utcnow()
 
-    # 4) طبّق الأثر الجديد على العهدة
-    custody.current_balance  = closing
-    custody.total_spent     += total_spent
-    custody.total_given     += payload.custody_added
-    custody.last_settlement_date = d
-    custody.updated_at       = datetime.utcnow()
-
+    # إعادة الاشتقاق تُصحّح هذه التسوية **وكل ما بعدها** — الجمع والطرح اليدوي
+    # كان يترك التسويات اللاحقة على أرقامها القديمة فتنكسر السلسلة.
+    db.flush()
+    _rebuild_chain(s.employee_name, db, commit=False)
     db.commit()
     db.refresh(s)
     return {
@@ -465,13 +585,10 @@ def delete_settlement(
     s = db.query(EmployeeSettlement).filter(EmployeeSettlement.id == settlement_id).first()
     if not s:
         raise HTTPException(404, "التسوية غير موجودة")
-    # reverse the custody balance
-    custody = _get_or_create_custody(s.employee_name, db)
-    custody.current_balance += s.total_spent
-    custody.current_balance -= s.custody_added
-    custody.total_spent     -= s.total_spent
-    custody.total_given     -= s.custody_added
+    name = s.employee_name
     db.delete(s)
+    db.flush()
+    _rebuild_chain(name, db, commit=False)   # يصحّح كل التسويات اللاحقة أيضاً
     db.commit()
     return {"message": "✅ تم حذف التسوية وتعديل رصيد العهدة"}
 
@@ -489,6 +606,7 @@ def _s_dict(s: EmployeeSettlement) -> dict:
         "total_spent":     s.total_spent,
         "opening_balance": s.opening_balance,
         "custody_added":   s.custody_added,
+        "returned_amount": s.returned_amount or 0,
         "closing_balance": s.closing_balance,
         "notes":           s.notes,
         "created_at":      str(s.created_at),
