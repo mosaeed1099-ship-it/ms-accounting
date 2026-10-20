@@ -17611,21 +17611,16 @@ async function renderEmpSettlements() {
     const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
     const settlements = detail.settlements || [];
     const report = {
-      total_custody_added: settlements.reduce((s,x)=>s+(x.custody_added||0),0),
+      total_custody_added: settlements.reduce((s,x)=>s+(x.custody_added||0),0)
+                         + (detail.custody_topups||[]).reduce((s,t)=>s+(t.amount||0),0),
       total_spent:         settlements.reduce((s,x)=>s+(x.total_spent||0),0),
       total_transportation:settlements.reduce((s,x)=>s+(x.transportation||0),0),
       total_meals:         settlements.reduce((s,x)=>s+(x.meals||0),0),
       total_other:         settlements.reduce((s,x)=>s+(x.other_expenses||0),0),
     };
-    // For past months: show the closing balance of the last settlement in that month
-    // For current month: show the live current_balance from custody record
-    const now = new Date();
-    const isCurrentMonth = (_callMonth === now.getMonth()+1 && _callYear === now.getFullYear());
-    // Sort settlements by date desc to find most recent in the selected month
-    const sortedByDate = [...settlements].sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const bal = isCurrentMonth
-      ? (detail.current_balance || 0)
-      : (sortedByDate.length ? (sortedByDate[0].closing_balance ?? detail.current_balance) : detail.current_balance);
+    // رصيد آخر الفترة يجي مشتقّاً من الخادم (period_closing) — الحساب القديم كان
+    // بياخد ختاميّ آخر تسوية فيسقط أي تمويل عهدة جاء بعدها، فيختلف الكارت عن الجدول.
+    const bal = detail.period_closing ?? detail.current_balance ?? 0;
 
     main.innerHTML = `
     <!-- Header -->
@@ -17735,7 +17730,8 @@ async function renderEmpSettlements() {
                   '</td>' +
                   '<td style="padding:10px 14px;text-align:center;font-weight:800;color:#dc2626;vertical-align:top;white-space:nowrap">' + money(s.total_spent||0) + '</td>' +
                   '<td style="padding:10px 14px;text-align:center;color:#475569;vertical-align:top;white-space:nowrap">' + money(s.opening_balance||0) + '</td>' +
-                  '<td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">' + (s.custody_added?money(s.custody_added):'—') + '</td>' +
+                  '<td style="padding:10px 14px;text-align:center;color:#15803d;font-weight:600;vertical-align:top;white-space:nowrap">' + (s.custody_added?money(s.custody_added):'—') +
+                    (s.returned_amount ? '<div style="margin-top:3px;font-size:11px;font-weight:700;color:#7c3aed">↩︎ رد ' + money(s.returned_amount) + '</div>' : '') + '</td>' +
                   '<td style="padding:10px 14px;text-align:center;font-weight:800;vertical-align:top;white-space:nowrap;color:' + ((s.closing_balance||0)>=0?'#15803d':'#dc2626') + '">' + money(s.closing_balance||0) + '</td>' +
                   '<td style="padding:10px 14px;text-align:center;vertical-align:top">' +
                     '<div style="display:flex;gap:4px;justify-content:center">' +
@@ -17856,7 +17852,7 @@ async function saveEditCustody(empName) {
   const amt = parseFloat(document.getElementById('editCustodyAmt')?.value||'');
   if (isNaN(amt) || amt < 0) { toast('ادخل مبلغ صحيح','error'); return; }
   try {
-    await api('PATCH', `/api/settlements/employees/${encodeURIComponent(empName)}/balance`, {amount: amt});
+    await api('PATCH', `/api/settlements/employees/${encodeURIComponent(empName)}/balance?mode=adjust`, {amount: amt});
     document.querySelector('.modal-overlay')?.remove();
     toast('✅ تم تعديل رصيد العهدة');
     loadSettlements(true);
@@ -18384,7 +18380,7 @@ async function saveOpeningBalance(empName) {
   const amount = parseFloat(document.getElementById('openingBalInput')?.value || '0');
   if (isNaN(amount) || amount < 0) { toast('ادخل قيمة صحيحة', 'error'); return; }
   try {
-    await api('PATCH', `/api/settlements/employees/${encodeURIComponent(empName)}/balance`, {
+    await api('PATCH', `/api/settlements/employees/${encodeURIComponent(empName)}/balance?mode=seed`, {
       employee_name: empName, amount, notes: 'رصيد مرحّل'
     });
     toast(`✅ تم ضبط الرصيد المرحّل: ${amount.toLocaleString('ar-EG')} ج.م.`);
